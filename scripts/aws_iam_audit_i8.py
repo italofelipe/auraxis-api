@@ -401,8 +401,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     ctx = AwsCtx(profile=args.profile, region=args.region)
-    dev_subject_hint = "repo:italofelipe/flask-expenses-manager:environment:dev"
-    prod_subject_hint = "repo:italofelipe/flask-expenses-manager:environment:prod"
+    dev_subject_hint = "repo:italofelipe/auraxis-api:environment:dev"
+    prod_subject_hint = "repo:italofelipe/auraxis-api:environment:prod"
     report = {
         "dev": audit_instance(ctx, str(args.dev_instance_id)),
         "prod": audit_instance(ctx, str(args.prod_instance_id)),
