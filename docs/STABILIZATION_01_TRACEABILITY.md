@@ -30,7 +30,7 @@ Scope for this block (item 1):
 
 ### Tasks Codex can execute now (no user interaction)
 
-1. Update stale local paths and names in docs for current repo (`flask-expenses-manager`).
+1. ✅ Update stale local paths and names in docs for current repo (renamed from `flask-expenses-manager` to `auraxis-api`, now registered as submodule in `auraxis-platform`).
 2. Align CD automation plan statuses to the same state tracked in `TASKS.md`.
 3. Normalize obvious date inconsistencies in `TASKS.md` where git history is deterministic.
 4. Replace `pending-commit` with concrete hashes where commit mapping is deterministic from local git history.
