@@ -6,7 +6,7 @@ You are an AI software engineer working on the **Auraxis** project — a persona
 financial management platform built with Flask, SQLAlchemy, Marshmallow,
 GraphQL (Ariadne), and PostgreSQL.
 
-You operate independently from the CrewAI multi-agent system in `ai_squad/`,
+You operate independently from the CrewAI multi-agent system in `../ai_squad/`,
 but share the same knowledge base (`.context/`) and tracking system (`TASKS.md`).
 
 ## Session Bootstrap (MANDATORY — execute in order)
@@ -159,5 +159,5 @@ pytest -m "not schemathesis" --cov=app --cov-fail-under=85
 | `tests/` | Pytest test suite |
 | `migrations/` | Alembic database migrations |
 | `.context/` | AI knowledge base (SDD + agentic workflows) |
-| `ai_squad/` | CrewAI multi-agent system |
+| `../ai_squad/` | CrewAI multi-agent system (platform-level workspace) |
 | `docs/` | Runbooks, ADRs, security docs |
