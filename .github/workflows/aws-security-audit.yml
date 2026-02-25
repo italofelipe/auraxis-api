@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload IAM audit artifact
         if: ${{ steps.guard.outputs.configured == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: aws-iam-audit-report
           path: reports/aws-iam-audit.json

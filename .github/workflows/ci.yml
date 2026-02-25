@@ -170,13 +170,13 @@ jobs:
           pytest -m "not schemathesis" --cov=app --cov-fail-under=85 --cov-report=xml --cov-report=term-missing --junitxml=pytest-report.xml
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report
           path: coverage.xml
 
       - name: Upload pytest report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pytest-report
           path: pytest-report.xml
@@ -238,7 +238,7 @@ jobs:
 
       - name: Upload Newman report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: newman-report
           path: reports/newman-report.xml
@@ -399,7 +399,7 @@ jobs:
           bash scripts/security_evidence_check.sh
 
       - name: Upload security evidence artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: security-evidence
           path: reports/security/security-evidence.md
