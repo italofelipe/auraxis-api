@@ -109,6 +109,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 run_core_pipeline() {
+  echo "[ci-like-local] step=flags:hygiene"
+  python scripts/check_feature_flags.py
+
   echo "[ci-like-local] step=quality:pip-audit"
   pip-audit -r requirements.txt
 

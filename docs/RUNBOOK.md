@@ -235,11 +235,14 @@ unlink .git/index.lock
 
 3. Se o workspace seguir inconsistente, recriar workspace limpo:
 ```bash
-cd ..
-mv flask-expenses-manager flask-expenses-manager-corrupted-$(date +%Y%m%d-%H%M%S)
-git clone git@github.com:italofelipe/flask-expenses-manager.git flask-expenses-manager
-cd flask-expenses-manager
+cd /Users/italochagas/Desktop/projetos/auraxis-platform
+git submodule update --init --recursive
+cd repos/auraxis-api
 ```
+
+> **Nota:** O repositório foi renomeado de `flask-expenses-manager` para `auraxis-api`
+> e está registrado como submodule em `auraxis-platform`. Não clonar diretamente —
+> usar `git submodule update --init --recursive` a partir da raiz da platform.
 
 4. Recriar ambiente local:
 ```bash

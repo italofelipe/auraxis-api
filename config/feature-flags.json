@@ -1,0 +1,14 @@
+{
+  "flags": [
+    {
+      "key": "api.tools.salary-raise-calculator",
+      "owner": "platform",
+      "createdAt": "2026-02-25",
+      "removeBy": "2026-12-31",
+      "type": "release",
+      "status": "draft",
+      "description": "Controla endpoints backend usados pela calculadora de pedir aumento.",
+      "repositories": ["auraxis-api", "auraxis-web", "auraxis-app"]
+    }
+  ]
+}
