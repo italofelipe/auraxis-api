@@ -6,6 +6,9 @@ from app.schemas.sanitization import sanitize_string_fields
 
 ma = Marshmallow()
 USER_FULL_NAME_DESCRIPTION = "Nome completo do usuário"
+INVESTOR_PROFILE_SUGGESTED_DESCRIPTION = "Perfil de investidor sugerido"
+PROFILE_QUIZ_SCORE_DESCRIPTION = "Pontuação do quiz de perfil"
+TAXONOMY_VERSION_DESCRIPTION = "Versão da taxonomia"
 
 
 class UserRegistrationSchema(Schema):
@@ -141,7 +144,7 @@ class UserProfileSchema(Schema):
         allow_none=True,
         validate=validate.Length(max=32),
         metadata={
-            "description": "Perfil de investidor sugerido",
+            "description": INVESTOR_PROFILE_SUGGESTED_DESCRIPTION,
             "example": "explorador",
         },
     )
@@ -149,13 +152,13 @@ class UserProfileSchema(Schema):
     profile_quiz_score = fields.Integer(
         allow_none=True,
         validate=validate.Range(min=0),
-        metadata={"description": "Pontuação do quiz de perfil", "example": 85},
+        metadata={"description": PROFILE_QUIZ_SCORE_DESCRIPTION, "example": 85},
     )
 
     taxonomy_version = fields.String(
         allow_none=True,
         validate=validate.Length(max=16),
-        metadata={"description": "Versão da taxonomia", "example": "v1.0"},
+        metadata={"description": TAXONOMY_VERSION_DESCRIPTION, "example": "v1.0"},
     )
 
     financial_objectives = fields.String(
@@ -197,12 +200,14 @@ class UserSchema(Schema):
     name = fields.String(metadata={"description": USER_FULL_NAME_DESCRIPTION})
     email = fields.Email(metadata={"description": "Endereço de email do usuário"})
     investor_profile_suggested = fields.String(
-        metadata={"description": "Perfil de investidor sugerido"}
+        metadata={"description": INVESTOR_PROFILE_SUGGESTED_DESCRIPTION}
     )
     profile_quiz_score = fields.Integer(
-        metadata={"description": "Pontuação do quiz de perfil"}
+        metadata={"description": PROFILE_QUIZ_SCORE_DESCRIPTION}
     )
-    taxonomy_version = fields.String(metadata={"description": "Versão da taxonomia"})
+    taxonomy_version = fields.String(
+        metadata={"description": TAXONOMY_VERSION_DESCRIPTION}
+    )
     created_at = fields.DateTime(metadata={"description": "Data de criação da conta"})
     updated_at = fields.DateTime(metadata={"description": "Data da última atualização"})
 
@@ -240,12 +245,14 @@ class UserCompleteSchema(Schema):
     occupation = fields.String(metadata={"description": "Profissão do usuário"})
     investor_profile = fields.String(metadata={"description": "Perfil do investidor"})
     investor_profile_suggested = fields.String(
-        metadata={"description": "Perfil de investidor sugerido"}
+        metadata={"description": INVESTOR_PROFILE_SUGGESTED_DESCRIPTION}
     )
     profile_quiz_score = fields.Integer(
-        metadata={"description": "Pontuação do quiz de perfil"}
+        metadata={"description": PROFILE_QUIZ_SCORE_DESCRIPTION}
     )
-    taxonomy_version = fields.String(metadata={"description": "Versão da taxonomia"})
+    taxonomy_version = fields.String(
+        metadata={"description": TAXONOMY_VERSION_DESCRIPTION}
+    )
     financial_objectives = fields.String(
         metadata={"description": "Objetivos financeiros do usuário"}
     )
