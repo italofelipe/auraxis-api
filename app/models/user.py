@@ -24,7 +24,7 @@ class User(db.Model):
     password_reset_token_expires_at = db.Column(db.DateTime, nullable=True)
     password_reset_requested_at = db.Column(db.DateTime, nullable=True)
 
-    # Dados pessoais - informações adicionais coletadas após o cadastro inicial
+    # Personal data collected after the initial signup flow.
     gender = db.Column(db.String(20), nullable=True)
     birth_date = db.Column(db.Date, nullable=True)
     monthly_income_net = db.Column(db.Numeric(10, 2), nullable=True)
@@ -41,6 +41,10 @@ class User(db.Model):
     investor_profile = db.Column(db.String(32), nullable=True)
 
     financial_objectives = db.Column(db.Text, nullable=True)
+
+    investor_profile_suggested = db.Column(db.String(32), nullable=True)
+    profile_quiz_score = db.Column(db.Integer, nullable=True)
+    taxonomy_version = db.Column(db.String(16), nullable=True)
 
     tickers = db.relationship("UserTicker", back_populates="user")
     goals = db.relationship(
