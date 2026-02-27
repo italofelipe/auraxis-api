@@ -137,6 +137,27 @@ class UserProfileSchema(Schema):
         metadata={"description": "Perfil do investidor", "example": "conservador"},
     )
 
+    investor_profile_suggested = fields.String(
+        allow_none=True,
+        validate=validate.Length(max=32),
+        metadata={
+            "description": "Perfil de investidor sugerido",
+            "example": "explorador",
+        },
+    )
+
+    profile_quiz_score = fields.Integer(
+        allow_none=True,
+        validate=validate.Range(min=0),
+        metadata={"description": "Pontuação do quiz de perfil", "example": 85},
+    )
+
+    taxonomy_version = fields.String(
+        allow_none=True,
+        validate=validate.Length(max=16),
+        metadata={"description": "Versão da taxonomia", "example": "v1.0"},
+    )
+
     financial_objectives = fields.String(
         metadata={
             "description": "Objetivos financeiros do usuário",
@@ -146,7 +167,9 @@ class UserProfileSchema(Schema):
 
     @pre_load
     def sanitize_input(self, data: object, **kwargs: object) -> object:
-        sanitized = sanitize_string_fields(data, {"gender", "investor_profile"})
+        sanitized = sanitize_string_fields(
+            data, {"gender", "investor_profile", "investor_profile_suggested"}
+        )
         if isinstance(sanitized, dict):
             if isinstance(sanitized.get("state_uf"), str):
                 sanitized["state_uf"] = str(sanitized["state_uf"]).upper()
@@ -160,6 +183,10 @@ class UserProfileSchema(Schema):
                 sanitized["investor_profile"] = str(
                     sanitized["investor_profile"]
                 ).lower()
+            if isinstance(sanitized.get("investor_profile_suggested"), str):
+                sanitized["investor_profile_suggested"] = str(
+                    sanitized["investor_profile_suggested"]
+                ).lower()
         return sanitized
 
 
@@ -169,6 +196,13 @@ class UserSchema(Schema):
     id = fields.UUID(metadata={"description": "ID único do usuário"})
     name = fields.String(metadata={"description": USER_FULL_NAME_DESCRIPTION})
     email = fields.Email(metadata={"description": "Endereço de email do usuário"})
+    investor_profile_suggested = fields.String(
+        metadata={"description": "Perfil de investidor sugerido"}
+    )
+    profile_quiz_score = fields.Integer(
+        metadata={"description": "Pontuação do quiz de perfil"}
+    )
+    taxonomy_version = fields.String(metadata={"description": "Versão da taxonomia"})
     created_at = fields.DateTime(metadata={"description": "Data de criação da conta"})
     updated_at = fields.DateTime(metadata={"description": "Data da última atualização"})
 
@@ -194,12 +228,10 @@ class UserCompleteSchema(Schema):
         as_string=True, metadata={"description": "Gastos mensais"}
     )
     initial_investment = fields.Decimal(
-        as_string=True,
-        metadata={"description": "Investimento inicial"},
+        as_string=True, metadata={"description": "Investimento inicial"}
     )
     monthly_investment = fields.Decimal(
-        as_string=True,
-        metadata={"description": "Investimento mensal"},
+        as_string=True, metadata={"description": "Investimento mensal"}
     )
     investment_goal_date = fields.Date(
         metadata={"description": "Data meta de investimento"}
@@ -207,6 +239,13 @@ class UserCompleteSchema(Schema):
     state_uf = fields.String(metadata={"description": "Estado (UF) do usuário"})
     occupation = fields.String(metadata={"description": "Profissão do usuário"})
     investor_profile = fields.String(metadata={"description": "Perfil do investidor"})
+    investor_profile_suggested = fields.String(
+        metadata={"description": "Perfil de investidor sugerido"}
+    )
+    profile_quiz_score = fields.Integer(
+        metadata={"description": "Pontuação do quiz de perfil"}
+    )
+    taxonomy_version = fields.String(metadata={"description": "Versão da taxonomia"})
     financial_objectives = fields.String(
         metadata={"description": "Objetivos financeiros do usuário"}
     )

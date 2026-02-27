@@ -63,19 +63,22 @@ class UserProfileResource(MethodResource):
             "Campos aceitos:\n"
             "- gender: 'masculino', 'feminino', 'outro'\n"
             "- birth_date: 'YYYY-MM-DD'\n"
-            """- monthly_income, net_worth, monthly_expenses, initial_investment,
-            monthly_investment: decimal\n"""
+            "- monthly_income, net_worth, monthly_expenses, initial_investment,\n"
+            "  monthly_investment: decimal\n"
             "- investment_goal_date: 'YYYY-MM-DD'\n"
             "- investor_profile: 'conservador', 'explorador', 'entusiasta'\n\n"
             "Exemplo de request:\n"
-            """{\n  'gender': 'masculino', 'birth_date': '1990-05-15',
-            'monthly_income': '5000.00',
-            'net_worth': '100000.00',
-            'monthly_expenses': '2000.00',
-            'initial_investment': '10000.00',
-            'monthly_investment': '500.00',
-            'investment_goal_date': '2025-12-31',
-            'investor_profile': 'conservador' }\n\n"""
+            "{\n"
+            "  'gender': 'masculino',\n"
+            "  'birth_date': '1990-05-15',\n"
+            "  'monthly_income': '5000.00',\n"
+            "  'net_worth': '100000.00',\n"
+            "  'monthly_expenses': '2000.00',\n"
+            "  'initial_investment': '10000.00',\n"
+            "  'monthly_investment': '500.00',\n"
+            "  'investment_goal_date': '2025-12-31',\n"
+            "  'investor_profile': 'conservador'\n"
+            "}\n\n"
             "Exemplo de resposta:\n"
             "{ 'message': 'Perfil atualizado com sucesso', "
             "'data': { ...dados do usuário... } }"
