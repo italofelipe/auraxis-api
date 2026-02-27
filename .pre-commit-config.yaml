@@ -55,7 +55,7 @@ repos:
     stages: [pre-push]
   - id: pip-audit
     name: pip-audit (dependencies)
-    entry: bash -c 'pip-audit -r requirements.txt'
+    entry: bash -c '.venv/bin/pip-audit -r requirements.txt || pip-audit -r requirements.txt'
     language: system
     pass_filenames: false
     stages: [pre-push]
