@@ -55,15 +55,48 @@ fi
 echo "[sonar-local] Running tests with coverage..."
 "$PYTHON_BIN" -m pytest -p no:schemathesis -m "not schemathesis" -q --disable-warnings --cov=app --cov-report=xml:coverage.xml
 
+SONAR_LOCAL_MAX_ATTEMPTS="${SONAR_LOCAL_MAX_ATTEMPTS:-6}"
+SONAR_LOCAL_RETRY_BACKOFF_SECONDS="${SONAR_LOCAL_RETRY_BACKOFF_SECONDS:-20}"
+SONAR_LOCK_MESSAGE="Another SonarQube analysis is already in progress for this project"
+
+run_sonar_scanner() {
+  sonar-scanner \
+    -Dsonar.host.url="${SONAR_HOST_URL}" \
+    -Dsonar.token="${SONAR_TOKEN}" \
+    -Dsonar.organization="${SONAR_ORGANIZATION}" \
+    -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
+    -Dsonar.python.coverage.reportPaths=coverage.xml \
+    -Dsonar.qualitygate.wait=true \
+    -Dsonar.qualitygate.timeout=300
+}
+
 echo "[sonar-local] Running sonar-scanner with quality gate wait..."
-sonar-scanner \
-  -Dsonar.host.url="${SONAR_HOST_URL}" \
-  -Dsonar.token="${SONAR_TOKEN}" \
-  -Dsonar.organization="${SONAR_ORGANIZATION}" \
-  -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
-  -Dsonar.python.coverage.reportPaths=coverage.xml \
-  -Dsonar.qualitygate.wait=true \
-  -Dsonar.qualitygate.timeout=300
+attempt=1
+while [[ "$attempt" -le "$SONAR_LOCAL_MAX_ATTEMPTS" ]]; do
+  scanner_log="$(mktemp)"
+  echo "[sonar-local] sonar-scanner attempt ${attempt}/${SONAR_LOCAL_MAX_ATTEMPTS}"
+  set +e
+  run_sonar_scanner 2>&1 | tee "$scanner_log"
+  scanner_exit_code="${PIPESTATUS[0]}"
+  set -e
+
+  if [[ "$scanner_exit_code" -eq 0 ]]; then
+    rm -f "$scanner_log"
+    break
+  fi
+
+  if grep -q "$SONAR_LOCK_MESSAGE" "$scanner_log" && [[ "$attempt" -lt "$SONAR_LOCAL_MAX_ATTEMPTS" ]]; then
+    sleep_seconds=$((SONAR_LOCAL_RETRY_BACKOFF_SECONDS * attempt))
+    echo "[sonar-local] Analysis lock detected. Retrying in ${sleep_seconds}s..."
+    rm -f "$scanner_log"
+    sleep "$sleep_seconds"
+    attempt=$((attempt + 1))
+    continue
+  fi
+
+  rm -f "$scanner_log"
+  exit "$scanner_exit_code"
+done
 
 echo "[sonar-local] Validating ratings are A..."
 measures_json="$(curl -sf -u "${SONAR_TOKEN}:" \
