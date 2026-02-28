@@ -565,6 +565,7 @@ Pendências de substituição controlada:
 | 2026-02-20 | E2 REST Completion     | CRUD REST `/goals` com filtros, paginação, ownership e contrato compatível v1/v2; OpenAPI atualizado e testes de contrato cobrindo fluxo completo.                                                                                                              | 76a75d3       |
 | 2026-02-20 | E2 GraphQL Completion  | Paridade GraphQL de metas (`queries` e `mutations`) usando o mesmo domínio de serviço, com cobertura de testes para CRUD e autorização por ownership.                                                                                                          | 8f4cfdc       |
 | 2026-02-20 | E3-E6 Completion       | Serviço de planejamento de metas (`GoalPlanningService`) implementado com estratégia de projeção, plano por renda/gastos/capacidade, recomendações acionáveis e simulação what-if sem persistência em REST + GraphQL.                                      | 03b76db       |
+| 2026-02-27 | CI Sonar Local Policy  | `scripts/sonar_local_check.sh` alterado para modo `advisory` por padrão no pre-push local (sem bloquear por quality gate remoto) e modo `enforce` em CI ou via override explícito (`AURAXIS_ENFORCE_LOCAL_SONAR=true`). Documentação atualizada em `docs/CI_CD.md`. | 253b282       |
 
 ## Debito tecnico de rastreabilidade (estabilizacao 01)
 
