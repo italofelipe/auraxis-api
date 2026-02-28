@@ -23,7 +23,26 @@ Bloquear no CI qualquer flag sem metadados obrigatórios ou com expiração venc
 - flag com `removeBy` no passado deve estar `status=removed`.
 - `key` deve começar com prefixo `api.` e não pode duplicar.
 
-## Observação
+## PLT4.2 (runtime OSS) — entregue
 
-Este gate valida apenas governança/lifecycle da flag.
-A integração runtime com provider OSS permanece no escopo do PLT4 principal.
+Integração runtime adicionada em:
+
+- `app/utils/feature_flags.py`
+
+Modelo de resolução efetiva:
+
+1. `provider_value` explícito (quando informado);
+2. decisão remota de provider (`unleash`);
+3. override de ambiente (`AURAXIS_FEATURE_FLAGS`);
+4. fallback para catálogo local (`config/feature-flags.json`).
+
+Variáveis de ambiente suportadas (API):
+
+- `AURAXIS_FLAG_PROVIDER` (`local` | `unleash`, default `local`)
+- `AURAXIS_UNLEASH_URL` (endpoint base do provider)
+- `AURAXIS_UNLEASH_API_TOKEN` (token de cliente, opcional)
+- `AURAXIS_UNLEASH_APP_NAME` (default `auraxis-api`)
+- `AURAXIS_UNLEASH_INSTANCE_ID` (default `auraxis-api`)
+- `AURAXIS_UNLEASH_ENVIRONMENT` (default `development`)
+- `AURAXIS_UNLEASH_TIMEOUT_SECONDS` (default `2`)
+- `AURAXIS_UNLEASH_CACHE_TTL_SECONDS` (default `30`)
