@@ -94,3 +94,13 @@ def test_feature_flag_ignores_unleash_provider_failure(monkeypatch) -> None:
     assert (
         feature_flags.is_feature_enabled("api.tools.salary-raise-calculator") is False
     )
+
+
+def test_feature_flag_uses_runtime_env_as_unleash_environment_header(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AURAXIS_RUNTIME_ENV", "staging")
+    monkeypatch.delenv("AURAXIS_UNLEASH_ENVIRONMENT", raising=False)
+
+    headers = feature_flags._build_unleash_headers()
+    assert headers["UNLEASH-ENVIRONMENT"] == "staging"

@@ -29,6 +29,17 @@ _unleash_cache_snapshot: dict[str, bool] = {}
 _unleash_cache_expire_at_seconds = 0.0
 
 
+def _read_env_value(keys: tuple[str, ...], default_value: str = "") -> str:
+    """Read env values using precedence order."""
+    for key in keys:
+        raw_value = os.getenv(key)
+        if isinstance(raw_value, str):
+            normalized = raw_value.strip()
+            if normalized:
+                return normalized
+    return default_value
+
+
 def _normalize_status(value: object) -> str:
     return str(value or "").strip().lower()
 
@@ -47,11 +58,14 @@ def _as_bool_or_none(value: object) -> bool | None:
 
 
 def _get_provider_mode() -> str:
-    return str(os.getenv(_PROVIDER_ENV, "local")).strip().lower()
+    return _read_env_value((_PROVIDER_ENV,), "local").lower()
 
 
 def _get_unleash_url() -> str:
-    return str(os.getenv(_UNLEASH_URL_ENV, "")).strip().rstrip("/")
+    return _read_env_value(
+        (_UNLEASH_URL_ENV, "AURAXIS_UNLEASH_PROXY_URL"),
+        "",
+    ).rstrip("/")
 
 
 def _get_unleash_timeout_seconds() -> float:
@@ -83,17 +97,23 @@ def _get_unleash_cache_ttl_seconds() -> float:
 def _build_unleash_headers() -> dict[str, str]:
     headers: dict[str, str] = {
         "Accept": "application/json",
-        "UNLEASH-APPNAME": str(
-            os.getenv(_UNLEASH_APP_NAME_ENV, "auraxis-api"),
-        ).strip(),
-        "UNLEASH-INSTANCEID": str(
-            os.getenv(_UNLEASH_INSTANCE_ID_ENV, "auraxis-api"),
-        ).strip(),
-        "UNLEASH-ENVIRONMENT": str(
-            os.getenv(_UNLEASH_ENVIRONMENT_ENV, "development"),
-        ).strip(),
+        "UNLEASH-APPNAME": _read_env_value(
+            (_UNLEASH_APP_NAME_ENV,),
+            "auraxis-api",
+        ),
+        "UNLEASH-INSTANCEID": _read_env_value(
+            (_UNLEASH_INSTANCE_ID_ENV,),
+            "auraxis-api",
+        ),
+        "UNLEASH-ENVIRONMENT": _read_env_value(
+            (_UNLEASH_ENVIRONMENT_ENV, "AURAXIS_RUNTIME_ENV"),
+            "development",
+        ),
     }
-    api_token = str(os.getenv(_UNLEASH_API_TOKEN_ENV, "")).strip()
+    api_token = _read_env_value(
+        (_UNLEASH_API_TOKEN_ENV, "AURAXIS_UNLEASH_CLIENT_KEY"),
+        "",
+    )
     if api_token:
         headers["Authorization"] = api_token
     return headers
