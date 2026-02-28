@@ -121,8 +121,13 @@ Hooks:
 - `gitleaks` com `.gitleaks.toml`
 - `detect-private-key`
 - `mypy`
-- `sonar-local-check`
+- `sonar-local-check` (modo `advisory` local por padrão; `enforce` em CI ou com override)
 - pre-push: `security-evidence`, `pip-audit`
+
+Política do `sonar-local-check`:
+- Local (default): `SONAR_LOCAL_MODE=advisory` para não bloquear push por quality gate remoto.
+- CI: `SONAR_LOCAL_MODE=enforce` automaticamente quando `CI=true`.
+- Override local estrito: `AURAXIS_ENFORCE_LOCAL_SONAR=true`.
 
 ## Reproducao local (CI-like)
 

@@ -5,6 +5,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 SONAR_HOST_URL="${SONAR_HOST_URL:-https://sonarcloud.io}"
+SONAR_LOCAL_MODE="${SONAR_LOCAL_MODE:-advisory}"
+
+if [[ "${CI:-false}" == "true" ]]; then
+  SONAR_LOCAL_MODE="enforce"
+fi
+
+if [[ "${AURAXIS_ENFORCE_LOCAL_SONAR:-false}" == "true" ]]; then
+  SONAR_LOCAL_MODE="enforce"
+fi
 
 normalize_env_var() {
   local value="$1"
@@ -18,10 +27,20 @@ required_vars=(
   "SONAR_ORGANIZATION"
 )
 
+handle_soft_failure() {
+  local message="$1"
+  if [[ "$SONAR_LOCAL_MODE" == "enforce" ]]; then
+    echo "$message" >&2
+    exit 1
+  fi
+  echo "[sonar-local] advisory: $message"
+  echo "[sonar-local] advisory: continuing local push; CI Sonar gate remains mandatory."
+  exit 0
+}
+
 for var_name in "${required_vars[@]}"; do
   if [[ -z "${!var_name:-}" ]]; then
-    echo "Missing required environment variable: ${var_name}" >&2
-    exit 1
+    handle_soft_failure "Missing required environment variable: ${var_name}"
   fi
 done
 
@@ -31,20 +50,16 @@ SONAR_ORGANIZATION="$(normalize_env_var "${SONAR_ORGANIZATION}")"
 
 for var_name in "${required_vars[@]}"; do
   if [[ -z "${!var_name:-}" ]]; then
-    echo "Environment variable is empty after normalization: ${var_name}" >&2
-    exit 1
+    handle_soft_failure "Environment variable is empty after normalization: ${var_name}"
   fi
 done
 
 if ! command -v sonar-scanner >/dev/null 2>&1; then
-  echo "sonar-scanner not found in PATH." >&2
-  echo "Install sonar-scanner to run local Sonar checks." >&2
-  exit 1
+  handle_soft_failure "sonar-scanner not found in PATH. Install sonar-scanner to run local Sonar checks."
 fi
 
 if ! command -v curl >/dev/null 2>&1; then
-  echo "curl not found in PATH." >&2
-  exit 1
+  handle_soft_failure "curl not found in PATH."
 fi
 
 PYTHON_BIN="${PYTHON_BIN:-.venv/bin/python3.13}"
@@ -95,13 +110,17 @@ while [[ "$attempt" -le "$SONAR_LOCAL_MAX_ATTEMPTS" ]]; do
   fi
 
   rm -f "$scanner_log"
-  exit "$scanner_exit_code"
+  if [[ "$SONAR_LOCAL_MODE" == "enforce" ]]; then
+    exit "$scanner_exit_code"
+  fi
+  handle_soft_failure "sonar-scanner failed locally (non-blocking advisory mode)."
 done
 
 echo "[sonar-local] Validating ratings are A..."
 measures_json="$(curl -sf -u "${SONAR_TOKEN}:" \
   "${SONAR_HOST_URL}/api/measures/component?component=${SONAR_PROJECT_KEY}&metricKeys=security_rating,reliability_rating,sqale_rating")"
 
+set +e
 MEASURES_JSON="$measures_json" "$PYTHON_BIN" - <<'PY'
 import json
 import os
@@ -144,5 +163,14 @@ if non_a:
 
 print("Sonar ratings check passed: Security=A, Reliability=A, Maintainability=A")
 PY
+rating_check_exit_code="$?"
+set -e
+
+if [[ "$rating_check_exit_code" -ne 0 ]]; then
+  if [[ "$SONAR_LOCAL_MODE" == "enforce" ]]; then
+    exit "$rating_check_exit_code"
+  fi
+  handle_soft_failure "Sonar rating check not A in local advisory mode."
+fi
 
 echo "[sonar-local] Done."
