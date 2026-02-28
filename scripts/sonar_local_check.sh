@@ -62,7 +62,7 @@ if ! command -v curl >/dev/null 2>&1; then
   handle_soft_failure "curl not found in PATH."
 fi
 
-PYTHON_BIN="${PYTHON_BIN:-.venv/bin/python3.13}"
+PYTHON_BIN="${PYTHON_BIN:-.venv/bin/python}"
 if [[ ! -x "$PYTHON_BIN" ]]; then
   PYTHON_BIN="python3"
 fi
