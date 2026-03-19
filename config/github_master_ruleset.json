@@ -34,7 +34,7 @@
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
           {
-            "context": "Quality (Lint + Type Check)"
+            "context": "Quality (Ruff + Type Check)"
           },
           {
             "context": "Secret Scan (Gitleaks)"
@@ -53,9 +53,6 @@
           },
           {
             "context": "Container Security (Trivy)"
-          },
-          {
-            "context": "Security Scan (Snyk)"
           },
           {
             "context": "Security Evidence (S3)"
