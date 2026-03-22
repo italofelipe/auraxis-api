@@ -34,6 +34,7 @@ disallow_subclassing_any = false
 
 [[tool.mypy.overrides]]
 module = [
+    "app.schemas.*",
     "app.middleware.security_headers",
     "app.middleware.cors",
     "app.http.request_context",

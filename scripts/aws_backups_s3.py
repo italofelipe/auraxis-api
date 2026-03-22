@@ -47,7 +47,7 @@ DEFAULT_REGION = "us-east-1"
 DEFAULT_BUCKET = "auraxis-backups-765480282720"
 
 DEFAULT_PROD_INSTANCE_ID = "i-0057e3b52162f78f8"
-DEFAULT_DEV_INSTANCE_ID = "i-0bb5b392c2188dd3d"
+DEFAULT_DEV_INSTANCE_ID = "i-0bddcfc8ea56c2ba3"
 
 # This is the instance profile role we previously attached to DEV/PROD.
 DEFAULT_EC2_ROLE_NAME = "auraxis-ec2-ssm-role"

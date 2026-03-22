@@ -72,6 +72,56 @@ Notas:
 - O rollback (`mode=rollback`) **não** depende de `git fetch` remoto; usa o commit local salvo no estado.
 - O deploy bloqueia se detectar drift real entre `/opt/auraxis` e `/opt/flask_expenses` para evitar update na copia errada.
 
+## Recuperacao / substituicao do host DEV
+
+O baseline oficial de substituicao do `dev` agora e `scripts/aws_dev_recovery_i17.py`.
+
+Passo 1. Inspecionar o baseline atual e o EIP associado:
+```bash
+./scripts/python_exec.sh scripts/aws_dev_recovery_i17.py \
+  --profile auraxis-admin \
+  --region us-east-1 \
+  status
+```
+
+Passo 2. Gerar o plano da substituicao sem alterar nada:
+```bash
+./scripts/python_exec.sh scripts/aws_dev_recovery_i17.py \
+  --profile auraxis-admin \
+  --region us-east-1 \
+  replace \
+  --git-ref origin/master
+```
+
+Passo 3. Executar a substituicao completa com cutover do EIP:
+```bash
+./scripts/python_exec.sh scripts/aws_dev_recovery_i17.py \
+  --profile auraxis-admin \
+  --region us-east-1 \
+  replace \
+  --git-ref origin/master \
+  --cutover-eip \
+  --stop-source \
+  --execute
+```
+
+O que o fluxo faz:
+- descobre a configuracao-base do host `dev` atual (AMI, subnet, SGs, IAM profile e EIP)
+- cria a instancia substituta com tags de rastreabilidade
+- espera `instance-running`, `instance-status-ok` e `SSM Online`
+- instala Docker, Compose v2, Git e dependencias minimas
+- clona `auraxis-api` em `/opt/auraxis`
+- materializa `.env.prod` a partir de `.env.prod.example` + segredos em SSM (`/auraxis/dev`)
+- executa o deploy oficial `aws_deploy_i6.py` apontando para a nova instancia
+- valida `/healthz` localmente
+- opcionalmente reassocia o EIP e para a instancia antiga
+
+Notas operacionais:
+- o modo sem `--execute` e somente `dry-run`
+- `--cutover-eip` e opt-in para evitar troca publica acidental
+- `--stop-source` so deve ser usado quando o novo host ja estiver validado
+- o script usa o `dev` atual como baseline, mas aceita overrides de AMI, instance type, subnet, SGs, IAM profile e key pair
+
 ### Pré-requisito Git (host PROD/DEV)
 
 Se ocorrer `Permission denied (publickey)` no deploy:

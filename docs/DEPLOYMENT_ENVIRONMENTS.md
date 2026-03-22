@@ -98,6 +98,25 @@ python3 scripts/sync_cloud_secrets.py --backend ssm --ssm-path /auraxis/prod --o
 docker compose --env-file .env.runtime -f docker-compose.prod.yml up -d --build
 ```
 
+For host replacement and other operational recovery flows, we also support
+materializing a complete `.env.prod` from the example template plus cloud
+secrets:
+
+```bash
+python3 scripts/sync_cloud_secrets.py \
+  --backend ssm \
+  --region us-east-1 \
+  --ssm-path /auraxis/dev \
+  --base-env .env.prod.example \
+  --output .env.prod \
+  --set AURAXIS_ENV=dev \
+  --set DOMAIN=dev.api.auraxis.com.br \
+  --set EDGE_TLS_MODE=instance_tls
+```
+
+This keeps AWS as the source of truth for sensitive keys while making host
+bootstrap reproducible for Docker Compose.
+
 Runbook:
 - `docs/CLOUD_SECRETS_RUNBOOK.md`
 - `docs/AWS_COST_GUARDRAILS.md`

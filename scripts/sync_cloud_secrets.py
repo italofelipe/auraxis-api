@@ -59,6 +59,40 @@ def _validate_env_key(key: str) -> None:
         )
 
 
+def parse_env_file(path: Path) -> dict[str, str]:
+    if not path.exists():
+        raise SecretSyncError(f"Base env file not found: {path}")
+
+    resolved: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        raw_key, raw_value = line.split("=", 1)
+        key = _normalize_env_key(raw_key)
+        _validate_env_key(key)
+        value = raw_value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        resolved[key] = value
+    return resolved
+
+
+def merge_env_values(
+    *,
+    base_values: dict[str, str] | None = None,
+    cloud_values: dict[str, str] | None = None,
+    override_values: dict[str, str] | None = None,
+) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for candidate in (base_values or {}, cloud_values or {}, override_values or {}):
+        for key, value in candidate.items():
+            normalized_key = _normalize_env_key(key)
+            _validate_env_key(normalized_key)
+            merged[normalized_key] = str(value)
+    return merged
+
+
 def load_ssm_parameters(path: str, region: str) -> dict[str, str]:
     if not path.strip():
         raise SecretSyncError("SSM path is required.")
@@ -169,6 +203,20 @@ def _parse_required_keys(raw: str | None) -> set[str]:
     return {item.strip().upper() for item in raw.split(",") if item.strip()}
 
 
+def _parse_override_env(raw_items: list[str]) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for item in raw_items:
+        if "=" not in item:
+            raise SecretSyncError(
+                f"Override values must use KEY=VALUE format. Received: '{item}'"
+            )
+        raw_key, raw_value = item.split("=", 1)
+        key = _normalize_env_key(raw_key)
+        _validate_env_key(key)
+        overrides[key] = raw_value
+    return overrides
+
+
 def _validate_required_keys(values: dict[str, str], required_keys: set[str]) -> None:
     missing = sorted(key for key in required_keys if key not in values)
     if missing:
@@ -218,6 +266,18 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         help="Comma-separated required env keys.",
     )
+    parser.add_argument(
+        "--base-env",
+        default="",
+        help="Optional base env template to merge before cloud secrets.",
+    )
+    parser.add_argument(
+        "--set",
+        dest="overrides",
+        action="append",
+        default=[],
+        help="Explicit override in KEY=VALUE format. May be repeated.",
+    )
     return parser
 
 
@@ -225,12 +285,21 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     required_keys = _parse_required_keys(args.required_keys)
+    base_values = (
+        parse_env_file(Path(args.base_env).resolve()) if args.base_env.strip() else {}
+    )
+    override_values = _parse_override_env(list(args.overrides))
 
     if args.backend == "ssm":
-        values = load_ssm_parameters(args.ssm_path, args.region)
+        cloud_values = load_ssm_parameters(args.ssm_path, args.region)
     else:
-        values = load_secrets_manager(args.secret_id, args.region)
+        cloud_values = load_secrets_manager(args.secret_id, args.region)
 
+    values = merge_env_values(
+        base_values=base_values,
+        cloud_values=cloud_values,
+        override_values=override_values,
+    )
     _validate_required_keys(values, required_keys)
     output_path = Path(args.output).resolve()
     write_env_file(output_path, values)
@@ -243,4 +312,4 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except SecretSyncError as exc:
         print(f"ERROR: {exc}")
-        raise SystemExit(1)
+        raise SystemExit(1) from exc

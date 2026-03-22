@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+from typing import cast
 
 from werkzeug.security import check_password_hash
 
@@ -30,7 +31,7 @@ def verify_password_with_timing_protection(
     """
 
     if password_hash:
-        return check_password_hash(password_hash, plain_password)
+        return cast(bool, check_password_hash(password_hash, plain_password))
 
     _burn_hash_cycles(plain_password)
     return False

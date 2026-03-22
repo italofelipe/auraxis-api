@@ -13,6 +13,8 @@ This script fetches secrets from:
 - AWS Secrets Manager (`--backend secretsmanager`)
 
 and generates an env file for Docker Compose (default: `.env.runtime`).
+It can also merge cloud secrets with a base env template via `--base-env` and
+explicit overrides via `--set KEY=VALUE`.
 
 ## Recommended model
 1. Keep `.env.prod` / `.env.dev` with non-sensitive config defaults only.
@@ -62,6 +64,24 @@ python3 scripts/sync_cloud_secrets.py \
 ## Startup with runtime env
 ```bash
 docker compose --env-file .env.runtime -f docker-compose.prod.yml up -d --build
+```
+
+## Materialize `.env.prod` from template + cloud secrets
+
+Useful for host replacement/bootstrap flows where Docker Compose still expects
+`.env.prod` on disk:
+
+```bash
+python3 scripts/sync_cloud_secrets.py \
+  --backend ssm \
+  --region us-east-1 \
+  --ssm-path /auraxis/dev \
+  --base-env .env.prod.example \
+  --output .env.prod \
+  --set AURAXIS_ENV=dev \
+  --set AURAXIS_SSM_PATH=/auraxis/dev \
+  --set DOMAIN=dev.api.auraxis.com.br \
+  --set EDGE_TLS_MODE=instance_tls
 ```
 
 ## Rotation process (baseline)

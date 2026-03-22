@@ -56,6 +56,7 @@ pgdata/
 
 .env
 .scannerwork/
+.tmp-bin/
 
 # Security & QA local artifacts (não versionar)
 .coverage

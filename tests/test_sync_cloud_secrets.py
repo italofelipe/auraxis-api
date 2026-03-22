@@ -81,3 +81,28 @@ def test_validate_required_keys_raises_when_missing() -> None:
             {"SECRET_KEY": "sk"},
             {"SECRET_KEY", "JWT_SECRET_KEY"},
         )
+
+
+def test_parse_env_file_ignores_comments_and_quotes(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env.base"
+    env_file.write_text(
+        "# comment\nDOMAIN=dev.api.auraxis.com.br\nCERTBOT_EMAIL=''\n",
+        encoding="utf-8",
+    )
+
+    values = sync_cloud_secrets.parse_env_file(env_file)
+
+    assert values["DOMAIN"] == "dev.api.auraxis.com.br"
+    assert values["CERTBOT_EMAIL"] == ""
+
+
+def test_merge_env_values_applies_cloud_then_explicit_overrides() -> None:
+    merged = sync_cloud_secrets.merge_env_values(
+        base_values={"DOMAIN": "api.auraxis.com.br", "AURAXIS_ENV": "prod"},
+        cloud_values={"SECRET_KEY": "sk", "DOMAIN": "from-cloud"},
+        override_values={"DOMAIN": "dev.api.auraxis.com.br"},
+    )
+
+    assert merged["SECRET_KEY"] == "sk"
+    assert merged["AURAXIS_ENV"] == "prod"
+    assert merged["DOMAIN"] == "dev.api.auraxis.com.br"

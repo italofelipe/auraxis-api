@@ -45,7 +45,7 @@ def _load_sdl_schema() -> GraphQLSchema:
 def _read_schema_sdl(source: GraphQLDocsSource, graphql_schema: GraphQLSchema) -> str:
     if source == "sdl":
         return GRAPHQL_SCHEMA_PATH.read_text(encoding="utf-8").strip() + "\n"
-    return print_schema(graphql_schema).strip() + "\n"
+    return cast(str, print_schema(graphql_schema)).strip() + "\n"
 
 
 def _build_introspection(graphql_schema: GraphQLSchema) -> JsonObject:

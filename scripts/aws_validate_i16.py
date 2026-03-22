@@ -30,7 +30,7 @@ DEFAULT_PROFILE = "auraxis-admin"
 DEFAULT_REGION = "us-east-1"
 
 DEFAULT_PROD_INSTANCE_ID = "i-0057e3b52162f78f8"
-DEFAULT_DEV_INSTANCE_ID = "i-0bb5b392c2188dd3d"
+DEFAULT_DEV_INSTANCE_ID = "i-0bddcfc8ea56c2ba3"
 
 DEFAULT_PROD_DOMAIN = "api.auraxis.com.br"
 DEFAULT_DEV_DOMAIN = "dev.api.auraxis.com.br"
