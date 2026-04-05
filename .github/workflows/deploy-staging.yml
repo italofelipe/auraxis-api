@@ -1,0 +1,222 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Git ref to deploy (branch/tag/sha). Empty = origin/staging"
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+  deployments: write
+
+jobs:
+  deploy-staging:
+    name: Deploy Staging
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Deployment
+        id: create_deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: 'staging',
+              description: 'Staging deploy triggered by CI',
+              auto_merge: false,
+              required_contexts: [],
+            });
+            core.setOutput('deployment_id', deployment.data.id);
+
+      - name: Mark deployment in progress
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.create_deployment.outputs.deployment_id }},
+              state: 'in_progress',
+              description: 'Deploy in progress',
+              environment_url: 'http://dev.api.auraxis.com.br',
+            });
+
+      - name: Validate required Staging deploy variables
+        run: |
+          [ -n "${AWS_REGION:-}" ] || { echo "Missing var AWS_REGION"; exit 1; }
+          [ -n "${AWS_ROLE_ARN_DEV:-}" ] || { echo "Missing var AWS_ROLE_ARN_DEV"; exit 1; }
+          [ -n "${AURAXIS_DEV_INSTANCE_ID:-}" ] || { echo "Missing var AURAXIS_DEV_INSTANCE_ID"; exit 1; }
+          [ -n "${AURAXIS_PROD_INSTANCE_ID:-}" ] || { echo "Missing var AURAXIS_PROD_INSTANCE_ID"; exit 1; }
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_ROLE_ARN_DEV: ${{ vars.AWS_ROLE_ARN_DEV }}
+          AURAXIS_DEV_INSTANCE_ID: ${{ vars.AURAXIS_DEV_INSTANCE_ID }}
+          AURAXIS_PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN_DEV }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy via SSM
+        id: deploy_staging
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          DEV_INSTANCE_ID: ${{ vars.AURAXIS_DEV_INSTANCE_ID }}
+          PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
+          DEPLOY_DIAGNOSTICS_PATH: ${{ runner.temp }}/deploy-staging-ssm-diagnostics.json
+        run: |
+          INPUT_REF="${{ inputs.git_ref }}"
+          REF="${INPUT_REF}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            REF="origin/staging"
+          elif [ -z "${REF}" ]; then
+            REF="origin/staging"
+          fi
+          if [ -z "${REF}" ]; then
+            echo "Unable to resolve deploy ref for Staging." >&2
+            exit 1
+          fi
+          echo "Resolved Staging deploy ref:"
+          echo "  event=${{ github.event_name }}"
+          echo "  github_ref=${GITHUB_REF}"
+          echo "  github_ref_name=${GITHUB_REF_NAME}"
+          echo "  input_ref=${INPUT_REF:-<empty>}"
+          echo "  resolved_ref=${REF}"
+          MAX_ATTEMPTS=2
+          ATTEMPT=0
+          while [ "${ATTEMPT}" -lt "${MAX_ATTEMPTS}" ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "SSM deploy attempt ${ATTEMPT}/${MAX_ATTEMPTS}"
+            if python scripts/aws_deploy_i6.py \
+              --profile "" \
+              --region "${AWS_REGION}" \
+              --dev-instance-id "${DEV_INSTANCE_ID}" \
+              --prod-instance-id "${PROD_INSTANCE_ID}" \
+              --diagnostics-json-path "${DEPLOY_DIAGNOSTICS_PATH}" \
+              deploy --env dev --git-ref "${REF}"; then
+              break
+            fi
+            if [ "${ATTEMPT}" -lt "${MAX_ATTEMPTS}" ]; then
+              echo "Attempt ${ATTEMPT} failed — waiting 60s before retry (SSM IPC transient errors are common)..."
+              sleep 60
+            else
+              echo "All ${MAX_ATTEMPTS} deploy attempts failed." >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload deploy diagnostics artifact (Staging)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-staging-ssm-diagnostics
+          path: ${{ runner.temp }}/deploy-staging-ssm-diagnostics.json
+          if-no-files-found: ignore
+
+      - name: Post-deploy smoke test (Staging)
+        id: smoke_staging
+        env:
+          STAGING_BASE_URL: ${{ vars.AURAXIS_DEV_BASE_URL }}
+        run: |
+          BASE_URL="${STAGING_BASE_URL:-http://dev.api.auraxis.com.br}"
+          echo "Running smoke tests against ${BASE_URL}"
+          python scripts/http_smoke_check.py \
+            --env-name staging \
+            --base-url "${BASE_URL}" \
+            --timeout 20
+
+      - name: Auto-rollback Staging on deploy failure
+        if: ${{ failure() }}
+        continue-on-error: true
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          DEV_INSTANCE_ID: ${{ vars.AURAXIS_DEV_INSTANCE_ID }}
+          PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
+        run: |
+          python scripts/aws_deploy_i6.py \
+            --profile "" \
+            --region "${AWS_REGION}" \
+            --dev-instance-id "${DEV_INSTANCE_ID}" \
+            --prod-instance-id "${PROD_INSTANCE_ID}" \
+            rollback --env dev
+
+      - name: Mark deployment success
+        if: ${{ success() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.create_deployment.outputs.deployment_id }},
+              state: 'success',
+              description: 'Staging deploy succeeded — smoke tests passed',
+              environment_url: 'http://dev.api.auraxis.com.br',
+            });
+
+      - name: Mark deployment failure
+        if: ${{ failure() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.create_deployment.outputs.deployment_id }},
+              state: 'failure',
+              description: 'Staging deploy failed — see workflow logs',
+              environment_url: 'http://dev.api.auraxis.com.br',
+            });
+
+      - name: Deploy summary (Staging)
+        if: ${{ always() }}
+        run: |
+          {
+            echo "## Deploy Staging"
+            echo ""
+            echo "- branch/ref: \`${{ github.ref }}\`"
+            echo "- event: \`${{ github.event_name }}\`"
+            echo "- target env: \`staging\` (EC2: i-0bddcfc8ea56c2ba3 / dev.api.auraxis.com.br)"
+            echo "- deploy step outcome: \`${{ steps.deploy_staging.outcome }}\`"
+            echo "- smoke tests outcome: \`${{ steps.smoke_staging.outcome }}\`"
+            echo "- rollback on failure: \`enabled\`"
+            _diag="${{ runner.temp }}/deploy-staging-ssm-diagnostics.json"
+            if [ -f "${_diag}" ]; then
+              echo "- diagnostics artifact: \`deploy-staging-ssm-diagnostics\`"
+              echo "- SSM command id: \`$(jq -r '.command_id // ""' "${_diag}")\`"
+              echo "- SSM status: \`$(jq -r '.status // ""' "${_diag}")\`"
+              echo "- SSM status details: \`$(jq -r '.status_details // "<none>"' "${_diag}")\`"
+              echo "- SSM response code: \`$(jq -r '.response_code // ""' "${_diag}")\`"
+            fi
+            echo "- ref resolution:"
+            echo "  - event: \`${{ github.event_name }}\`"
+            echo "  - github ref: \`${{ github.ref }}\`"
+            echo "  - github ref name: \`${{ github.ref_name }}\`"
+            echo "  - input git_ref: \`${{ inputs.git_ref }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
