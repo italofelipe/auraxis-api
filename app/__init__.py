@@ -12,7 +12,9 @@ from flask_marshmallow import Marshmallow
 from flask_migrate import Migrate
 from sqlalchemy.pool import NullPool
 
+from app.cli.features import features as features_cli_group
 from app.controllers.account import account_bp
+from app.controllers.admin.feature_flags import admin_feature_flags_bp
 from app.controllers.alert_controller import alert_bp, register_alert_dependencies
 from app.controllers.auth_controller import auth_bp, register_auth_dependencies
 from app.controllers.bank_statement import bank_statement_bp
@@ -252,6 +254,7 @@ def create_app(*, enable_http_runtime: bool = True) -> Flask:
     register_audit_trail(app)
     register_audit_retention_commands(app)
     register_integration_metrics_commands(app)
+    app.cli.add_command(features_cli_group, "features")
     register_wallet_dependencies(app)
     register_entitlement_dependencies(app)
     register_simulation_dependencies(app)
@@ -277,6 +280,7 @@ def create_app(*, enable_http_runtime: bool = True) -> Flask:
     app.register_blueprint(shared_entries_bp)
     app.register_blueprint(fiscal_bp)
     app.register_blueprint(tag_bp)
+    app.register_blueprint(admin_feature_flags_bp, url_prefix="/admin")
 
     # Registra os endpoints documentados no Swagger com base no mapa real de rotas.
     _register_documented_endpoints(app, docs)
