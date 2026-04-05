@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.1](https://github.com/italofelipe/auraxis-api/compare/v1.16.0...v1.16.1) (2026-04-05)
+
+
+### Performance Improvements
+
+* **brapi:** add circuit breaker + SQLAlchemy connection pool tuning ([#877](https://github.com/italofelipe/auraxis-api/issues/877)) ([0b600cd](https://github.com/italofelipe/auraxis-api/commit/0b600cd9c89b1ef9631fe24745d45c90004b228d))
+
 ## [1.16.0](https://github.com/italofelipe/auraxis-api/compare/v1.15.0...v1.16.0) (2026-04-05)
 
 
