@@ -274,6 +274,20 @@ jobs:
             --base-url "${BASE_URL}" \
             --timeout 20
 
+      - name: Readiness gate (PROD)
+        env:
+          PROD_BASE_URL: ${{ vars.AURAXIS_PROD_BASE_URL }}
+        run: |
+          BASE_URL="${PROD_BASE_URL:-https://api.auraxis.com.br}"
+          for endpoint in /healthz /readiness; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "${BASE_URL}${endpoint}")
+            if [ "${STATUS}" != "200" ]; then
+              echo "[readiness-gate] FAIL ${endpoint} returned HTTP ${STATUS}" >&2
+              exit 1
+            fi
+            echo "[readiness-gate] PASS ${endpoint} returned HTTP ${STATUS}"
+          done
+
       - name: Auto-rollback PROD on deploy failure
         if: ${{ failure() }}
         continue-on-error: true
