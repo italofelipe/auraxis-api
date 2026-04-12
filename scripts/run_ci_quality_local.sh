@@ -23,7 +23,8 @@ if [[ "$MODE" == "docker" ]]; then
     -v "$ROOT_DIR:/workspace" \
     -w /workspace \
     "$CI_LOCAL_PYTHON_IMAGE" \
-    bash -lc "python3 scripts/repo_hygiene_check.py && \
+    bash -lc "python3 scripts/check_feature_flags.py && \
+      python3 scripts/repo_hygiene_check.py && \
       python3 scripts/graphql_auth_config_check.py && \
       python3 scripts/alembic_single_head_check.py && \
       python -m pip install --upgrade pip && \
@@ -33,7 +34,8 @@ if [[ "$MODE" == "docker" ]]; then
       python -m ruff format --check . && \
       python -m ruff check app tests config run.py run_without_db.py && \
       python -m mypy --no-incremental app && \
-      python -m bandit -r app -lll -iii"
+      python -m bandit -r app -lll -iii && \
+      pytest -m 'not schemathesis' --cov=app --cov-fail-under=85 --cov-report=term-missing"
   echo "[quality-local] All quality checks passed (Docker / Python 3.13)."
   exit 0
 fi
@@ -41,6 +43,7 @@ fi
 PYTHON_BIN="$(resolve_repo_python "$ROOT_DIR")"
 
 echo "[quality-local] Running CI quality pipeline in local environment with ${PYTHON_BIN}..."
+python3 scripts/check_feature_flags.py
 python3 scripts/repo_hygiene_check.py
 python3 scripts/graphql_auth_config_check.py
 python3 scripts/alembic_single_head_check.py
@@ -50,4 +53,5 @@ python3 scripts/security_exception_governance.py check
 "${PYTHON_BIN}" -m ruff check app tests config run.py run_without_db.py
 "${PYTHON_BIN}" -m mypy --no-incremental app
 "${PYTHON_BIN}" -m bandit -r app -lll -iii
+"${PYTHON_BIN}" -m pytest -m "not schemathesis" --cov=app --cov-fail-under=85 --cov-report=term-missing
 echo "[quality-local] All quality checks passed (local environment)."

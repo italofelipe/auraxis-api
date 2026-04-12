@@ -106,6 +106,16 @@ that other agents consume. Use `templates/handoff_template.md` for consistency.
 
 ## Quality Gates (run before every commit)
 
+**Canonical CI-parity command** (mirrors GitHub Actions ci.yml exactly):
+```bash
+bash scripts/run_ci_quality_local.sh --local
+```
+
+This runs in order: check_feature_flags → repo_hygiene → graphql_auth_config →
+alembic_single_head → security_exception_governance → pip_audit → ruff format →
+ruff check → mypy → bandit → pytest (cov ≥ 85%).
+
+**Individual checks** (when debugging a specific gate):
 ```bash
 bash scripts/bootstrap_local_env.sh
 scripts/python_tool.sh ruff format .
