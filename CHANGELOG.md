@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.0](https://github.com/italofelipe/auraxis-api/compare/v1.33.0...v1.34.0) (2026-04-24)
+
+
+### Features
+
+* **entitlements:** add focus_mode to premium plan ([#1117](https://github.com/italofelipe/auraxis-api/issues/1117)) ([893820f](https://github.com/italofelipe/auraxis-api/commit/893820fa0a6a44b5fc7fb22098bc24fff71d6e78))
+
 ## [1.33.0](https://github.com/italofelipe/auraxis-api/compare/v1.32.0...v1.33.0) (2026-04-20)
 
 
