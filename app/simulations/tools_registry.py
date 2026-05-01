@@ -58,8 +58,10 @@ TOOLS_REGISTRY: frozenset[str] = frozenset(
         "rent-vs-buy",
         "rental-yield",
         # Dia a dia
+        "aposentadoria",
         "cost-of-lifestyle",
         "currency-converter",
+        "desconto-markup",
         "emergency-fund",
         "fifty-thirty-twenty",
         "goal-simulator",

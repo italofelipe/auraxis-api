@@ -74,6 +74,28 @@ def test_known_tool_id_is_accepted(client) -> None:
     assert resp.get_json()["simulation"]["tool_id"] == KNOWN_TOOL_ID
 
 
+def test_aposentadoria_tool_id_is_accepted(client) -> None:
+    token = _register_and_login(client, prefix="sim-reg-apos")
+    resp = client.post(
+        "/simulations",
+        json=_payload(tool_id="aposentadoria"),
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    assert resp.get_json()["simulation"]["tool_id"] == "aposentadoria"
+
+
+def test_desconto_markup_tool_id_is_accepted(client) -> None:
+    token = _register_and_login(client, prefix="sim-reg-dm")
+    resp = client.post(
+        "/simulations",
+        json=_payload(tool_id="desconto-markup"),
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    assert resp.get_json()["simulation"]["tool_id"] == "desconto-markup"
+
+
 # ---------------------------------------------------------------------------
 # inputs / result must be JSON objects
 # ---------------------------------------------------------------------------
