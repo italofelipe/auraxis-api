@@ -198,12 +198,19 @@ class WalletApplicationService:
             "Você não tem permissão para deletar este investimento."
         ),
     ) -> None:
+        from app.extensions.audit_trail import record_entity_delete
+
         investment = self._get_owned_wallet(
             investment_id,
             forbidden_message=forbidden_message,
         )
         try:
             db.session.delete(investment)
+            record_entity_delete(
+                entity_type="wallet",
+                entity_id=str(investment_id),
+                actor_id=str(self._user_id),
+            )
             db.session.commit()
         except Exception as exc:
             db.session.rollback()

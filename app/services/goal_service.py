@@ -107,8 +107,15 @@ class GoalService:
         return goal
 
     def delete_goal(self, goal_id: UUID) -> None:
+        from app.extensions.audit_trail import record_entity_delete
+
         goal = self.get_goal(goal_id)
         db.session.delete(goal)
+        record_entity_delete(
+            entity_type="goal",
+            entity_id=str(goal_id),
+            actor_id=str(self.user_id),
+        )
         db.session.commit()
 
     def serialize(self, goal: Goal) -> dict[str, Any]:
