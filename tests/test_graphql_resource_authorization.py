@@ -129,7 +129,7 @@ def test_graphql_create_transaction_denies_foreign_reference_ids(
     mutation CreateTx(
       $title: String!,
       $amount: String!,
-      $type: String!,
+      $type: TransactionType!,
       $dueDate: String!,
       ${resource_field}: UUID
     ) {{
@@ -148,7 +148,7 @@ def test_graphql_create_transaction_denies_foreign_reference_ids(
     variables = {
         "title": "Teste authz por recurso",
         "amount": "10.00",
-        "type": "expense",
+        "type": "EXPENSE",
         "dueDate": "2026-02-11",
         resource_field: foreign_id,
     }

@@ -363,7 +363,7 @@ def test_graphql_transactions_summary_and_dashboard(app, client) -> None:
     mutation CreateTx(
       $title: String!,
       $amount: String!,
-      $type: String!,
+      $type: TransactionType!,
       $dueDate: String!,
       $tagId: UUID,
       $accountId: UUID,
@@ -389,7 +389,7 @@ def test_graphql_transactions_summary_and_dashboard(app, client) -> None:
         {
             "title": "Conta de luz",
             "amount": "150.00",
-            "type": "expense",
+            "type": "EXPENSE",
             "dueDate": due_date,
             "tagId": household_tag_id,
             "accountId": operating_account_id,
@@ -406,7 +406,7 @@ def test_graphql_transactions_summary_and_dashboard(app, client) -> None:
         {
             "title": "Freelance",
             "amount": "500.00",
-            "type": "income",
+            "type": "INCOME",
             "dueDate": due_date,
         },
         token=token,
@@ -420,7 +420,7 @@ def test_graphql_transactions_summary_and_dashboard(app, client) -> None:
         {
             "title": "Conta atrasada",
             "amount": "70.00",
-            "type": "expense",
+            "type": "EXPENSE",
             "dueDate": (date.today() - timedelta(days=1)).isoformat(),
         },
         token=token,
@@ -562,7 +562,7 @@ def test_graphql_transactions_summary_and_dashboard(app, client) -> None:
     mutation UpdateTx(
       $transactionId: UUID!,
       $title: String!,
-      $status: String!,
+      $status: TransactionStatus!,
       $paidAt: String!
     ) {
       updateTransaction(
@@ -582,7 +582,7 @@ def test_graphql_transactions_summary_and_dashboard(app, client) -> None:
         {
             "transactionId": first_transaction_id,
             "title": "Conta de luz atualizada",
-            "status": "paid",
+            "status": "PAID",
             "paidAt": "2026-03-01T10:00:00+00:00",
         },
         token=token,
@@ -606,7 +606,7 @@ def test_graphql_transactions_supports_legacy_summary_and_due_range_arguments(
       createTransaction(
         title: "Conta legado",
         amount: "50.00",
-        type: "expense",
+        type: EXPENSE,
         dueDate: $dueDate
       ) {
         items { id }
@@ -857,7 +857,7 @@ def test_graphql_wallet_and_ticker_queries_mutations(client) -> None:
         name: "CDB",
         value: 1000,
         quantity: 1,
-        assetClass: "cdb",
+        assetClass: CDB,
         annualRate: 12,
         registerDate: "2026-01-01",
         shouldBeOnWallet: true
@@ -1102,3 +1102,110 @@ def test_graphql_ticker_duplicate_and_delete_not_found(client) -> None:
     delete_missing_body = delete_missing.get_json()
     assert "errors" in delete_missing_body
     assert delete_missing_body["errors"][0]["message"] == "Ticker não encontrado"
+
+
+def test_create_transaction_rejects_unknown_type_enum_literal(client) -> None:
+    """An invalid enum literal must be rejected by the GraphQL parser before
+    reaching the resolver — clients can no longer push arbitrary strings
+    through type/status, mirroring the REST OneOf validation."""
+
+    token = _register_and_login_graphql(client)
+    mutation = """
+    mutation CreateTx {
+      createTransaction(
+        title: "Conta",
+        amount: "10.00",
+        type: NOT_A_TYPE,
+        dueDate: "2026-01-01"
+      ) {
+        message
+      }
+    }
+    """
+    response = _graphql(client, mutation, token=token)
+    body = response.get_json()
+    assert "errors" in body
+    error_message = body["errors"][0]["message"]
+    assert "NOT_A_TYPE" in error_message or "TransactionType" in error_message
+
+
+def test_create_transaction_rejects_unknown_type_via_variable(client) -> None:
+    """When the value comes through a typed variable, an unknown enum value
+    raises a coercion error at the variable-binding step."""
+
+    token = _register_and_login_graphql(client)
+    mutation = """
+    mutation CreateTx($type: TransactionType!) {
+      createTransaction(
+        title: "Conta",
+        amount: "10.00",
+        type: $type,
+        dueDate: "2026-01-01"
+      ) {
+        message
+      }
+    }
+    """
+    response = _graphql(
+        client,
+        mutation,
+        variables={"type": "INVALID"},
+        token=token,
+    )
+    body = response.get_json()
+    assert "errors" in body
+
+
+def test_update_goal_accepts_status_enum_literal(client) -> None:
+    """Sanity check for enum coercion: the resolver receives the Python enum
+    instance and the service still gets the lowercase string value via
+    coerce_enum_kwargs."""
+
+    token = _register_and_login_graphql(client)
+    create_mutation = """
+    mutation CreateGoal {
+      createGoal(title: "Casa", targetAmount: "100000.00") {
+        goal { id status }
+      }
+    }
+    """
+    create_response = _graphql(client, create_mutation, token=token)
+    create_body = create_response.get_json()
+    assert "errors" not in create_body, create_body
+    goal_id = create_body["data"]["createGoal"]["goal"]["id"]
+
+    update_mutation = """
+    mutation UpdateGoal($goalId: UUID!) {
+      updateGoal(goalId: $goalId, status: COMPLETED) {
+        goal { id status }
+      }
+    }
+    """
+    response = _graphql(
+        client,
+        update_mutation,
+        variables={"goalId": goal_id},
+        token=token,
+    )
+    body = response.get_json()
+    assert "errors" not in body, body
+    assert body["data"]["updateGoal"]["goal"]["status"] == "completed"
+
+
+def test_add_wallet_entry_rejects_unknown_asset_class(client) -> None:
+    token = _register_and_login_graphql(client)
+    mutation = """
+    mutation AddWallet {
+      addWalletEntry(
+        name: "Custom",
+        assetClass: NOT_A_CLASS,
+        registerDate: "2026-01-01",
+        shouldBeOnWallet: true
+      ) {
+        item { id }
+      }
+    }
+    """
+    response = _graphql(client, mutation, token=token)
+    body = response.get_json()
+    assert "errors" in body

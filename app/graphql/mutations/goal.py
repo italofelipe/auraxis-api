@@ -10,6 +10,7 @@ from app.application.services.goal_application_service import (
     GoalApplicationService,
 )
 from app.graphql.auth import get_current_user_required
+from app.graphql.enums import GoalStatusEnum, coerce_enum_kwargs
 from app.graphql.goal_presenters import (
     raise_goal_graphql_error,
     to_goal_plan_type,
@@ -25,7 +26,7 @@ class CreateGoalMutation(graphene.Mutation):
         current_amount = graphene.String()
         priority = graphene.Int()
         target_date = graphene.String()
-        status = graphene.String()
+        status = GoalStatusEnum()
         description = graphene.String()
         category = graphene.String()
 
@@ -35,6 +36,7 @@ class CreateGoalMutation(graphene.Mutation):
     def mutate(self, info: graphene.ResolveInfo, **kwargs: Any) -> "CreateGoalMutation":
         user = get_current_user_required()
         service = GoalApplicationService.with_defaults(UUID(str(user.id)))
+        coerce_enum_kwargs(kwargs, "status")
         try:
             goal_data = service.create_goal(kwargs)
         except GoalApplicationError as exc:
@@ -53,7 +55,7 @@ class UpdateGoalMutation(graphene.Mutation):
         current_amount = graphene.String()
         priority = graphene.Int()
         target_date = graphene.String()
-        status = graphene.String()
+        status = GoalStatusEnum()
         description = graphene.String()
         category = graphene.String()
 
@@ -65,6 +67,7 @@ class UpdateGoalMutation(graphene.Mutation):
     ) -> "UpdateGoalMutation":
         user = get_current_user_required()
         service = GoalApplicationService.with_defaults(UUID(str(user.id)))
+        coerce_enum_kwargs(kwargs, "status")
         try:
             goal_data = service.update_goal(goal_id, kwargs)
         except GoalApplicationError as exc:
