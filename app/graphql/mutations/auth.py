@@ -38,6 +38,7 @@ from app.graphql.errors import (
     GRAPHQL_ERROR_CODE_VALIDATION,
     build_public_graphql_error,
 )
+from app.graphql.scalars import DecimalScalar
 from app.graphql.schema_utils import _user_basic_auth_payload, _user_to_graphql_payload
 from app.graphql.types import AuthPayloadType, UserType
 from app.http.runtime import runtime_logger
@@ -377,12 +378,12 @@ class UpdateUserProfileMutation(graphene.Mutation):
     class Arguments:
         gender = graphene.String()
         birth_date = graphene.String()
-        monthly_income = graphene.Float()
-        monthly_income_net = graphene.Float()
-        net_worth = graphene.Float()
-        monthly_expenses = graphene.Float()
-        initial_investment = graphene.Float()
-        monthly_investment = graphene.Float()
+        monthly_income = DecimalScalar()
+        monthly_income_net = DecimalScalar()
+        net_worth = DecimalScalar()
+        monthly_expenses = DecimalScalar()
+        initial_investment = DecimalScalar()
+        monthly_investment = DecimalScalar()
         investment_goal_date = graphene.String()
         state_uf = graphene.String()
         occupation = graphene.String()

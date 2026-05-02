@@ -13,6 +13,7 @@ from app.graphql.queries.common import paginate
 from app.graphql.schema_utils import _validate_pagination_values
 from app.graphql.types import (
     PaginationType,
+    TickerListPayloadType,
     TickerType,
     WalletHistoryPayloadType,
     WalletListPayloadType,
@@ -37,7 +38,11 @@ class WalletQueryMixin:
         page=graphene.Int(default_value=1),
         per_page=graphene.Int(default_value=5),
     )
-    tickers = graphene.List(TickerType)
+    tickers = graphene.Field(
+        TickerListPayloadType,
+        page=graphene.Int(default_value=1),
+        per_page=graphene.Int(default_value=50),
+    )
 
     def resolve_wallet_entries(
         self, _info: graphene.ResolveInfo, page: int, per_page: int
@@ -96,15 +101,33 @@ class WalletQueryMixin:
             ),
         )
 
-    def resolve_tickers(self, _info: graphene.ResolveInfo) -> list[TickerType]:
+    def resolve_tickers(
+        self,
+        _info: graphene.ResolveInfo,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> TickerListPayloadType:
+        _validate_pagination_values(page, per_page)
         user = get_current_user_required()
-        tickers = UserTicker.query.filter_by(user_id=user.id).all()
-        return [
+        base_query = UserTicker.query.filter_by(user_id=user.id)
+        total = base_query.count()
+        offset = (page - 1) * per_page
+        rows = (
+            base_query.order_by(UserTicker.symbol.asc())
+            .offset(offset)
+            .limit(per_page)
+            .all()
+        )
+        items = [
             TickerType(
                 id=str(item.id),
                 symbol=item.symbol,
                 quantity=item.quantity,
                 type=item.type,
             )
-            for item in tickers
+            for item in rows
         ]
+        return TickerListPayloadType(
+            items=items,
+            pagination=paginate(total=total, page=page, per_page=per_page),
+        )

@@ -148,7 +148,7 @@ scripts/repo_bin.sh pytest -m "not schemathesis" --cov=app --cov-fail-under=85
 | Backend | Python 3.13, Flask |
 | ORM | SQLAlchemy with Flask-SQLAlchemy |
 | Serialization | Marshmallow Schemas |
-| API | GraphQL (Ariadne) + REST (Flask controllers) |
+| API | GraphQL (Graphene 3) + REST (Flask controllers) |
 | Migrations | Alembic via Flask-Migrate |
 | Tests | Pytest (85% coverage minimum) |
 | Database | PostgreSQL |

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from app.application.services.user_profile_service import (
@@ -269,8 +270,8 @@ def test_graphql_update_profile_accepts_valid_investor_profile(client) -> None:
     assert user["stateUf"] == "RJ"
     assert user["occupation"] == "Arquiteto"
     assert user["financialObjectives"] == "Independência financeira"
-    assert user["monthlyIncome"] == 9500.0
-    assert user["monthlyIncomeNet"] == 9500.0
+    assert Decimal(user["monthlyIncome"]) == Decimal("9500")
+    assert Decimal(user["monthlyIncomeNet"]) == Decimal("9500")
 
 
 def test_graphql_update_profile_rejects_invalid_investor_profile(client) -> None:
