@@ -188,7 +188,7 @@ def test_graphql_transaction_delete_forbidden_returns_forbidden_code(
       createTransaction(
         title: "Conta",
         amount: "100.00",
-        type: "expense",
+        type: EXPENSE,
         dueDate: $dueDate
       ) {
         items { id }
@@ -252,7 +252,7 @@ def test_graphql_create_transaction_empty_due_date_returns_validation_code(
       createTransaction(
         title: "Conta",
         amount: "100.00",
-        type: "expense",
+        type: EXPENSE,
         dueDate: $dueDate
       ) {
         message
@@ -273,7 +273,7 @@ def test_graphql_create_transaction_recurring_missing_window_returns_validation_
       createTransaction(
         title: "Conta",
         amount: "100.00",
-        type: "expense",
+        type: EXPENSE,
         dueDate: $dueDate,
         isRecurring: true
       ) {
@@ -300,7 +300,7 @@ def test_graphql_create_transaction_negative_installment_count_returns_validatio
       createTransaction(
         title: "Compra",
         amount: "500.00",
-        type: "expense",
+        type: EXPENSE,
         dueDate: $dueDate,
         isInstallment: true,
         installmentCount: -1

@@ -117,7 +117,7 @@ def test_graphql_goals_crud_flow(client) -> None:
 
     update_mutation = """
     mutation UpdateGoal($goalId: UUID!) {
-      updateGoal(goalId: $goalId, currentAmount: "10000.00", status: "paused") {
+      updateGoal(goalId: $goalId, currentAmount: "10000.00", status: PAUSED) {
         message
         goal { id currentAmount status }
       }
