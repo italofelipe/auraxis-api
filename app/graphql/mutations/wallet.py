@@ -11,6 +11,7 @@ from app.application.services.wallet_application_service import (
     WalletApplicationService,
 )
 from app.graphql.auth import get_current_user_required
+from app.graphql.observability import log_graphql_resolver
 from app.graphql.types import WalletType
 from app.graphql.wallet_presenters import raise_wallet_graphql_error, to_wallet_type
 
@@ -100,6 +101,7 @@ class DeleteWalletEntryMutation(graphene.Mutation):
     ok = graphene.Boolean(required=True)
     message = graphene.String(required=True)
 
+    @log_graphql_resolver("deleteWalletEntry")
     def mutate(
         self, info: graphene.ResolveInfo, investment_id: UUID
     ) -> "DeleteWalletEntryMutation":

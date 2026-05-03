@@ -12,6 +12,7 @@ from app.application.services.transaction_application_service import (
 from app.controllers.transaction.utils import _build_installment_amounts
 from app.graphql.auth import get_current_user_required
 from app.graphql.errors import build_public_graphql_error, to_public_graphql_code
+from app.graphql.observability import log_graphql_resolver
 from app.graphql.types import TransactionTypeObject
 
 
@@ -76,6 +77,7 @@ class DeleteTransactionMutation(graphene.Mutation):
     ok = graphene.Boolean(required=True)
     message = graphene.String(required=True)
 
+    @log_graphql_resolver("deleteTransaction")
     def mutate(
         self, info: graphene.ResolveInfo, transaction_id: UUID
     ) -> "DeleteTransactionMutation":
