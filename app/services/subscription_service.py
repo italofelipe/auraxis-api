@@ -170,10 +170,12 @@ def cancel_subscription(
     If the subscription has no provider ID the status is set to CANCELED locally
     without making a provider call.
     """
+    from app.extensions.audit_trail import record_entity_delete
+
     if subscription.provider_subscription_id:
         provider.cancel_subscription(subscription.provider_subscription_id)
 
-    return apply_subscription_snapshot(
+    snapshot = apply_subscription_snapshot(
         subscription,
         {
             "status": SubscriptionStatus.CANCELED.value,
@@ -186,3 +188,9 @@ def cancel_subscription(
             ),
         },
     )
+    record_entity_delete(
+        entity_type="subscription",
+        entity_id=str(snapshot.id),
+        actor_id=str(snapshot.user_id),
+    )
+    return snapshot
