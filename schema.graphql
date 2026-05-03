@@ -14,7 +14,7 @@ type Query {
   portfolioValuationHistory(startDate: String, finalDate: String): PortfolioHistoryPayloadType
   walletEntries(page: Int = 1, perPage: Int = 10): WalletListPayloadType
   walletHistory(investmentId: UUID!, page: Int = 1, perPage: Int = 5): WalletHistoryPayloadType
-  tickers: [TickerType]
+  tickers(page: Int = 1, perPage: Int = 50): TickerListPayloadType
   installmentVsCashCalculate(cashPrice: String!, installmentCount: Int!, installmentAmount: String, installmentTotal: String, firstPaymentDelayDays: Int = 30, opportunityRateType: String = "manual", opportunityRateAnnual: String, inflationRateAnnual: String!, feesEnabled: Boolean = false, feesUpfront: String = "0.00", scenarioLabel: String): InstallmentVsCashCalculationPayloadType
   simulations(page: Int = 1, perPage: Int = 20, toolId: String): SimulationListPayloadType!
   simulation(id: UUID!): SimulationType
@@ -241,16 +241,25 @@ type WalletListPayloadType {
 type WalletType {
   id: ID!
   name: String!
-  value: Float
-  estimatedValueOnCreateDate: Float
+  value: DecimalScalar
+  estimatedValueOnCreateDate: DecimalScalar
   ticker: String
   quantity: Int
   assetClass: String!
-  annualRate: Float
+  annualRate: DecimalScalar
   registerDate: String!
   targetWithdrawDate: String
   shouldBeOnWallet: Boolean!
 }
+
+"""
+Arbitrary-precision decimal serialised as a string.
+
+Output: always a string in fixed-point notation (no scientific exponent).
+Input: accepts string, int, float, or Decimal — coerced via ``Decimal(str(x))``.
+Null is preserved.
+"""
+scalar DecimalScalar
 
 type WalletHistoryPayloadType {
   items: [WalletHistoryItemType]!
@@ -258,10 +267,15 @@ type WalletHistoryPayloadType {
 }
 
 type WalletHistoryItemType {
-  originalQuantity: Float
-  originalValue: Float
+  originalQuantity: DecimalScalar
+  originalValue: DecimalScalar
   changeType: String
   changeDate: String
+}
+
+type TickerListPayloadType {
+  items: [TickerType]!
+  pagination: PaginationType!
 }
 
 type TickerType {
@@ -477,8 +491,8 @@ type TransactionTypeObject {
 
 type TransactionSummaryPayloadType {
   month: String!
-  incomeTotal: Float!
-  expenseTotal: Float!
+  incomeTotal: DecimalScalar!
+  expenseTotal: DecimalScalar!
   items: [TransactionTypeObject]!
   pagination: PaginationType!
 }
@@ -491,9 +505,9 @@ type TransactionDashboardPayloadType {
 }
 
 type DashboardTotalsType {
-  incomeTotal: Float!
-  expenseTotal: Float!
-  balance: Float!
+  incomeTotal: DecimalScalar!
+  expenseTotal: DecimalScalar!
+  balance: DecimalScalar!
 }
 
 type DashboardCountsType {
@@ -519,7 +533,7 @@ type DashboardCategoriesType {
 type DashboardCategoryType {
   tagId: String
   categoryName: String!
-  totalAmount: Float!
+  totalAmount: DecimalScalar!
   transactionsCount: Int!
 }
 
@@ -548,26 +562,26 @@ type WeeklySummaryPayloadType {
 type WeeklyPeriodTotalsType {
   start: String!
   end: String!
-  income: Float!
-  expense: Float!
-  balance: Float!
+  income: DecimalScalar!
+  expense: DecimalScalar!
+  balance: DecimalScalar!
   transactionCount: Int!
 }
 
 type WeeklyComparisonType {
-  incomeDelta: Float!
+  incomeDelta: DecimalScalar!
   incomeDeltaPercent: Float
-  expenseDelta: Float!
+  expenseDelta: DecimalScalar!
   expenseDeltaPercent: Float
-  balanceDelta: Float!
+  balanceDelta: DecimalScalar!
   balanceDeltaPercent: Float
 }
 
 type WeeklySummarySeriesEntryType {
   date: String!
-  income: Float!
-  expense: Float!
-  balance: Float!
+  income: DecimalScalar!
+  expense: DecimalScalar!
+  balance: DecimalScalar!
 }
 
 type UserType {
@@ -576,12 +590,12 @@ type UserType {
   email: String!
   gender: String
   birthDate: String
-  monthlyIncome: Float
-  monthlyIncomeNet: Float
-  netWorth: Float
-  monthlyExpenses: Float
-  initialInvestment: Float
-  monthlyInvestment: Float
+  monthlyIncome: DecimalScalar
+  monthlyIncomeNet: DecimalScalar
+  netWorth: DecimalScalar
+  monthlyExpenses: DecimalScalar
+  initialInvestment: DecimalScalar
+  monthlyInvestment: DecimalScalar
   investmentGoalDate: String
   stateUf: String
   occupation: String
@@ -600,7 +614,7 @@ type Mutation {
   resendConfirmationEmail(email: String!): AuthPayloadType
   resetPassword(newPassword: String!, token: String!): AuthPayloadType
   confirmEmail(token: String!): AuthPayloadType
-  updateUserProfile(birthDate: String, financialObjectives: String, gender: String, initialInvestment: Float, investmentGoalDate: String, investorProfile: String, investorProfileSuggested: String, monthlyExpenses: Float, monthlyIncome: Float, monthlyIncomeNet: Float, monthlyInvestment: Float, netWorth: Float, occupation: String, profileQuizScore: Int, stateUf: String, taxonomyVersion: String): UpdateUserProfileMutation
+  updateUserProfile(birthDate: String, financialObjectives: String, gender: String, initialInvestment: DecimalScalar, investmentGoalDate: String, investorProfile: String, investorProfileSuggested: String, monthlyExpenses: DecimalScalar, monthlyIncome: DecimalScalar, monthlyIncomeNet: DecimalScalar, monthlyInvestment: DecimalScalar, netWorth: DecimalScalar, occupation: String, profileQuizScore: Int, stateUf: String, taxonomyVersion: String): UpdateUserProfileMutation
   createTransaction(accountId: UUID, amount: String!, creditCardId: UUID, currency: String = "BRL", description: String, dueDate: String!, endDate: String, installmentCount: Int, isInstallment: Boolean = false, isRecurring: Boolean = false, observation: String, startDate: String, status: String = "pending", tagId: UUID, title: String!, type: String!): CreateTransactionMutation @deprecated(reason: "ADR-0002: use POST /transactions")
   updateTransaction(accountId: UUID, amount: String, creditCardId: UUID, currency: String, description: String, dueDate: String, endDate: String, installmentCount: Int, isInstallment: Boolean, isRecurring: Boolean, observation: String, paidAt: String, startDate: String, status: String, tagId: UUID, title: String, transactionId: UUID!, type: String): UpdateTransactionMutation @deprecated(reason: "ADR-0002: use PATCH /transactions/{id}")
   deleteTransaction(transactionId: UUID!): DeleteTransactionMutation @deprecated(reason: "ADR-0002: use DELETE /transactions/{id}")
@@ -611,8 +625,8 @@ type Mutation {
   saveInstallmentVsCashSimulation(cashPrice: String!, feesEnabled: Boolean = false, feesUpfront: String = "0.00", firstPaymentDelayDays: Int = 30, inflationRateAnnual: String!, installmentAmount: String, installmentCount: Int!, installmentTotal: String, opportunityRateAnnual: String, opportunityRateType: String = "manual", scenarioLabel: String): SaveInstallmentVsCashSimulationMutation
   createGoalFromInstallmentVsCashSimulation(category: String = "planned_purchase", currentAmount: String = "0.00", description: String, priority: Int = 3, selectedOption: String!, simulationId: UUID!, targetDate: String, title: String!): CreateGoalFromInstallmentVsCashSimulationMutation
   createPlannedExpenseFromInstallmentVsCashSimulation(accountId: UUID, creditCardId: UUID, currency: String = "BRL", description: String, dueDate: String, firstDueDate: String, observation: String, selectedOption: String!, simulationId: UUID!, status: String = "pending", tagId: UUID, title: String!, upfrontDueDate: String): CreatePlannedExpenseFromInstallmentVsCashSimulationMutation
-  addWalletEntry(annualRate: Float, assetClass: String, name: String!, quantity: Int, registerDate: String, shouldBeOnWallet: Boolean!, targetWithdrawDate: String, ticker: String, value: Float): AddWalletEntryMutation @deprecated(reason: "ADR-0002: use POST /wallet")
-  updateWalletEntry(annualRate: Float, assetClass: String, investmentId: UUID!, name: String, quantity: Int, registerDate: String, shouldBeOnWallet: Boolean, targetWithdrawDate: String, ticker: String, value: Float): UpdateWalletEntryMutation @deprecated(reason: "ADR-0002: use PATCH /wallet/{id}")
+  addWalletEntry(annualRate: DecimalScalar, assetClass: String, name: String!, quantity: Int, registerDate: String, shouldBeOnWallet: Boolean!, targetWithdrawDate: String, ticker: String, value: DecimalScalar): AddWalletEntryMutation @deprecated(reason: "ADR-0002: use POST /wallet")
+  updateWalletEntry(annualRate: DecimalScalar, assetClass: String, investmentId: UUID!, name: String, quantity: Int, registerDate: String, shouldBeOnWallet: Boolean, targetWithdrawDate: String, ticker: String, value: DecimalScalar): UpdateWalletEntryMutation @deprecated(reason: "ADR-0002: use PATCH /wallet/{id}")
   deleteWalletEntry(investmentId: UUID!): DeleteWalletEntryMutation @deprecated(reason: "ADR-0002: use DELETE /wallet/{id}")
   addInvestmentOperation(executedAt: String, fees: String, investmentId: UUID!, notes: String, operationType: String!, quantity: String!, unitPrice: String!): AddInvestmentOperationMutation @deprecated(reason: "ADR-0002: use POST /wallet/{id}/operations")
   updateInvestmentOperation(executedAt: String, fees: String, investmentId: UUID!, notes: String, operationId: UUID!, operationType: String, quantity: String, unitPrice: String): UpdateInvestmentOperationMutation @deprecated(reason: "ADR-0002: use PATCH /wallet/{id}/operations/{op_id}")

@@ -546,19 +546,40 @@
               }
             },
             {
-              "args": [],
+              "args": [
+                {
+                  "defaultValue": "1",
+                  "deprecationReason": null,
+                  "description": null,
+                  "isDeprecated": false,
+                  "name": "page",
+                  "type": {
+                    "kind": "SCALAR",
+                    "name": "Int",
+                    "ofType": null
+                  }
+                },
+                {
+                  "defaultValue": "50",
+                  "deprecationReason": null,
+                  "description": null,
+                  "isDeprecated": false,
+                  "name": "perPage",
+                  "type": {
+                    "kind": "SCALAR",
+                    "name": "Int",
+                    "ofType": null
+                  }
+                }
+              ],
               "deprecationReason": null,
               "description": null,
               "isDeprecated": false,
               "name": "tickers",
               "type": {
-                "kind": "LIST",
-                "name": null,
-                "ofType": {
-                  "kind": "OBJECT",
-                  "name": "TickerType",
-                  "ofType": null
-                }
+                "kind": "OBJECT",
+                "name": "TickerListPayloadType",
+                "ofType": null
               }
             },
             {
@@ -3852,7 +3873,7 @@
               "name": "value",
               "type": {
                 "kind": "SCALAR",
-                "name": "Float",
+                "name": "DecimalScalar",
                 "ofType": null
               }
             },
@@ -3864,7 +3885,7 @@
               "name": "estimatedValueOnCreateDate",
               "type": {
                 "kind": "SCALAR",
-                "name": "Float",
+                "name": "DecimalScalar",
                 "ofType": null
               }
             },
@@ -3916,7 +3937,7 @@
               "name": "annualRate",
               "type": {
                 "kind": "SCALAR",
-                "name": "Float",
+                "name": "DecimalScalar",
                 "ofType": null
               }
             },
@@ -3969,6 +3990,17 @@
           "interfaces": [],
           "kind": "OBJECT",
           "name": "WalletType",
+          "possibleTypes": null,
+          "specifiedByURL": null
+        },
+        {
+          "description": "Arbitrary-precision decimal serialised as a string.\n\nOutput: always a string in fixed-point notation (no scientific exponent).\nInput: accepts string, int, float, or Decimal — coerced via ``Decimal(str(x))``.\nNull is preserved.",
+          "enumValues": null,
+          "fields": null,
+          "inputFields": null,
+          "interfaces": null,
+          "kind": "SCALAR",
+          "name": "DecimalScalar",
           "possibleTypes": null,
           "specifiedByURL": null
         },
@@ -4032,7 +4064,7 @@
               "name": "originalQuantity",
               "type": {
                 "kind": "SCALAR",
-                "name": "Float",
+                "name": "DecimalScalar",
                 "ofType": null
               }
             },
@@ -4044,7 +4076,7 @@
               "name": "originalValue",
               "type": {
                 "kind": "SCALAR",
-                "name": "Float",
+                "name": "DecimalScalar",
                 "ofType": null
               }
             },
@@ -4077,6 +4109,54 @@
           "interfaces": [],
           "kind": "OBJECT",
           "name": "WalletHistoryItemType",
+          "possibleTypes": null,
+          "specifiedByURL": null
+        },
+        {
+          "description": null,
+          "enumValues": null,
+          "fields": [
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "items",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "LIST",
+                  "name": null,
+                  "ofType": {
+                    "kind": "OBJECT",
+                    "name": "TickerType",
+                    "ofType": null
+                  }
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "pagination",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "OBJECT",
+                  "name": "PaginationType",
+                  "ofType": null
+                }
+              }
+            }
+          ],
+          "inputFields": null,
+          "interfaces": [],
+          "kind": "OBJECT",
+          "name": "TickerListPayloadType",
           "possibleTypes": null,
           "specifiedByURL": null
         },
@@ -6445,7 +6525,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -6461,7 +6541,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -6601,7 +6681,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -6617,7 +6697,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -6633,7 +6713,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -6909,7 +6989,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -7237,7 +7317,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -7253,7 +7333,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -7269,7 +7349,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -7313,7 +7393,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -7341,7 +7421,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -7369,7 +7449,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -7425,7 +7505,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -7441,7 +7521,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -7457,7 +7537,7 @@
                 "name": null,
                 "ofType": {
                   "kind": "SCALAR",
-                  "name": "Float",
+                  "name": "DecimalScalar",
                   "ofType": null
                 }
               }
@@ -7554,7 +7634,7 @@
               "name": "monthlyIncome",
               "type": {
                 "kind": "SCALAR",
-                "name": "Float",
+                "name": "DecimalScalar",
                 "ofType": null
               }
             },
@@ -7566,7 +7646,7 @@
               "name": "monthlyIncomeNet",
               "type": {
                 "kind": "SCALAR",
-                "name": "Float",
+                "name": "DecimalScalar",
                 "ofType": null
               }
             },
@@ -7578,7 +7658,7 @@
               "name": "netWorth",
               "type": {
                 "kind": "SCALAR",
-                "name": "Float",
+                "name": "DecimalScalar",
                 "ofType": null
               }
             },
@@ -7590,7 +7670,7 @@
               "name": "monthlyExpenses",
               "type": {
                 "kind": "SCALAR",
-                "name": "Float",
+                "name": "DecimalScalar",
                 "ofType": null
               }
             },
@@ -7602,7 +7682,7 @@
               "name": "initialInvestment",
               "type": {
                 "kind": "SCALAR",
-                "name": "Float",
+                "name": "DecimalScalar",
                 "ofType": null
               }
             },
@@ -7614,7 +7694,7 @@
               "name": "monthlyInvestment",
               "type": {
                 "kind": "SCALAR",
-                "name": "Float",
+                "name": "DecimalScalar",
                 "ofType": null
               }
             },
@@ -8034,7 +8114,7 @@
                   "name": "initialInvestment",
                   "type": {
                     "kind": "SCALAR",
-                    "name": "Float",
+                    "name": "DecimalScalar",
                     "ofType": null
                   }
                 },
@@ -8082,7 +8162,7 @@
                   "name": "monthlyExpenses",
                   "type": {
                     "kind": "SCALAR",
-                    "name": "Float",
+                    "name": "DecimalScalar",
                     "ofType": null
                   }
                 },
@@ -8094,7 +8174,7 @@
                   "name": "monthlyIncome",
                   "type": {
                     "kind": "SCALAR",
-                    "name": "Float",
+                    "name": "DecimalScalar",
                     "ofType": null
                   }
                 },
@@ -8106,7 +8186,7 @@
                   "name": "monthlyIncomeNet",
                   "type": {
                     "kind": "SCALAR",
-                    "name": "Float",
+                    "name": "DecimalScalar",
                     "ofType": null
                   }
                 },
@@ -8118,7 +8198,7 @@
                   "name": "monthlyInvestment",
                   "type": {
                     "kind": "SCALAR",
-                    "name": "Float",
+                    "name": "DecimalScalar",
                     "ofType": null
                   }
                 },
@@ -8130,7 +8210,7 @@
                   "name": "netWorth",
                   "type": {
                     "kind": "SCALAR",
-                    "name": "Float",
+                    "name": "DecimalScalar",
                     "ofType": null
                   }
                 },
@@ -9505,7 +9585,7 @@
                   "name": "annualRate",
                   "type": {
                     "kind": "SCALAR",
-                    "name": "Float",
+                    "name": "DecimalScalar",
                     "ofType": null
                   }
                 },
@@ -9609,7 +9689,7 @@
                   "name": "value",
                   "type": {
                     "kind": "SCALAR",
-                    "name": "Float",
+                    "name": "DecimalScalar",
                     "ofType": null
                   }
                 }
@@ -9634,7 +9714,7 @@
                   "name": "annualRate",
                   "type": {
                     "kind": "SCALAR",
-                    "name": "Float",
+                    "name": "DecimalScalar",
                     "ofType": null
                   }
                 },
@@ -9746,7 +9826,7 @@
                   "name": "value",
                   "type": {
                     "kind": "SCALAR",
-                    "name": "Float",
+                    "name": "DecimalScalar",
                     "ofType": null
                   }
                 }

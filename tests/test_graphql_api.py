@@ -916,9 +916,17 @@ def test_graphql_wallet_and_ticker_queries_mutations(client) -> None:
     tickers_query = """
     query Tickers {
       tickers {
-        symbol
-        quantity
-        type
+        items {
+          symbol
+          quantity
+          type
+        }
+        pagination {
+          total
+          page
+          perPage
+          pages
+        }
       }
     }
     """
@@ -926,7 +934,13 @@ def test_graphql_wallet_and_ticker_queries_mutations(client) -> None:
     assert tickers_response.status_code == 200
     tickers_body = tickers_response.get_json()
     assert "errors" not in tickers_body
-    assert len(tickers_body["data"]["tickers"]) == 1
+    tickers_payload = tickers_body["data"]["tickers"]
+    assert len(tickers_payload["items"]) == 1
+    assert tickers_payload["items"][0]["symbol"] == "PETR4"
+    assert tickers_payload["pagination"]["total"] == 1
+    assert tickers_payload["pagination"]["page"] == 1
+    assert tickers_payload["pagination"]["perPage"] == 50
+    assert tickers_payload["pagination"]["pages"] == 1
 
     delete_ticker_mutation = """
     mutation DeleteTicker {
@@ -1102,3 +1116,153 @@ def test_graphql_ticker_duplicate_and_delete_not_found(client) -> None:
     delete_missing_body = delete_missing.get_json()
     assert "errors" in delete_missing_body
     assert delete_missing_body["errors"][0]["message"] == "Ticker não encontrado"
+
+
+def test_wallet_value_round_trip_returns_string_preserving_column_scale(
+    client,
+) -> None:
+    """The DecimalScalar contract is two-fold:
+
+    1. The JSON transport returns the monetary value as a *string*, never as
+       a JSON number — preventing IEEE 754 round-trip surprises when the API
+       grows beyond the current column scale.
+    2. Whatever fits the column scale (today ``Numeric(12, 2)`` for
+       ``Wallet.value``) is preserved bit-for-bit through the response.
+    """
+
+    token = _register_and_login_graphql(client)
+    column_max_value = "9999999999.99"
+    add_mutation = """
+    mutation AddCustomWallet($value: DecimalScalar!) {
+      addWalletEntry(
+        name: "High precision",
+        value: $value,
+        assetClass: "custom",
+        registerDate: "2026-01-01",
+        shouldBeOnWallet: true
+      ) {
+        item { id name value assetClass annualRate }
+      }
+    }
+    """
+    response = _graphql(
+        client,
+        add_mutation,
+        variables={"value": column_max_value},
+        token=token,
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert "errors" not in body, body
+    item = body["data"]["addWalletEntry"]["item"]
+    assert isinstance(item["value"], str)
+    assert Decimal(item["value"]) == Decimal(column_max_value)
+    assert "e" not in item["value"].lower()
+    assert "E" not in item["value"]
+
+
+def test_wallet_value_supports_string_input_for_arbitrary_precision(client) -> None:
+    """Callers must be able to pass values as strings (REST-compatible) and
+    as numeric literals — both should reach the service layer as Decimal."""
+
+    token = _register_and_login_graphql(client)
+    add_mutation = """
+    mutation AddCustomWallet {
+      addWalletEntry(
+        name: "From string",
+        value: "1234.56",
+        assetClass: "custom",
+        registerDate: "2026-01-01",
+        shouldBeOnWallet: true
+      ) {
+        item { id value }
+      }
+    }
+    """
+    response = _graphql(client, add_mutation, token=token)
+    body = response.get_json()
+    assert "errors" not in body, body
+    item = body["data"]["addWalletEntry"]["item"]
+    assert item["value"] == "1234.56"
+
+
+def test_tickers_pagination_pages_and_overflow(client) -> None:
+    token = _register_and_login_graphql(client)
+    symbols = ["AAAA1", "BBBB2", "CCCC3", "DDDD4", "EEEE5"]
+    for symbol in symbols:
+        add_mutation = (
+            'mutation { addTicker(symbol: "' + symbol + '", quantity: 1, '
+            'type: "stock") { item { id } } }'
+        )
+        response = _graphql(client, add_mutation, token=token)
+        assert response.status_code == 200, response.get_json()
+        assert "errors" not in response.get_json()
+
+    paginated_query = """
+    query Tickers($page: Int!, $perPage: Int!) {
+      tickers(page: $page, perPage: $perPage) {
+        items { symbol }
+        pagination { total page perPage pages }
+      }
+    }
+    """
+    page1 = _graphql(
+        client,
+        paginated_query,
+        variables={"page": 1, "perPage": 2},
+        token=token,
+    )
+    page1_body = page1.get_json()
+    assert "errors" not in page1_body
+    assert [item["symbol"] for item in page1_body["data"]["tickers"]["items"]] == [
+        "AAAA1",
+        "BBBB2",
+    ]
+    assert page1_body["data"]["tickers"]["pagination"] == {
+        "total": 5,
+        "page": 1,
+        "perPage": 2,
+        "pages": 3,
+    }
+
+    page3 = _graphql(
+        client,
+        paginated_query,
+        variables={"page": 3, "perPage": 2},
+        token=token,
+    )
+    page3_body = page3.get_json()
+    assert "errors" not in page3_body
+    assert [item["symbol"] for item in page3_body["data"]["tickers"]["items"]] == [
+        "EEEE5",
+    ]
+
+    overflow = _graphql(
+        client,
+        paginated_query,
+        variables={"page": 99, "perPage": 2},
+        token=token,
+    )
+    overflow_body = overflow.get_json()
+    assert "errors" not in overflow_body
+    assert overflow_body["data"]["tickers"]["items"] == []
+
+    # A perPage above the resolver's hard cap (100) returns VALIDATION_ERROR.
+    # The query keeps the inner selection minimal so it stays well under the
+    # GraphQL complexity policy and exercises the resolver's own validation.
+    minimal_query = """
+    query Tickers($page: Int!, $perPage: Int!) {
+      tickers(page: $page, perPage: $perPage) {
+        pagination { total }
+      }
+    }
+    """
+    invalid = _graphql(
+        client,
+        minimal_query,
+        variables={"page": 1, "perPage": 101},
+        token=token,
+    )
+    invalid_body = invalid.get_json()
+    assert "errors" in invalid_body
+    assert invalid_body["errors"][0]["extensions"]["code"] == "VALIDATION_ERROR"

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import graphene
 
+from app.graphql.scalars import DecimalScalar
+
 
 class UserType(graphene.ObjectType):
     id = graphene.ID(required=True)
@@ -9,12 +11,12 @@ class UserType(graphene.ObjectType):
     email = graphene.String(required=True)
     gender = graphene.String()
     birth_date = graphene.String()
-    monthly_income = graphene.Float()
-    monthly_income_net = graphene.Float()
-    net_worth = graphene.Float()
-    monthly_expenses = graphene.Float()
-    initial_investment = graphene.Float()
-    monthly_investment = graphene.Float()
+    monthly_income = DecimalScalar()
+    monthly_income_net = DecimalScalar()
+    net_worth = DecimalScalar()
+    monthly_expenses = DecimalScalar()
+    initial_investment = DecimalScalar()
+    monthly_investment = DecimalScalar()
     investment_goal_date = graphene.String()
     state_uf = graphene.String()
     occupation = graphene.String()
@@ -73,8 +75,8 @@ class TransactionListPayloadType(graphene.ObjectType):
 
 class TransactionSummaryPayloadType(graphene.ObjectType):
     month = graphene.String(required=True)
-    income_total = graphene.Float(required=True)
-    expense_total = graphene.Float(required=True)
+    income_total = DecimalScalar(required=True)
+    expense_total = DecimalScalar(required=True)
     items = graphene.List(TransactionTypeObject, required=True)
     pagination = graphene.Field(PaginationType, required=True)
 
@@ -107,15 +109,15 @@ class DashboardCountsType(graphene.ObjectType):
 
 
 class DashboardTotalsType(graphene.ObjectType):
-    income_total = graphene.Float(required=True)
-    expense_total = graphene.Float(required=True)
-    balance = graphene.Float(required=True)
+    income_total = DecimalScalar(required=True)
+    expense_total = DecimalScalar(required=True)
+    balance = DecimalScalar(required=True)
 
 
 class DashboardCategoryType(graphene.ObjectType):
     tag_id = graphene.String()
     category_name = graphene.String(required=True)
-    total_amount = graphene.Float(required=True)
+    total_amount = DecimalScalar(required=True)
     transactions_count = graphene.Int(required=True)
 
 
@@ -311,20 +313,20 @@ class CreatePlannedExpenseFromInstallmentVsCashSimulationPayloadType(
 class WalletType(graphene.ObjectType):
     id = graphene.ID(required=True)
     name = graphene.String(required=True)
-    value = graphene.Float()
-    estimated_value_on_create_date = graphene.Float()
+    value = DecimalScalar()
+    estimated_value_on_create_date = DecimalScalar()
     ticker = graphene.String()
     quantity = graphene.Int()
     asset_class = graphene.String(required=True)
-    annual_rate = graphene.Float()
+    annual_rate = DecimalScalar()
     register_date = graphene.String(required=True)
     target_withdraw_date = graphene.String()
     should_be_on_wallet = graphene.Boolean(required=True)
 
 
 class WalletHistoryItemType(graphene.ObjectType):
-    original_quantity = graphene.Float()
-    original_value = graphene.Float()
+    original_quantity = DecimalScalar()
+    original_value = DecimalScalar()
     change_type = graphene.String()
     change_date = graphene.String()
 
@@ -462,6 +464,11 @@ class TickerType(graphene.ObjectType):
     type = graphene.String()
 
 
+class TickerListPayloadType(graphene.ObjectType):
+    items = graphene.List(TickerType, required=True)
+    pagination = graphene.Field(PaginationType, required=True)
+
+
 # ---------------------------------------------------------------------------
 # Budget types (H-PROD-04 / #886)
 # ---------------------------------------------------------------------------
@@ -570,26 +577,26 @@ class NotificationPreferencesType(graphene.ObjectType):
 class WeeklyPeriodTotalsType(graphene.ObjectType):
     start = graphene.String(required=True)
     end = graphene.String(required=True)
-    income = graphene.Float(required=True)
-    expense = graphene.Float(required=True)
-    balance = graphene.Float(required=True)
+    income = DecimalScalar(required=True)
+    expense = DecimalScalar(required=True)
+    balance = DecimalScalar(required=True)
     transaction_count = graphene.Int(required=True)
 
 
 class WeeklyComparisonType(graphene.ObjectType):
-    income_delta = graphene.Float(required=True)
+    income_delta = DecimalScalar(required=True)
     income_delta_percent = graphene.Float()
-    expense_delta = graphene.Float(required=True)
+    expense_delta = DecimalScalar(required=True)
     expense_delta_percent = graphene.Float()
-    balance_delta = graphene.Float(required=True)
+    balance_delta = DecimalScalar(required=True)
     balance_delta_percent = graphene.Float()
 
 
 class WeeklySummarySeriesEntryType(graphene.ObjectType):
     date = graphene.String(required=True)
-    income = graphene.Float(required=True)
-    expense = graphene.Float(required=True)
-    balance = graphene.Float(required=True)
+    income = DecimalScalar(required=True)
+    expense = DecimalScalar(required=True)
+    balance = DecimalScalar(required=True)
 
 
 class WeeklySummaryPayloadType(graphene.ObjectType):
