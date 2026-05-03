@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.34.0](https://github.com/italofelipe/auraxis-api/compare/v1.33.0...v1.34.0) (2026-05-03)
+
+
+### Features
+
+* **audit:** record entity-delete audit events for goals, wallet, subscriptions ([#1160](https://github.com/italofelipe/auraxis-api/issues/1160)) ([ef89098](https://github.com/italofelipe/auraxis-api/commit/ef890984cf9d72ff43c39bf5189a20e277f0b113))
+* **entitlements:** add focus_mode to premium plan ([#1117](https://github.com/italofelipe/auraxis-api/issues/1117)) ([893820f](https://github.com/italofelipe/auraxis-api/commit/893820fa0a6a44b5fc7fb22098bc24fff71d6e78))
+* **simulations:** allowlist aposentadoria + desconto-markup in TOOLS_REGISTRY ([#1132](https://github.com/italofelipe/auraxis-api/issues/1132)) ([3cb8147](https://github.com/italofelipe/auraxis-api/commit/3cb8147408ac63c1bbf0efa9f3e6e19347a8df24))
+* **simulations:** canonical generic /simulations endpoint ([#1128](https://github.com/italofelipe/auraxis-api/issues/1128)) ([#1130](https://github.com/italofelipe/auraxis-api/issues/1130)) ([2124a9e](https://github.com/italofelipe/auraxis-api/commit/2124a9e270561be906e1a78b07e2c93c59df541e))
+
+
+### Bug Fixes
+
+* **graphql:** replace Float with DecimalScalar on monetary fields, paginate tickers ([#1158](https://github.com/italofelipe/auraxis-api/issues/1158)) ([e6dab69](https://github.com/italofelipe/auraxis-api/commit/e6dab693bcff0ae959d88696e76c252f98a612bb))
+* **tags:** accept hex with alpha channel and normalize ([#1125](https://github.com/italofelipe/auraxis-api/issues/1125)) ([347450d](https://github.com/italofelipe/auraxis-api/commit/347450dd08db94595e192dfb90a0e194ab9fa890))
+
 ## [1.33.0](https://github.com/italofelipe/auraxis-api/compare/v1.32.0...v1.33.0) (2026-04-20)
 
 
