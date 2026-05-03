@@ -38,6 +38,7 @@ from app.graphql.errors import (
     GRAPHQL_ERROR_CODE_VALIDATION,
     build_public_graphql_error,
 )
+from app.graphql.observability import log_graphql_resolver
 from app.graphql.schema_utils import _user_basic_auth_payload, _user_to_graphql_payload
 from app.graphql.types import AuthPayloadType, UserType
 from app.http.runtime import runtime_logger
@@ -188,6 +189,7 @@ class LoginMutation(graphene.Mutation):
 
     Output = AuthPayloadType
 
+    @log_graphql_resolver("login")
     def mutate(
         self,
         info: graphene.ResolveInfo,
@@ -274,6 +276,7 @@ class LogoutMutation(graphene.Mutation):
     ok = graphene.Boolean(required=True)
     message = graphene.String(required=True)
 
+    @log_graphql_resolver("logout")
     def mutate(self, info: graphene.ResolveInfo) -> "LogoutMutation":
         user = get_current_user_required()
         user_id = str(user.id)

@@ -15,6 +15,7 @@ from app.graphql.goal_presenters import (
     to_goal_plan_type,
     to_goal_type_object,
 )
+from app.graphql.observability import log_graphql_resolver
 from app.graphql.types import GoalPlanType, GoalTypeObject
 
 
@@ -82,6 +83,7 @@ class DeleteGoalMutation(graphene.Mutation):
     ok = graphene.Boolean(required=True)
     message = graphene.String(required=True)
 
+    @log_graphql_resolver("deleteGoal")
     def mutate(self, info: graphene.ResolveInfo, goal_id: UUID) -> "DeleteGoalMutation":
         user = get_current_user_required()
         service = GoalApplicationService.with_defaults(UUID(str(user.id)))

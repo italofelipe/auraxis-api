@@ -31,6 +31,9 @@ def _current_request_id() -> str:
     return str(getattr(g, "request_id", None) or _NOOP_REQUEST_ID)
 
 
+_CORRELATION_FACTORY_MARK = "_auraxis_correlation_factory"
+
+
 def _make_log_record_factory(
     original: Callable[..., logging.LogRecord],
 ) -> Callable[..., logging.LogRecord]:
@@ -39,6 +42,7 @@ def _make_log_record_factory(
         record.request_id = _current_request_id()
         return record
 
+    setattr(_factory, _CORRELATION_FACTORY_MARK, True)
     return _factory
 
 
@@ -54,9 +58,18 @@ def _inject_sentry_tag(request_id: str) -> None:
 
 
 def register_correlation_id(app: Flask) -> None:
-    """Wire up Sentry tagging and log-record injection for every request."""
+    """Wire up Sentry tagging and log-record injection for every request.
+
+    The log-record factory is wrapped exactly once per process. Calling
+    ``register_correlation_id`` multiple times (e.g. one Flask app per
+    pytest test) is safe — without the idempotency check, each call would
+    nest a new wrapper around the previous one, eventually exceeding
+    Python's recursion limit during ``logger.info`` and bringing the test
+    suite down.
+    """
     original_factory = logging.getLogRecordFactory()
-    logging.setLogRecordFactory(_make_log_record_factory(original_factory))
+    if not getattr(original_factory, _CORRELATION_FACTORY_MARK, False):
+        logging.setLogRecordFactory(_make_log_record_factory(original_factory))
 
     @app.before_request
     def _tag_sentry() -> None:

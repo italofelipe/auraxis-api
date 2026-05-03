@@ -19,6 +19,7 @@ from app.graphql.errors import (
     GRAPHQL_ERROR_CODE_VALIDATION,
     build_public_graphql_error,
 )
+from app.graphql.observability import log_graphql_resolver
 from app.graphql.queries.subscription import (
     _serialize_subscription,
     _to_subscription_type,
@@ -110,6 +111,7 @@ class CancelSubscriptionMutation(graphene.Mutation):
     message = graphene.String(required=True)
     subscription = graphene.Field(SubscriptionType, required=True)
 
+    @log_graphql_resolver("cancelSubscription")
     def mutate(self, info: graphene.ResolveInfo) -> "CancelSubscriptionMutation":
         user = get_current_user_required()
         sub = get_or_create_subscription(UUID(str(user.id)))
