@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.53.0](https://github.com/italofelipe/auraxis-api/compare/v1.52.0...v1.53.0) (2026-06-01)
+
+
+### Features
+
+* **simulation:** contador de quota freemium + REST + GraphQL ([#1409](https://github.com/italofelipe/auraxis-api/issues/1409)) ([#1410](https://github.com/italofelipe/auraxis-api/issues/1410)) ([e7c07dd](https://github.com/italofelipe/auraxis-api/commit/e7c07dd6e1bf379d89fbb01b56d260f863ca41d1))
+
+
+### Bug Fixes
+
+* **ai:** cobertura incompleta de dimensões não derruba geração de insight ([#1412](https://github.com/italofelipe/auraxis-api/issues/1412)) ([#1413](https://github.com/italofelipe/auraxis-api/issues/1413)) ([f37c7e0](https://github.com/italofelipe/auraxis-api/commit/f37c7e0521ceba06fa90a6a7a5e931132b4922c4))
+
 ## [1.52.0](https://github.com/italofelipe/auraxis-api/compare/v1.51.0...v1.52.0) (2026-05-31)
 
 
