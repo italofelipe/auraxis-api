@@ -71,6 +71,28 @@ def _raise_simulation_graphql_error(exc: SimulationApplicationError) -> None:
     raise build_public_graphql_error(exc.message, code=code)
 
 
+class SimulationQuotaType(graphene.ObjectType):
+    """Snapshot da quota freemium do simulador (#1409)."""
+
+    limit = graphene.Int(required=True)
+    used = graphene.Int(required=True)
+    remaining = graphene.Int()  # nulo quando unlimited (premium)
+    unlimited = graphene.Boolean(required=True)
+    allowed = graphene.Boolean(required=True)
+    reset_at = graphene.String(required=True)
+
+
+def _to_quota_type(data: dict[str, Any]) -> "SimulationQuotaType":
+    return SimulationQuotaType(
+        limit=data["limit"],
+        used=data["used"],
+        remaining=data["remaining"],
+        unlimited=data["unlimited"],
+        allowed=data["allowed"],
+        reset_at=data["reset_at"],
+    )
+
+
 class SimulationQueryMixin:
     installment_vs_cash_calculate = graphene.Field(
         InstallmentVsCashCalculationPayloadType,
@@ -99,6 +121,17 @@ class SimulationQueryMixin:
         SimulationType,
         id=graphene.UUID(required=True),
     )
+
+    simulation_quota = graphene.Field(SimulationQuotaType, required=True)
+
+    def resolve_simulation_quota(
+        self, _info: graphene.ResolveInfo
+    ) -> SimulationQuotaType:
+        from app.application.services import simulation_quota_service
+
+        user = get_current_user_required()
+        quota = simulation_quota_service.get_quota(UUID(str(user.id)))
+        return _to_quota_type(dict(quota))
 
     def resolve_installment_vs_cash_calculate(
         self,

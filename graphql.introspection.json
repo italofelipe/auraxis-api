@@ -1089,6 +1089,22 @@
               }
             },
             {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "simulationQuota",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "OBJECT",
+                  "name": "SimulationQuotaType",
+                  "ofType": null
+                }
+              }
+            },
+            {
               "args": [
                 {
                   "defaultValue": "1",
@@ -7474,6 +7490,110 @@
           "specifiedByURL": null
         },
         {
+          "description": "Snapshot da quota freemium do simulador (#1409).",
+          "enumValues": null,
+          "fields": [
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "limit",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "Int",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "used",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "Int",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "remaining",
+              "type": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "unlimited",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "Boolean",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "allowed",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "Boolean",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "resetAt",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                }
+              }
+            }
+          ],
+          "inputFields": null,
+          "interfaces": [],
+          "kind": "OBJECT",
+          "name": "SimulationQuotaType",
+          "possibleTypes": null,
+          "specifiedByURL": null
+        },
+        {
           "description": null,
           "enumValues": null,
           "fields": [
@@ -11551,6 +11671,18 @@
               }
             },
             {
+              "args": [],
+              "deprecationReason": null,
+              "description": "Consome 1 simulação da quota freemium (#1409).\n\nParity de ``POST /simulations/quota/consume``. Não falha em esgotamento:\nretorna ``quota.allowed=False`` para o cliente exibir o paywall.",
+              "isDeprecated": false,
+              "name": "consumeSimulationQuota",
+              "type": {
+                "kind": "OBJECT",
+                "name": "ConsumeSimulationQuotaMutation",
+                "ofType": null
+              }
+            },
+            {
               "args": [
                 {
                   "defaultValue": null,
@@ -14309,6 +14441,34 @@
           "interfaces": [],
           "kind": "OBJECT",
           "name": "CreatePlannedExpenseFromInstallmentVsCashSimulationMutation",
+          "possibleTypes": null,
+          "specifiedByURL": null
+        },
+        {
+          "description": "Consome 1 simulação da quota freemium (#1409).\n\nParity de ``POST /simulations/quota/consume``. Não falha em esgotamento:\nretorna ``quota.allowed=False`` para o cliente exibir o paywall.",
+          "enumValues": null,
+          "fields": [
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "quota",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "OBJECT",
+                  "name": "SimulationQuotaType",
+                  "ofType": null
+                }
+              }
+            }
+          ],
+          "inputFields": null,
+          "interfaces": [],
+          "kind": "OBJECT",
+          "name": "ConsumeSimulationQuotaMutation",
           "possibleTypes": null,
           "specifiedByURL": null
         },

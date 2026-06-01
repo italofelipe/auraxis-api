@@ -203,6 +203,14 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         source_module=QUERY_SIMULATION_MODULE,
     ),
     GraphQLOperationDoc(
+        name="simulationQuota",
+        operation_type="query",
+        domain="simulations",
+        access="auth_required",
+        summary="Snapshot da quota freemium de simulações do usuário (#1409).",
+        source_module=QUERY_SIMULATION_MODULE,
+    ),
+    GraphQLOperationDoc(
         name="walletEntries",
         operation_type="query",
         domain="wallet",
@@ -427,6 +435,14 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         summary="Converte uma simulação em despesa planejada.",
         source_module=MUTATION_SIMULATION_MODULE,
         entitlements=(ADVANCED_SIMULATIONS,),
+    ),
+    GraphQLOperationDoc(
+        name="consumeSimulationQuota",
+        operation_type="mutation",
+        domain="simulations",
+        access="auth_required",
+        summary="Consome 1 simulação da quota freemium do usuário (#1409).",
+        source_module=MUTATION_SIMULATION_MODULE,
     ),
     GraphQLOperationDoc(
         name="addWalletEntry",

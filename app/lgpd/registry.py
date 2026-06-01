@@ -118,6 +118,7 @@ def _build_registry() -> list[EntityRule]:
     from app.models.shared_entry import Invitation, SharedEntry
     from app.models.sharing_audit import SharingAuditEvent
     from app.models.simulation import Simulation
+    from app.models.simulation_quota_usage import SimulationQuotaUsage
     from app.models.subscription import Subscription
     from app.models.tag import Tag
     from app.models.transaction import Transaction
@@ -247,6 +248,16 @@ def _build_registry() -> list[EntityRule]:
             retention_reason=RetentionReason.NONE,
             retention_days=None,
             description="Saved financial simulations",
+        ),
+        EntityRule(
+            model=SimulationQuotaUsage,
+            user_id_field="user_id",
+            table_name="simulation_quota_usage",
+            deletion_strategy=DeletionStrategy.DELETE,
+            export_included=False,
+            retention_reason=RetentionReason.NONE,
+            retention_days=None,
+            description="Monthly freemium simulation quota counter (#1409)",
         ),
         EntityRule(
             model=Alert,

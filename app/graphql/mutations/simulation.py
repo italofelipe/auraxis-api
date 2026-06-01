@@ -161,3 +161,23 @@ class CreatePlannedExpenseFromInstallmentVsCashSimulationMutation(graphene.Mutat
             ],
             simulation=to_installment_vs_cash_simulation_type(result["simulation"]),
         )
+
+
+class ConsumeSimulationQuotaMutation(graphene.Mutation):
+    """Consome 1 simulação da quota freemium (#1409).
+
+    Parity de ``POST /simulations/quota/consume``. Não falha em esgotamento:
+    retorna ``quota.allowed=False`` para o cliente exibir o paywall.
+    """
+
+    quota = graphene.Field(
+        "app.graphql.queries.simulation.SimulationQuotaType", required=True
+    )
+
+    def mutate(self, _info: graphene.ResolveInfo) -> "ConsumeSimulationQuotaMutation":
+        from app.application.services import simulation_quota_service
+        from app.graphql.queries.simulation import _to_quota_type
+
+        user = get_current_user_required()
+        quota = simulation_quota_service.consume(UUID(str(user.id)))
+        return ConsumeSimulationQuotaMutation(quota=_to_quota_type(dict(quota)))

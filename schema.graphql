@@ -37,6 +37,7 @@ type Query {
   installmentVsCashCalculate(cashPrice: String!, installmentCount: Int!, installmentAmount: String, installmentTotal: String, firstPaymentDelayDays: Int = 30, opportunityRateType: String = "manual", opportunityRateAnnual: String, inflationRateAnnual: String!, feesEnabled: Boolean = false, feesUpfront: String = "0.00", scenarioLabel: String): InstallmentVsCashCalculationPayloadType
   simulations(page: Int = 1, perPage: Int = 20, toolId: String): SimulationListPayloadType!
   simulation(id: UUID!): SimulationType
+  simulationQuota: SimulationQuotaType!
   goals(page: Int = 1, perPage: Int = 10, status: String): GoalListPayloadType
   goal(goalId: UUID!): GoalTypeObject
   goalPlan(goalId: UUID!): GoalPlanType
@@ -584,6 +585,16 @@ value as specified by
 """
 scalar DateTime
 
+"""Snapshot da quota freemium do simulador (#1409)."""
+type SimulationQuotaType {
+  limit: Int!
+  used: Int!
+  remaining: Int
+  unlimited: Boolean!
+  allowed: Boolean!
+  resetAt: String!
+}
+
 type GoalListPayloadType {
   items: [GoalTypeObject]!
   pagination: PaginationType!
@@ -800,6 +811,14 @@ type Mutation {
   saveInstallmentVsCashSimulation(cashPrice: String!, feesEnabled: Boolean = false, feesUpfront: String = "0.00", firstPaymentDelayDays: Int = 30, inflationRateAnnual: String!, installmentAmount: String, installmentCount: Int!, installmentTotal: String, opportunityRateAnnual: String, opportunityRateType: String = "manual", scenarioLabel: String): SaveInstallmentVsCashSimulationMutation
   createGoalFromInstallmentVsCashSimulation(category: String = "planned_purchase", currentAmount: String = "0.00", description: String, priority: Int = 3, selectedOption: String!, simulationId: UUID!, targetDate: String, title: String!): CreateGoalFromInstallmentVsCashSimulationMutation
   createPlannedExpenseFromInstallmentVsCashSimulation(accountId: UUID, creditCardId: UUID, currency: String = "BRL", description: String, dueDate: String, firstDueDate: String, observation: String, selectedOption: String!, simulationId: UUID!, status: String = "pending", tagId: UUID, title: String!, upfrontDueDate: String): CreatePlannedExpenseFromInstallmentVsCashSimulationMutation
+
+  """
+  Consome 1 simulação da quota freemium (#1409).
+  
+  Parity de ``POST /simulations/quota/consume``. Não falha em esgotamento:
+  retorna ``quota.allowed=False`` para o cliente exibir o paywall.
+  """
+  consumeSimulationQuota: ConsumeSimulationQuotaMutation
   addWalletEntry(annualRate: DecimalScalar, assetClass: WalletAssetClass, name: String!, quantity: Int, registerDate: String, shouldBeOnWallet: Boolean!, targetWithdrawDate: String, ticker: String, value: DecimalScalar): AddWalletEntryMutation @deprecated(reason: "ADR-0002: use POST /wallet")
   updateWalletEntry(annualRate: DecimalScalar, assetClass: WalletAssetClass, investmentId: UUID!, name: String, quantity: Int, registerDate: String, shouldBeOnWallet: Boolean, targetWithdrawDate: String, ticker: String, value: DecimalScalar): UpdateWalletEntryMutation @deprecated(reason: "ADR-0002: use PATCH /wallet/{id}")
   deleteWalletEntry(investmentId: UUID!): DeleteWalletEntryMutation @deprecated(reason: "ADR-0002: use DELETE /wallet/{id}")
@@ -1002,6 +1021,16 @@ type CreatePlannedExpenseFromInstallmentVsCashSimulationMutation {
   message: String!
   transactions: [TransactionTypeObject]!
   simulation: InstallmentVsCashSimulationType!
+}
+
+"""
+Consome 1 simulação da quota freemium (#1409).
+
+Parity de ``POST /simulations/quota/consume``. Não falha em esgotamento:
+retorna ``quota.allowed=False`` para o cliente exibir o paywall.
+"""
+type ConsumeSimulationQuotaMutation {
+  quota: SimulationQuotaType!
 }
 
 type AddWalletEntryMutation {

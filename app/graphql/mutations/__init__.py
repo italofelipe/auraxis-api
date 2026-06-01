@@ -51,6 +51,7 @@ from app.graphql.mutations.investment_operation import (
 )
 from app.graphql.mutations.notification import UpdateNotificationPreferencesMutation
 from app.graphql.mutations.simulation import (
+    ConsumeSimulationQuotaMutation,
     CreateGoalFromInstallmentVsCashSimulationMutation,
     CreatePlannedExpenseFromInstallmentVsCashSimulationMutation,
     SaveInstallmentVsCashSimulationMutation,
@@ -116,6 +117,7 @@ class Mutation(graphene.ObjectType):
     create_planned_expense_from_installment_vs_cash_simulation = (
         CreatePlannedExpenseFromInstallmentVsCashSimulationMutation.Field()
     )
+    consume_simulation_quota = ConsumeSimulationQuotaMutation.Field()
     # ADR-0002: CRUD mutations deprecated — use REST endpoints.
     add_wallet_entry = AddWalletEntryMutation.Field(
         deprecation_reason="ADR-0002: use POST /wallet"

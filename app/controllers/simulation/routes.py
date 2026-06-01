@@ -8,6 +8,10 @@ from .installment_vs_cash_resources import (
     SimulationGoalBridgeResource,
     SimulationPlannedExpenseBridgeResource,
 )
+from .quota_resources import (
+    SimulationQuotaConsumeResource,
+    SimulationQuotaResource,
+)
 from .resources import SimulationCollectionResource, SimulationResource
 
 _ROUTES_REGISTERED = False
@@ -57,6 +61,16 @@ def register_simulation_routes() -> None:
         view_func=SimulationPlannedExpenseBridgeResource.as_view(
             "simulation_planned_expense_bridge"
         ),
+        methods=["POST"],
+    )
+    simulation_bp.add_url_rule(
+        "/quota",
+        view_func=SimulationQuotaResource.as_view("simulation_quota"),
+        methods=["GET"],
+    )
+    simulation_bp.add_url_rule(
+        "/quota/consume",
+        view_func=SimulationQuotaConsumeResource.as_view("simulation_quota_consume"),
         methods=["POST"],
     )
 
