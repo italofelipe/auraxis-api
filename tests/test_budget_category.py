@@ -137,13 +137,16 @@ class TestBudgetGetSpentForCategory:
 
         with app.app_context():
             # Create transactions: one with category alimentacao, one without
+            # Data no mês corrente: o budget mensal soma o mês de date.today();
+            # uma data fixa (ex.: 2026-05-10) faz o teste quebrar fora daquele mês.
+            current_month_day = __import__("datetime").date.today().replace(day=10)
             tx_with_cat = Transaction(
                 user_id=user_id,
                 title="Mercado",
                 amount=Decimal("150.00"),
                 type=TransactionType.EXPENSE,
                 status=TransactionStatus.PAID,
-                due_date=__import__("datetime").date(2026, 5, 10),
+                due_date=current_month_day,
                 category=TransactionCategory.alimentacao,
             )
             tx_no_cat = Transaction(
@@ -152,7 +155,7 @@ class TestBudgetGetSpentForCategory:
                 amount=Decimal("80.00"),
                 type=TransactionType.EXPENSE,
                 status=TransactionStatus.PAID,
-                due_date=__import__("datetime").date(2026, 5, 10),
+                due_date=current_month_day,
                 category=None,
             )
             db.session.add_all([tx_with_cat, tx_no_cat])

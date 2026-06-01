@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from app.models.ai_insight import AIInsight, InsightType
 
@@ -43,12 +43,15 @@ class TestAIInsightModel:
 
             user_id = uuid.uuid4()
             today = date.today()
+            # timedelta, não replace(day=today.day-1): no dia 1 do mês day-1=0 e
+            # date.replace(day=0) levanta "day is out of range for month".
+            yesterday = today - timedelta(days=1)
 
             first = AIInsight(
                 user_id=user_id,
                 content="Insight de ontem.",
                 insight_type=InsightType.daily,
-                period_label=(today.replace(day=today.day - 1)).strftime("%Y-%m-%d"),
+                period_label=yesterday.strftime("%Y-%m-%d"),
                 period_start=today,
                 period_end=today,
                 model="gpt-4o-mini",

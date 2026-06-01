@@ -17,6 +17,7 @@ Coverage areas:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -448,9 +449,10 @@ class TestAIAdvisoryServiceFinancialInsights:
             future_prompt = provider.generate_with_usage.call_args_list[0].args[0]
             assert "MODO PREVISÃO" in future_prompt
 
-    def test_financial_insights_reject_missing_required_dimensions(
+    def test_financial_insights_tolerate_missing_required_dimensions(
         self,
         app,
+        caplog,
     ) -> None:
         with app.app_context():
             from app.extensions.database import db
@@ -476,17 +478,21 @@ class TestAIAdvisoryServiceFinancialInsights:
             )
 
             service = AIAdvisoryService(user_id=user_id, llm_provider=provider)
-            with pytest.raises(
-                LLMProviderError,
-                match="Missing financial insight dimensions",
-            ):
-                service.generate_financial_insights(
+            # Cobertura incompleta de dimensões NÃO deve derrubar a geração
+            # (incidente 2026-06-01): degrada com aviso e persiste o insight
+            # com as dimensões que o modelo retornou.
+            with caplog.at_level(logging.WARNING):
+                result = service.generate_financial_insights(
                     period_type="daily",
                     anchor_date=date(2026, 5, 17),
                 )
 
+            assert result["items"][0]["dimension"] == "general"
+            assert "dimension_coverage_incomplete" in caplog.text
+            assert "credit_cards" in caplog.text
+
             saved = db.session.query(AIInsight).filter_by(user_id=user_id).first()
-            assert saved is None
+            assert saved is not None
 
     def test_financial_insights_prompt_uses_structured_deltas_not_previous_text(
         self,
