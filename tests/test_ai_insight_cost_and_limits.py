@@ -63,24 +63,34 @@ def _reset_ai_counter() -> None:
     _InMemoryAICounter.reset()
 
 
-def _seed_llm_cost(user_id: uuid.UUID, *, cost_usd: str, endpoint: str) -> None:
+def _seed_llm_cost(
+    user_id: uuid.UUID,
+    *,
+    cost_usd: str,
+    endpoint: str,
+    created_at: datetime | None = None,
+) -> None:
     from app.extensions.database import db
     from app.models.llm_audit_log import LLMAuditLog
 
-    db.session.add(
-        LLMAuditLog(
-            user_id=user_id,
-            endpoint=endpoint,
-            model="gpt-4o-mini",
-            prompt="p",
-            response_text="r",
-            prompt_tokens=10,
-            completion_tokens=10,
-            total_tokens=20,
-            estimated_cost_usd=Decimal(cost_usd),
-            latency_ms=10,
-        )
+    # Stamp created_at explicitly when the test enforces a specific month window —
+    # sem isso a linha cai no mês corrente real e o enforcement (que consulta a
+    # janela do `now` do teste) não a enxerga, quebrando o teste fora de maio/2026.
+    entry = LLMAuditLog(
+        user_id=user_id,
+        endpoint=endpoint,
+        model="gpt-4o-mini",
+        prompt="p",
+        response_text="r",
+        prompt_tokens=10,
+        completion_tokens=10,
+        total_tokens=20,
+        estimated_cost_usd=Decimal(cost_usd),
+        latency_ms=10,
     )
+    if created_at is not None:
+        entry.created_at = created_at
+    db.session.add(entry)
     db.session.commit()
 
 
@@ -125,7 +135,10 @@ class TestUserCostEnforcement:
             now = datetime(2026, 5, 15, 12, 0, 0)
             # Budget ≈ 2.72 USD; seed 3.00 this month.
             _seed_llm_cost(
-                user_id, cost_usd="3.00", endpoint="financial_insights_daily"
+                user_id,
+                cost_usd="3.00",
+                endpoint="financial_insights_daily",
+                created_at=now,
             )
             with pytest.raises(AIInsightCostBudgetExceededError) as exc:
                 _enforce_ai_insight_user_cost_budget(user_id=user_id, now=now)
@@ -140,7 +153,10 @@ class TestUserCostEnforcement:
             user_id = uuid.uuid4()
             now = datetime(2026, 5, 15, 12, 0, 0)
             _seed_llm_cost(
-                user_id, cost_usd="0.50", endpoint="financial_insights_daily"
+                user_id,
+                cost_usd="0.50",
+                endpoint="financial_insights_daily",
+                created_at=now,
             )
             # Must not raise.
             _enforce_ai_insight_user_cost_budget(user_id=user_id, now=now)

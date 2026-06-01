@@ -466,8 +466,17 @@ def _ensure_financial_insight_dimension_coverage(
         if dimension not in present_dimensions
     ]
     if missing:
-        raise LLMProviderError(
-            "Missing financial insight dimensions: " + ", ".join(missing)
+        # Cobertura incompleta de dimensões NÃO é falha do provider. O modelo
+        # nem sempre emite o item de ausência esperado para domínios vazios
+        # (ex.: usuário sem cartões → dimensão credit_cards ausente), e derrubar
+        # a geração inteira com 500 deixava o recurso inutilizável em uso normal
+        # (incidente 2026-06-01, request_id 2f172716142dcc05b047a5ab76615ed1).
+        # Degradamos com um sinal de data-quality: o frontend filtra por
+        # dimensão, então a ausência apenas deixa aquela aba vazia neste run.
+        log.warning(
+            "ai_advisory.dimension_coverage_incomplete missing=%s present=%s",
+            ",".join(missing),
+            ",".join(sorted(present_dimensions)),
         )
 
 
