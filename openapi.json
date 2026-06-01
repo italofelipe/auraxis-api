@@ -6640,6 +6640,50 @@
         ]
       }
     },
+    "/simulations/quota": {
+      "get": {
+        "description": "Retorna a quota de simulações do usuário autenticado.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Snapshot da quota"
+          },
+          "401": {
+            "description": "Token inválido"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Simulações"
+        ]
+      }
+    },
+    "/simulations/quota/consume": {
+      "post": {
+        "description": "Consome uma simulação completa. Premium é ilimitado; free esgotado retorna allowed=false (sem erro) para o cliente exibir o paywall.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Quota atualizada (ver campo allowed)"
+          },
+          "401": {
+            "description": "Token inválido"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Simulações"
+        ]
+      }
+    },
     "/simulations/{simulation_id}": {
       "delete": {
         "description": "Remove uma simulação específica do usuário autenticado.",
