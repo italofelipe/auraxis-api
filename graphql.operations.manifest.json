@@ -114,6 +114,14 @@
   },
   {
     "access": "auth_required",
+    "domain": "simulations",
+    "name": "simulationQuota",
+    "operation_type": "query",
+    "source_module": "app.graphql.queries.simulation",
+    "summary": "Snapshot da quota freemium de simulações do usuário (#1409)."
+  },
+  {
+    "access": "auth_required",
     "domain": "wallet",
     "name": "walletEntries",
     "operation_type": "query",
@@ -341,6 +349,14 @@
     "operation_type": "mutation",
     "source_module": "app.graphql.mutations.simulation",
     "summary": "Converte uma simulação em despesa planejada."
+  },
+  {
+    "access": "auth_required",
+    "domain": "simulations",
+    "name": "consumeSimulationQuota",
+    "operation_type": "mutation",
+    "source_module": "app.graphql.mutations.simulation",
+    "summary": "Consome 1 simulação da quota freemium do usuário (#1409)."
   },
   {
     "access": "auth_required",
