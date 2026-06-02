@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import os
 
-import httpx
+import requests
 from flask import Response, request
 from flask_apispec.views import MethodResource
 
@@ -86,13 +86,13 @@ class AISpendingPatternsProxyResource(MethodResource):
         auth_header = request.headers.get("Authorization", "")
 
         try:
-            upstream = httpx.post(
+            upstream = requests.post(
                 f"{base_url}{_V2_PATH}",
                 json=body,
                 headers={"Authorization": auth_header},
                 timeout=_TIMEOUT_SECONDS,
             )
-        except httpx.HTTPError:
+        except requests.exceptions.RequestException:
             log.warning("spending_patterns_proxy.v2_unreachable", exc_info=True)
             return compat_error_response(
                 legacy_payload={"error": "Serviço de insights indisponível."},

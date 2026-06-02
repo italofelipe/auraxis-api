@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import uuid as _uuid
 
+import requests
+
 from app.controllers.ai import spending_patterns_proxy
 
 _PAYLOAD = {
@@ -63,7 +65,7 @@ class _FakeResponse:
 
 
 def test_returns_403_without_entitlement(app, client, monkeypatch) -> None:
-    monkeypatch.setenv("AURAXIS_API_V2_BASE_URL", "http://v2.test")
+    monkeypatch.setenv("AURAXIS_API_V2_BASE_URL", "https://v2.test")
     token, _ = _register_and_login(client)
     # Fresh users get a trial entitlement; revoke it to exercise the gate.
     from flask_jwt_extended import decode_token
@@ -97,10 +99,10 @@ def test_returns_503_when_v2_unconfigured(app, client, monkeypatch) -> None:
 
 
 def test_forwards_to_v2_and_returns_patterns(app, client, monkeypatch) -> None:
-    monkeypatch.setenv("AURAXIS_API_V2_BASE_URL", "http://v2.test")
+    monkeypatch.setenv("AURAXIS_API_V2_BASE_URL", "https://v2.test")
     captured: dict = {}
 
-    def _fake_post(url, json, headers, timeout):  # noqa: A002 — mirror httpx kwarg
+    def _fake_post(url, json, headers, timeout):  # noqa: A002 — mirror requests kwarg
         captured["url"] = url
         captured["json"] = json
         captured["auth"] = headers.get("Authorization")
@@ -113,7 +115,7 @@ def test_forwards_to_v2_and_returns_patterns(app, client, monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr(spending_patterns_proxy.httpx, "post", _fake_post)
+    monkeypatch.setattr(spending_patterns_proxy.requests, "post", _fake_post)
     token, _ = _register_and_login(client)
     _grant_premium(app, token)
 
@@ -123,7 +125,7 @@ def test_forwards_to_v2_and_returns_patterns(app, client, monkeypatch) -> None:
         headers={"Authorization": f"Bearer {token}", "X-API-Contract": "v2"},
     )
     assert resp.status_code == 200, resp.get_json()
-    assert captured["url"] == "http://v2.test/v2/insights/spending-patterns"
+    assert captured["url"] == "https://v2.test/v2/insights/spending-patterns"
     assert captured["auth"] == f"Bearer {token}"
     body = resp.get_json() or {}
     data = body.get("data") or body
@@ -131,14 +133,12 @@ def test_forwards_to_v2_and_returns_patterns(app, client, monkeypatch) -> None:
 
 
 def test_returns_503_when_v2_unreachable(app, client, monkeypatch) -> None:
-    import httpx
-
-    monkeypatch.setenv("AURAXIS_API_V2_BASE_URL", "http://v2.test")
+    monkeypatch.setenv("AURAXIS_API_V2_BASE_URL", "https://v2.test")
 
     def _boom(*_args, **_kwargs):
-        raise httpx.ConnectError("refused")
+        raise requests.exceptions.ConnectionError("refused")
 
-    monkeypatch.setattr(spending_patterns_proxy.httpx, "post", _boom)
+    monkeypatch.setattr(spending_patterns_proxy.requests, "post", _boom)
     token, _ = _register_and_login(client)
     _grant_premium(app, token)
 
