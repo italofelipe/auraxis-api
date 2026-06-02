@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Auraxis API",
-    "description": "Auto-generated from openapi.json (82 paths). Do not edit manually — regenerate with: npm run postman:build",
+    "description": "Auto-generated from openapi.json (83 paths). Do not edit manually — regenerate with: npm run postman:build",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -4891,6 +4891,51 @@
                 "exec": [
                   "pm.test('AI goal projection — expected 200 or 400 or 403 or 404', function () {",
                   "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST — Radar de gastos compulsivos (Premium)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Contract",
+                "value": "v2"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/insights/spending-patterns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "insights",
+                "spending-patterns"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Premium gateway proxy to auraxis-api-v2. 503 when v2 unconfigured/down.",
+                  "pm.test('AI spending patterns — expected 200, 403, 429 or 503', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 429, 503]);",
                   "});"
                 ],
                 "type": "text/javascript"

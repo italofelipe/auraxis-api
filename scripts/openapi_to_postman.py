@@ -885,6 +885,14 @@ ENRICHMENT: dict[str, dict[str, Any]] = {
             "});",
         ],
     },
+    "POST /ai/insights/spending-patterns": {
+        "test_lines": [
+            "// Premium gateway proxy to auraxis-api-v2. 503 when v2 unconfigured/down.",
+            "pm.test('AI spending patterns — expected 200, 403, 429 or 503', function () {",
+            "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 429, 503]);",
+            "});",
+        ],
+    },
     "GET /ai/insights/weekly-summary": {
         "test_lines": [
             "pm.test('AI weekly summary — expected 200 or 403 or 429', function () {",
