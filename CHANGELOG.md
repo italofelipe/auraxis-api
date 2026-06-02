@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.54.0](https://github.com/italofelipe/auraxis-api/compare/v1.53.0...v1.54.0) (2026-06-02)
+
+
+### Features
+
+* **ai:** gateway proxy /ai/insights/spending-patterns → v2 (PROD-04, [#567](https://github.com/italofelipe/auraxis-api/issues/567)) ([#1418](https://github.com/italofelipe/auraxis-api/issues/1418)) ([82226ec](https://github.com/italofelipe/auraxis-api/commit/82226eca102f65fabe08f0ba316f7aa01c1caf25))
+
 ## [1.53.0](https://github.com/italofelipe/auraxis-api/compare/v1.52.0...v1.53.0) (2026-06-01)
 
 
