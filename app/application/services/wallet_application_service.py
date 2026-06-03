@@ -309,5 +309,56 @@ class WalletApplicationService:
             item.pop("value", None)
         return item
 
+    def _safe_market_price(self, ticker: str | None) -> float | None:
+        """Fetches the current market price, swallowing provider failures.
+
+        BRAPI lookups are cached and circuit-broken upstream; here we treat any
+        failure (timeout, circuit open, invalid payload) as "no live quote" so
+        serialization never raises and the position still renders its cost basis.
+
+        @param ticker Asset ticker, or None for non-market assets.
+        @return Current unit price, or None when unavailable.
+        """
+        if not ticker:
+            return None
+        try:
+            price = self._get_market_price(ticker)
+        except Exception:  # noqa: BLE001 — provider errors must not break serialization
+            return None
+        return float(price) if isinstance(price, (int, float, Decimal)) else None
+
+    def _enrich_market_fields(
+        self, item: dict[str, Any], wallet: Wallet
+    ) -> dict[str, Any]:
+        """Adds cost_basis / current_value / change_percent the web table reads.
+
+        For ticker assets cost_basis is the estimated value at registration and
+        current_value is quantity × live quote (falling back to cost_basis when
+        BRAPI has no quote, so a held position never shows R$ 0,00). Non-ticker
+        assets use the stored manual value for both.
+
+        @param item Already-serialized wallet dict.
+        @param wallet Source ORM entity.
+        @return The same dict with market fields populated.
+        """
+        quantity = wallet.quantity or 0
+        if wallet.ticker and quantity:
+            cost_basis = float(wallet.estimated_value_on_create_date or 0)
+            price = self._safe_market_price(wallet.ticker)
+            current_value = price * quantity if price is not None else cost_basis
+        else:
+            cost_basis = float(wallet.value or 0)
+            current_value = cost_basis
+
+        item["cost_basis"] = cost_basis
+        item["current_value"] = current_value
+        item["change_percent"] = (
+            round((current_value - cost_basis) / cost_basis * 100, 2)
+            if cost_basis > 0
+            else None
+        )
+        return item
+
     def _serialize_wallet_item(self, wallet: Wallet) -> dict[str, Any]:
-        return self._strip_contract_fields(self._schema.dump(wallet))
+        item = self._strip_contract_fields(self._schema.dump(wallet))
+        return self._enrich_market_fields(item, wallet)
