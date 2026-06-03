@@ -38,9 +38,13 @@ def _build_cors_policy_from_env() -> CorsPolicy:
         "CORS_ALLOWED_METHODS",
         "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     ).strip()
+    # X-CSRF-TOKEN is required for the SEC-AUD-03 double-submit refresh flow:
+    # the browser preflights POST /auth/refresh with this header whenever
+    # AURAXIS_CSRF_ENFORCE=true, so omitting it blocks session restore on every
+    # hard reload (#1436).
     allowed_headers = os.getenv(
         "CORS_ALLOWED_HEADERS",
-        "Authorization,Content-Type,X-API-Contract,Idempotency-Key",
+        "Authorization,Content-Type,X-API-Contract,Idempotency-Key,X-CSRF-TOKEN",
     ).strip()
     return CorsPolicy(
         allowed_origins=_parse_allowed_origins(os.getenv("CORS_ALLOWED_ORIGINS")),

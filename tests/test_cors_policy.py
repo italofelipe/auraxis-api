@@ -75,12 +75,30 @@ def test_build_cors_policy_from_env_respects_defaults(
     assert policy.allowed_origins == {"https://api.auraxis.com.br"}
     assert policy.allow_credentials is True
     assert policy.allow_methods == "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-    assert (
-        policy.allow_headers
-        == "Authorization,Content-Type,X-API-Contract,Idempotency-Key"
+    assert policy.allow_headers == (
+        "Authorization,Content-Type,X-API-Contract,Idempotency-Key,X-CSRF-TOKEN"
     )
     assert policy.max_age_seconds == 600
     assert policy.is_production is True
+
+
+def test_default_allowed_headers_include_csrf_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """X-CSRF-TOKEN must be in the default CORS allow-list.
+
+    The session-restore flow (SEC-GAP-01) re-mints the access token via
+    POST /auth/refresh, sending the double-submit X-CSRF-TOKEN header
+    (SEC-AUD-03) whenever AURAXIS_CSRF_ENFORCE=true. If the header is absent
+    from Access-Control-Allow-Headers the browser preflight blocks the refresh
+    on every hard reload, logging the user out. Regression guard for #1436.
+    """
+    monkeypatch.delenv("CORS_ALLOWED_HEADERS", raising=False)
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.auraxis.com.br")
+
+    policy = _build_cors_policy_from_env()
+
+    assert "X-CSRF-TOKEN" in policy.allow_headers.split(",")
 
 
 def test_build_cors_policy_marks_non_production_when_testing_enabled(
@@ -246,6 +264,31 @@ def test_register_cors_handles_preflight_for_allowed_origin(
         response.headers.get("Access-Control-Allow-Origin")
         == "https://frontend.auraxis.com.br"
     )
+
+
+def test_register_cors_preflight_echoes_default_csrf_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end guard for #1436: with default headers, the OPTIONS preflight
+    for an allowed origin must advertise X-CSRF-TOKEN so the browser permits the
+    credentialed POST /auth/refresh that restores the session on reload."""
+    monkeypatch.setenv("FLASK_DEBUG", "true")
+    monkeypatch.setenv("FLASK_TESTING", "true")
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.auraxis.com.br")
+    monkeypatch.delenv("CORS_ALLOWED_HEADERS", raising=False)
+
+    app = _build_app()
+    register_cors(app)
+    client = app.test_client()
+
+    response = client.options(
+        "/ping",
+        headers={"Origin": "https://app.auraxis.com.br"},
+    )
+
+    assert response.status_code == 204
+    allow_headers = response.headers.get("Access-Control-Allow-Headers", "")
+    assert "X-CSRF-TOKEN" in allow_headers.split(",")
 
 
 def test_register_cors_rejects_invalid_production_policy(
