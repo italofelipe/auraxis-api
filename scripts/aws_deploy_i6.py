@@ -1073,6 +1073,13 @@ fi
 # (forward-only migrations is the policy).
 if [ "$MODE" = "deploy" ]; then
   echo "[i6] applying pending alembic migrations (flask db upgrade) in $WEB_CID..."
+  # Temporary diagnostics (#1429/#1431): the recreated container vs. its image
+  # vs. the alembic state, to root-cause the intermittent "Can't locate
+  # revision" exit-36 that resists isolation. Cheap; prints one block.
+  echo "[i6][diag] WEB_CID=$WEB_CID image=$(docker inspect --format '{{{{.Config.Image}}}}' "$WEB_CID" 2>&1)"
+  echo "[i6][diag] migrations_head_files=$(docker exec "$WEB_CID" sh -c 'ls /app/migrations/versions/ 2>&1 | grep -cE "sq1|fb1|rec1"' 2>&1)"
+  echo "[i6][diag] script_heads=$(docker exec -e FLASK_APP=run.py "$WEB_CID" flask db heads 2>&1 | tr '\\n' ' ')"
+  echo "[i6][diag] db_current=$(docker exec -e FLASK_APP=run.py "$WEB_CID" flask db current 2>&1 | tr '\\n' ' ')"
   ALEMBIC_STDERR="$(mktemp)"
   # Pin FLASK_APP=run.py: the running container leaves FLASK_APP empty, so a bare
   # `flask` relies on app auto-discovery, which can resolve to a context whose
