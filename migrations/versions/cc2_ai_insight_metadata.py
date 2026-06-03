@@ -29,11 +29,19 @@ branch_labels = None
 depends_on = None
 
 
+def _ai_insights_columns() -> set[str]:
+    """Return existing column names on the ``ai_insights`` table."""
+    inspector = sa.inspect(op.get_context().connection)
+    return {col["name"] for col in inspector.get_columns("ai_insights")}
+
+
 def upgrade() -> None:
-    op.add_column(
-        "ai_insights",
-        sa.Column("metadata_json", sa.Text(), nullable=True),
-    )
+    # Idempotent: skip if the column already exists (prod drift reconciliation).
+    if "metadata_json" not in _ai_insights_columns():
+        op.add_column(
+            "ai_insights",
+            sa.Column("metadata_json", sa.Text(), nullable=True),
+        )
 
 
 def downgrade() -> None:
