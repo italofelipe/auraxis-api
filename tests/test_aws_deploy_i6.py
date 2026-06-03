@@ -225,6 +225,26 @@ def test_build_script_prints_alembic_stderr_last_for_ssm_tail_visibility() -> No
     assert script.count("docker exec -e FLASK_APP=run.py") >= 3
 
 
+def test_build_script_normalizes_bare_branch_ref_to_origin() -> None:
+    """#1434: a bare branch ref must be reset to its remote-tracking ref.
+
+    `git fetch` advances origin/<branch> but not the local <branch>, so resetting
+    to a local branch can land on a stale commit (root cause of the exit-36
+    deploys: stale compose pinned an old local image without recent migrations).
+    """
+    script = aws_deploy_i6._build_script(
+        env_name="prod",
+        aws_region="us-east-1",
+        git_ref="master",
+        mode="deploy",
+    )
+    # The normalization branch must exist and map bare names to origin/<name>.
+    assert "refs/remotes/origin/$SYNC_REF" in script
+    assert 'SYNC_REF="origin/$SYNC_REF"' in script
+    # And the reset must target the (normalized) SYNC_REF, not a hardcoded local.
+    assert "git reset --hard '$SYNC_REF'" in script
+
+
 def test_build_script_asserts_alembic_current_equals_heads_after_upgrade() -> None:
     """AC: post-deploy assertion that flask db current == flask db heads."""
     script = aws_deploy_i6._build_script(
