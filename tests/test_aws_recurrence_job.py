@@ -10,7 +10,7 @@ import pytest
 from scripts import aws_recurrence_job
 
 
-def test_build_script_runs_recurrence_inside_web_service() -> None:
+def test_build_script_execs_reconcile_inside_running_web_container() -> None:
     script = aws_recurrence_job._build_script(env_name="prod")
     expected_up = (
         'docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d db redis'
@@ -19,11 +19,12 @@ def test_build_script_runs_recurrence_inside_web_service() -> None:
     assert 'ENV_FILE=".env.prod"' in script
     assert 'COMPOSE_FILE="docker-compose.prod.yml"' in script
     assert expected_up in script
-    assert "HOME=/tmp python -m pip install --user --no-cache-dir" in script
-    assert "PYTHONPATH=/tmp/.local/lib/python3.13/site-packages:/app" in script
-    assert "python scripts/generate_recurring_transactions.py" in script
-    assert "run --rm --no-deps \\" in script
-    assert "--entrypoint sh web -lc \\" in script
+    # Issue #1422: exec the flask command in the running container (mirrors the
+    # #1249 fix for AI insights) — no one-off `run` container, no runtime pip.
+    assert "exec -T \\" in script
+    assert "web flask recurrence reconcile" in script
+    assert "run --rm --no-deps" not in script
+    assert "pip install" not in script
 
 
 def test_wait_raises_ssm_command_failed_with_report(

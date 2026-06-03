@@ -1,12 +1,18 @@
-name: Recurrence Job
+name: Daily Recurrence Reconcile
 
 on:
-  # Schedule disabled: superseded by the Flask-command-based recurrence implementation.
-  # Kept as workflow_dispatch for emergency manual runs only.
+  schedule:
+    # Every day at 04:00 UTC = 01:00 BRT (after the nightly maintenance window).
+    - cron: "0 4 * * *"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry-run only (count recurring templates, create nothing)"
+        type: boolean
+        default: false
 
 concurrency:
-  group: recurrence-job-${{ github.ref }}
+  group: daily-recurrence
   cancel-in-progress: false
 
 permissions:
@@ -15,8 +21,8 @@ permissions:
   issues: write
 
 jobs:
-  generate-recurring-transactions:
-    name: Generate Recurring Transactions
+  reconcile:
+    name: Reconcile recurring transactions (materialise future months)
     runs-on: ubuntu-latest
     environment: prod
 
@@ -24,7 +30,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate required recurrence variables
+      - name: Validate required variables
         run: |
           [ -n "${AWS_REGION:-}" ] || { echo "Missing var AWS_REGION"; exit 1; }
           [ -n "${AWS_ROLE_ARN_PROD:-}" ] || { echo "Missing var AWS_ROLE_ARN_PROD"; exit 1; }
@@ -52,25 +58,25 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN_PROD }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Run recurrence generation script via SSM
+      - name: Run recurrence reconcile via SSM
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
-          RECURRENCE_DIAGNOSTICS_PATH: ${{ runner.temp }}/recurrence-ssm-diagnostics.json
+          DIAGNOSTICS_PATH: ${{ runner.temp }}/daily-recurrence-diagnostics.json
         run: |
           python scripts/aws_recurrence_job.py \
             --profile "" \
             --region "${AWS_REGION}" \
             --env prod \
             --instance-id "${PROD_INSTANCE_ID}" \
-            --diagnostics-json-path "${RECURRENCE_DIAGNOSTICS_PATH}"
+            --diagnostics-json-path "${DIAGNOSTICS_PATH}"
 
-      - name: Upload recurrence diagnostics artifact
-        if: ${{ always() }}
+      - name: Upload diagnostics artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: recurrence-ssm-diagnostics
-          path: ${{ runner.temp }}/recurrence-ssm-diagnostics.json
+          name: daily-recurrence-diagnostics
+          path: ${{ runner.temp }}/daily-recurrence-diagnostics.json
           if-no-files-found: ignore
 
       - name: Notify failure via GitHub Issue
@@ -81,26 +87,24 @@ jobs:
           script: |
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const now = new Date().toISOString();
-            const title = '🚨 [recurrence-job] Falha na geração de transações recorrentes';
+            const title = '🚨 [daily-recurrence] Falha na reconciliação de recorrências';
             const issueBody = [
-              '## Recurrence Job falhou',
+              '## Daily Recurrence Reconcile falhou',
               '',
               `**Última falha:** ${now}`,
               `**Run:** ${runUrl}`,
               '',
-              'O job agendado de geração de transações recorrentes falhou via SSM.',
-              'Verifique os logs do workflow, o diagnóstico do comando SSM e o estado da stack de produção.',
+              'O job diário de materialização de ocorrências recorrentes falhou via SSM.',
               '',
               '### Ações sugeridas',
               '- Revisar logs da execução no link acima',
-              '- Revisar o artifact `recurrence-ssm-diagnostics`',
-              '- Verificar o estado de `docker compose` e do container `web` na instância PROD',
-              '- Executar o helper `scripts/aws_recurrence_job.py` manualmente se necessário',
+              '- Verificar o artifact `daily-recurrence-diagnostics`',
+              '- Executar `flask recurrence reconcile --dry-run` no container para validar',
               '',
               '_Issue criada automaticamente pelo GitHub Actions._',
             ].join('\n');
             const commentBody = [
-              'Nova falha detectada no recurrence job.',
+              'Nova falha detectada no daily recurrence reconcile job.',
               '',
               `- Data: ${now}`,
               `- Run: ${runUrl}`,
@@ -118,7 +122,6 @@ jobs:
             const matchingIssue = search.data.items.find(
               (item) => item.title === title,
             );
-
             if (matchingIssue) {
               if (matchingIssue.state === 'closed') {
                 await github.rest.issues.update({
@@ -136,7 +139,6 @@ jobs:
               });
               return;
             }
-
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,

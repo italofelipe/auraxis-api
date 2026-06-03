@@ -282,13 +282,15 @@ for SERVICE in db redis; do
   fi
 done
 
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm --no-deps \\
-  --entrypoint sh web -lc \\
-  'cd /app \\
-   && HOME=/tmp python -m pip install --user --no-cache-dir \\
-        --disable-pip-version-check --quiet -r requirements.txt \\
-   && PYTHONPATH=/tmp/.local/lib/python3.13/site-packages:/app \\
-        python scripts/generate_recurring_transactions.py'
+# Exec the CLI inside the *running* web container (same fix as #1249 for the AI
+# insights job). `docker compose run web ...` is broken here: the prod ENTRYPOINT
+# always `exec gunicorn` and ignores the command, so the one-off container never
+# exits and the SSM wait times out; worse, the `run` path loaded .env.prod which
+# still pointed at the decommissioned RDS. `exec` reuses the live container with
+# the correct DATABASE_URL and exits cleanly when reconciliation finishes.
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T \\
+  -e FLASK_APP=run.py \\
+  web flask recurrence reconcile
 """
 
 
