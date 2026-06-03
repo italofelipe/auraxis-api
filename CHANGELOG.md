@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.54.2](https://github.com/italofelipe/auraxis-api/compare/v1.54.1...v1.54.2) (2026-06-03)
+
+
+### Bug Fixes
+
+* **cors:** allow X-CSRF-TOKEN header so reload restores session ([295109e](https://github.com/italofelipe/auraxis-api/commit/295109eb54c540ca81494177606343fa8bbcd616)), closes [#1436](https://github.com/italofelipe/auraxis-api/issues/1436)
+* **cors:** allow X-CSRF-TOKEN so reload restores session ([#1436](https://github.com/italofelipe/auraxis-api/issues/1436)) ([44bf3e1](https://github.com/italofelipe/auraxis-api/commit/44bf3e15cd20b0daefdf3d31da7f4522f2d25ed9))
+
 ## [1.54.1](https://github.com/italofelipe/auraxis-api/compare/v1.54.0...v1.54.1) (2026-06-03)
 
 
