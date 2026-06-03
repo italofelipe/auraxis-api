@@ -190,6 +190,37 @@ def test_build_script_aborts_when_alembic_upgrade_fails() -> None:
     assert "alembic upgrade failed" in script
 
 
+def test_build_script_prints_alembic_stderr_last_for_ssm_tail_visibility() -> None:
+    """#1429: the real alembic error must print AFTER dump_compose_diagnostics.
+
+    SSM caps command output (~24KB, keeps the tail). With diagnostics (incl.
+    reverse-proxy access logs) printed last, the actual alembic stderr was
+    truncated away — exit-36 deploys were undiagnosable (2026-06-03). The fix
+    prints the stderr last and caps the reverse-proxy flood.
+    """
+    script = aws_deploy_i6._build_script(
+        env_name="prod",
+        aws_region="us-east-1",
+        git_ref="origin/master",
+        mode="deploy",
+    )
+    start = script.find("alembic upgrade failed")
+    end = script.find("end alembic upgrade stderr")
+    fail_block = script[start:end]
+    diag_idx = fail_block.find("dump_compose_diagnostics")
+    stderr_idx = fail_block.find('cat "$ALEMBIC_STDERR"')
+    assert start != -1 and end != -1
+    assert diag_idx != -1 and stderr_idx != -1
+    assert diag_idx < stderr_idx, (
+        "alembic stderr must be printed AFTER dump_compose_diagnostics so it "
+        "survives the SSM output tail cap"
+    )
+    # reverse-proxy access logs capped low so they don't flood the tail window.
+    assert "logs --tail=15 reverse-proxy" in script
+    # WEB_CID resolution is defensive against a transient multi-id / zombie.
+    assert "ps -q web | head -n1" in script
+
+
 def test_build_script_asserts_alembic_current_equals_heads_after_upgrade() -> None:
     """AC: post-deploy assertion that flask db current == flask db heads."""
     script = aws_deploy_i6._build_script(
