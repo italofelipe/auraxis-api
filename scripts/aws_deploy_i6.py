@@ -914,20 +914,24 @@ dump_compose_diagnostics() {{
   docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml ps || true
   WEB_CID="$(
     docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml \\
-      ps -q web || true
+      ps -q web | head -n1 || true
   )"
   if [ -n "$WEB_CID" ]; then
     echo "[i6] web container id: $WEB_CID"
     docker inspect --format '{{{{json .State}}}}' "$WEB_CID" || true
   fi
+  # web logs are the most useful for a failed migration; keep them. Cap the
+  # reverse-proxy access log to a few lines — at --tail=200 it floods the SSM
+  # 24KB output window and pushes the real alembic error out of the captured
+  # tail (root cause of the unreadable exit-36 deploys, 2026-06-03).
   docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml \\
-    logs --tail=200 web || true
+    logs --tail=120 web || true
   docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml \\
-    logs --tail=200 reverse-proxy || true
+    logs --tail=15 reverse-proxy || true
   docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml \\
-    logs --tail=120 db || true
+    logs --tail=40 db || true
   docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml \\
-    logs --tail=120 redis || true
+    logs --tail=20 redis || true
 }}
 
 # Phase 1: Ensure infrastructure services are up (never force-recreate if healthy).
@@ -1004,9 +1008,12 @@ if ! docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml \\
   exit 31
 fi
 
+# head -n1: defensive against a transient multi-id (old + new during recreate,
+# or a leftover auraxis-web-run-* zombie). A multi-line $WEB_CID makes the later
+# `docker exec "$WEB_CID" ...` target an invalid id and fail opaquely (exit 36).
 WEB_CID="$(
   docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml \\
-    ps -q web || true
+    ps -q web | head -n1 || true
 )"
 if [ -z "$WEB_CID" ]; then
   echo "[i6] web container id not found after compose up"
@@ -1068,11 +1075,16 @@ if [ "$MODE" = "deploy" ]; then
   echo "[i6] applying pending alembic migrations (flask db upgrade) in $WEB_CID..."
   ALEMBIC_STDERR="$(mktemp)"
   if ! docker exec "$WEB_CID" flask db upgrade 2>"$ALEMBIC_STDERR"; then
-    echo "[i6] alembic upgrade failed"
-    echo "[i6] stderr:"
-    cat "$ALEMBIC_STDERR" || true
-    rm -f "$ALEMBIC_STDERR" || true
+    echo "[i6] alembic upgrade failed (web_cid=$WEB_CID)"
+    # Dump compose diagnostics FIRST, then the alembic stderr LAST: the SSM
+    # output is capped (~24KB, keeps the tail), so whatever prints last is what
+    # survives. Printing the real error last makes exit-36 deploys diagnosable
+    # from the CI log (2026-06-03 incident: the error was being truncated away).
     dump_compose_diagnostics
+    echo "[i6] ===== alembic upgrade stderr (real failure cause) ====="
+    cat "$ALEMBIC_STDERR" || true
+    echo "[i6] ===== end alembic upgrade stderr ====="
+    rm -f "$ALEMBIC_STDERR" || true
     exit 36
   fi
   rm -f "$ALEMBIC_STDERR" || true
@@ -1089,9 +1101,11 @@ if [ "$MODE" = "deploy" ]; then
     | awk '{{print $1}}' | tail -1)"
   echo "[i6] alembic current=$CUR_REV heads=$HEAD_REV"
   if [ -z "$CUR_REV" ] || [ -z "$HEAD_REV" ] || [ "$CUR_REV" != "$HEAD_REV" ]; then
-    echo "[i6] alembic drift detected after upgrade: current='$CUR_REV' \
-heads='$HEAD_REV' — aborting deploy before traffic flips."
     dump_compose_diagnostics
+    # Print the drift verdict LAST so it survives the SSM output tail cap.
+    echo "[i6] ===== alembic drift detected after upgrade ====="
+    echo "[i6] current='$CUR_REV' heads='$HEAD_REV' — aborting before traffic flips."
+    echo "[i6] ===== end alembic drift ====="
     exit 37
   fi
 fi
