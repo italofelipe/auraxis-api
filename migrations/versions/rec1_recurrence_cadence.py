@@ -31,25 +31,40 @@ branch_labels = None
 depends_on = None
 
 
+def _transactions_columns() -> set[str]:
+    """Return the existing column names on the ``transactions`` table."""
+    inspector = sa.inspect(op.get_context().connection)
+    return {col["name"] for col in inspector.get_columns("transactions")}
+
+
 def upgrade() -> None:
-    op.add_column(
-        "transactions",
-        sa.Column(
-            "recurrence_interval",
-            sa.Integer(),
-            nullable=False,
-            server_default="1",
-        ),
-    )
-    op.add_column(
-        "transactions",
-        sa.Column(
-            "recurrence_unit",
-            sa.String(length=10),
-            nullable=False,
-            server_default="month",
-        ),
-    )
+    # Idempotent: during the 2026-05-31 prod incident these columns were added
+    # manually as a hotfix without stamping this revision, so a later
+    # `flask db upgrade` failed with "column already exists" (deploy exit 36).
+    # Guard each add so the migration reconciles that drift safely while still
+    # creating the columns on a fresh database.
+    existing = _transactions_columns()
+
+    if "recurrence_interval" not in existing:
+        op.add_column(
+            "transactions",
+            sa.Column(
+                "recurrence_interval",
+                sa.Integer(),
+                nullable=False,
+                server_default="1",
+            ),
+        )
+    if "recurrence_unit" not in existing:
+        op.add_column(
+            "transactions",
+            sa.Column(
+                "recurrence_unit",
+                sa.String(length=10),
+                nullable=False,
+                server_default="month",
+            ),
+        )
 
 
 def downgrade() -> None:
