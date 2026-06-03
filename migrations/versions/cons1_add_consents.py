@@ -32,7 +32,19 @@ def _quoted_in_clause(values: tuple[str, ...]) -> str:
     return "(" + ", ".join(f"'{v}'" for v in values) + ")"
 
 
+def _has_table(name: str) -> bool:
+    """Return True when *name* already exists in the database."""
+    inspector = sa.inspect(op.get_context().connection)
+    return name in inspector.get_table_names()
+
+
 def upgrade() -> None:
+    # Idempotent: prod drift may already carry this table from a partial run;
+    # skip so `flask db upgrade` reconciles instead of failing with
+    # "relation already exists". On a fresh DB the table+indexes are created.
+    if _has_table("consents"):
+        return
+
     op.create_table(
         "consents",
         sa.Column(

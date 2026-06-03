@@ -18,7 +18,17 @@ branch_labels = None
 depends_on = None
 
 
+def _has_table(name: str) -> bool:
+    """Return True when *name* already exists in the database."""
+    inspector = sa.inspect(op.get_context().connection)
+    return name in inspector.get_table_names()
+
+
 def upgrade() -> None:
+    # Idempotent: skip if prod drift already created this table (reconciliation).
+    if _has_table("simulation_quota_usage"):
+        return
+
     op.create_table(
         "simulation_quota_usage",
         sa.Column("id", UUID(as_uuid=True), nullable=False),
