@@ -219,6 +219,10 @@ def test_build_script_prints_alembic_stderr_last_for_ssm_tail_visibility() -> No
     assert "logs --tail=15 reverse-proxy" in script
     # WEB_CID resolution is defensive against a transient multi-id / zombie.
     assert "ps -q web | head -n1" in script
+    # #1431: flask db exec must pin FLASK_APP so app→migrations resolution is
+    # deterministic (a bare `flask` relies on auto-discovery → "Can't locate
+    # revision" exit-36 flakes). All three db commands must set it.
+    assert script.count("docker exec -e FLASK_APP=run.py") >= 3
 
 
 def test_build_script_asserts_alembic_current_equals_heads_after_upgrade() -> None:
@@ -249,10 +253,13 @@ def test_build_script_migration_targets_pinned_web_container() -> None:
         git_ref="origin/master",
         mode="deploy",
     )
-    # Upgrade + drift queries must use the captured container id.
-    assert 'docker exec "$WEB_CID" flask db upgrade' in script
-    assert 'docker exec "$WEB_CID" flask db current' in script
-    assert 'docker exec "$WEB_CID" flask db heads' in script
+    # Upgrade + drift queries must use the captured container id (#1431 pins
+    # FLASK_APP for deterministic app→migrations resolution).
+    assert 'docker exec -e FLASK_APP=run.py "$WEB_CID" flask db current' in script
+    assert 'docker exec -e FLASK_APP=run.py "$WEB_CID" flask db heads' in script
+    # upgrade spans two lines; assert the pinned-container prefix and the command.
+    assert 'docker exec -e FLASK_APP=run.py "$WEB_CID"' in script
+    assert "flask db upgrade" in script
     # And must NOT re-resolve the service by name for these commands.
     assert "exec -T web flask db upgrade" not in script
     assert "exec -T web flask db current" not in script
