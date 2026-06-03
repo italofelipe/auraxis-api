@@ -1006,6 +1006,56 @@ class TestAIAdvisoryServiceWeeklySummary:
             with pytest.raises(LLMProviderError):
                 service.generate_weekly_summary_narrative()
 
+    def test_read_weekly_summary_without_insight_returns_empty_narrative(
+        self, app
+    ) -> None:
+        with app.app_context():
+            user_id = uuid.uuid4()
+            # A broken provider proves the read path never touches the LLM.
+            broken = MagicMock()
+            broken.generate_with_usage.side_effect = LLMProviderError("must not call")
+
+            from app.services.ai_advisory_service import AIAdvisoryService
+
+            service = AIAdvisoryService(user_id=user_id, llm_provider=broken)
+            result = service.read_weekly_summary_narrative()
+
+            assert result["narrative"] == ""
+            assert result["generated_at"] is None
+            assert "current_week" in result["summary"]
+            broken.generate_with_usage.assert_not_called()
+
+    def test_read_weekly_summary_returns_latest_persisted_narrative(self, app) -> None:
+        with app.app_context():
+            from app.extensions.database import db
+            from app.models.ai_insight import AIInsight, InsightType
+            from app.services.ai_advisory_service import AIAdvisoryService
+
+            user_id = uuid.uuid4()
+            iso = date.today().isocalendar()
+            db.session.add(
+                AIInsight(
+                    user_id=user_id,
+                    content='{"summary":"Resumo da semana.","items":[]}',
+                    insight_type=InsightType.weekly,
+                    period_label=f"{iso.year}-W{iso.week:02d}",
+                    period_start=date.today(),
+                    period_end=date.today(),
+                    model="gpt-4o-mini",
+                    tokens_used=99,
+                    cost_usd=0,
+                )
+            )
+            db.session.commit()
+
+            service = AIAdvisoryService(user_id=user_id, llm_provider=MagicMock())
+            result = service.read_weekly_summary_narrative()
+
+            assert result["narrative"] == "Resumo da semana."
+            assert result["model"] == "gpt-4o-mini"
+            assert result["tokens_used"] == 99
+            assert result["generated_at"] is not None
+
 
 # ---------------------------------------------------------------------------
 # HTTP endpoint tests
@@ -1514,14 +1564,75 @@ class TestAIWeeklySummaryEndpoint:
         for key in ("narrative", "tokens_used", "cost_usd", "summary", "model"):
             assert key in data, f"Missing key: {key}"
 
-    def test_llm_error_returns_500(self, app, client) -> None:
+    def test_read_is_side_effect_free_no_llm_no_email(self, app, client) -> None:
+        """The GET must never generate an insight nor send an email."""
+        token = _register_and_login(client, prefix="ai-wnoside")
+        user_id = _get_current_user_id(app, token)
+        _grant_entitlement(app, user_id, "advanced_simulations")
+
+        with (
+            patch(
+                "app.services.ai_advisory_service.AIAdvisoryService."
+                "generate_weekly_summary_narrative"
+            ) as gen,
+            patch(
+                "app.services.analysis_ready_notification_service."
+                "dispatch_analysis_ready_notification"
+            ) as notify,
+        ):
+            resp = client.get("/ai/insights/weekly-summary", headers=_auth(token))
+
+        assert resp.status_code == 200
+        gen.assert_not_called()
+        notify.assert_not_called()
+        body = resp.get_json()
+        data = body.get("data") or body
+        # No insight generated yet → empty narrative, no generation timestamp.
+        assert data["narrative"] == ""
+        assert data["generated_at"] is None
+
+    def test_read_returns_persisted_weekly_narrative(self, app, client) -> None:
+        token = _register_and_login(client, prefix="ai-wpersist")
+        user_id = _get_current_user_id(app, token)
+        _grant_entitlement(app, user_id, "advanced_simulations")
+
+        with app.app_context():
+            from app.extensions.database import db
+            from app.models.ai_insight import AIInsight, InsightType
+
+            iso = date.today().isocalendar()
+            db.session.add(
+                AIInsight(
+                    user_id=user_id,
+                    content='{"summary":"Sua semana foi positiva.","items":[]}',
+                    insight_type=InsightType.weekly,
+                    period_label=f"{iso.year}-W{iso.week:02d}",
+                    period_start=date.today(),
+                    period_end=date.today(),
+                    model="gpt-4o-mini",
+                    tokens_used=120,
+                    cost_usd=0,
+                )
+            )
+            db.session.commit()
+
+        resp = client.get("/ai/insights/weekly-summary", headers=_auth(token))
+        assert resp.status_code == 200
+        body = resp.get_json()
+        data = body.get("data") or body
+        assert data["narrative"] == "Sua semana foi positiva."
+        assert data["model"] == "gpt-4o-mini"
+        assert data["generated_at"] is not None
+
+    def test_read_error_returns_500(self, app, client) -> None:
         token = _register_and_login(client, prefix="ai-werr")
         user_id = _get_current_user_id(app, token)
         _grant_entitlement(app, user_id, "advanced_simulations")
 
         with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_weekly_summary_narrative",
-            side_effect=LLMProviderError("provider down"),
+            "app.services.ai_advisory_service.AIAdvisoryService."
+            "read_weekly_summary_narrative",
+            side_effect=RuntimeError("db down"),
         ):
             resp = client.get("/ai/insights/weekly-summary", headers=_auth(token))
             assert resp.status_code == 500

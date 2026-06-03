@@ -55,9 +55,6 @@ from app.services.ai_monthly_report_service import (
     get_monthly_report_run_status,
     process_monthly_report_run,
 )
-from app.services.analysis_ready_notification_service import (
-    dispatch_analysis_ready_notification,
-)
 from app.services.entitlement_service import has_entitlement
 from app.services.llm_provider import LLMProviderError
 from app.utils import timezone_utils
@@ -637,23 +634,27 @@ class AIWeeklySummaryResource(MethodResource):
     """GET /ai/insights/weekly-summary — AI narrative for weekly summary."""
 
     @doc(
-        summary="Briefing semanal com IA (Premium)",
+        summary="Briefing semanal com IA (Premium, somente leitura)",
         description=(
-            "Gera um briefing narrativo do resumo financeiro da semana atual. "
-            "Requer entitlement 'advanced_simulations' (plano Premium)."
+            "Retorna o resumo financeiro da semana atual (agregação de "
+            "transações) e a narrativa do último insight semanal já gerado pelo "
+            "batch agendado. NÃO chama o LLM nem envia email — a geração ocorre "
+            "exclusivamente no cron semanal. Quando ainda não há insight, "
+            "'narrative' vem vazio. Requer entitlement 'advanced_simulations'."
         ),
         tags=["AI Advisory"],
         security=[{"BearerAuth": []}],
         responses={
             200: json_success_response(
-                description="Briefing gerado com sucesso",
-                message="Briefing semanal gerado com sucesso",
+                description="Resumo semanal retornado com sucesso",
+                message="Resumo semanal retornado com sucesso",
                 data_example={
                     "narrative": "Esta semana você gastou R$ 1.200...",
                     "tokens_used": 280,
                     "cost_usd": 0.000042,
                     "summary": {"current_week": {}, "previous_week": {}},
                     "model": "gpt-4o-mini",
+                    "generated_at": "2026-06-01T03:00:00",
                 },
             ),
             401: json_error_response(
@@ -669,15 +670,14 @@ class AIWeeklySummaryResource(MethodResource):
                 status_code=403,
             ),
             500: json_error_response(
-                description="Falha do provider LLM",
-                message="Erro ao gerar briefing semanal",
+                description="Erro interno",
+                message="Erro ao ler resumo semanal",
                 error_code="INTERNAL_ERROR",
                 status_code=500,
             ),
         },
     )
     @jwt_required()
-    @ai_daily_limit()
     def get(self) -> Response:
         token_error = _guard_revoked_token()
         if token_error is not None:
@@ -691,34 +691,19 @@ class AIWeeklySummaryResource(MethodResource):
 
         service = AIAdvisoryService(user_id=user_id)
         try:
-            result = service.generate_weekly_summary_narrative()
-        except AIConsentRequiredError as exc:
-            return _ai_consent_required_response(exc)
-        except LLMProviderError as exc:
-            return compat_error_response(
-                legacy_payload={"error": str(exc)},
-                status_code=500,
-                message="Erro ao gerar briefing semanal",
-                error_code="INTERNAL_ERROR",
-            )
+            result = service.read_weekly_summary_narrative()
         except Exception:
             return compat_error_response(
                 legacy_payload={"error": "Erro interno"},
                 status_code=500,
-                message="Erro interno ao gerar briefing semanal",
+                message="Erro ao ler resumo semanal",
                 error_code="INTERNAL_ERROR",
             )
-
-        # Notify the user that a new analysis is ready (fire-and-forget).
-        # Truncate narrative to 280 chars for the email preview.
-        _notify_analysis_ready(
-            user_id=user_id, narrative=str(result.get("narrative", ""))
-        )
 
         return compat_success_response(
             legacy_payload=result,
             status_code=200,
-            message="Briefing semanal gerado com sucesso",
+            message="Resumo semanal retornado com sucesso",
             data=result,
         )
 
@@ -971,28 +956,6 @@ class AIInsightDetailResource(MethodResource):
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _notify_analysis_ready(*, user_id: UUID, narrative: str) -> None:
-    """Fire-and-forget: send 'analysis ready' notification to the user.
-
-    Swallows all exceptions so notification failures never break the response.
-    The notification service itself handles entitlement gating — free users
-    are silently skipped without reaching this point in practice because the
-    endpoint already requires 'advanced_simulations', but the service enforces
-    'email_reminders' independently.
-    """
-    try:
-        preview = (
-            narrative[:280].rsplit(" ", 1)[0] if len(narrative) > 280 else narrative
-        )
-        dispatch_analysis_ready_notification(
-            user_id=user_id,
-            summary_preview=preview
-            or "Sua análise financeira semanal está disponível.",  # noqa: E501
-        )
-    except Exception as exc:
-        log.warning("ai.weekly_summary.notify_failed user_id=%s error=%s", user_id, exc)
 
 
 def _strip_history_json_code_fence(content: str) -> str:

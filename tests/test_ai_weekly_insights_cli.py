@@ -141,6 +141,58 @@ class TestWeeklyInsightsCLI:
         assert "processed=1" in result.output
         assert "failures=0" in result.output
 
+    def test_successful_generation_dispatches_notification(self, app) -> None:
+        """The batch is the single place the 'analysis ready' email is sent."""
+        user_id = _create_user(app)
+        _grant_advanced_simulations(app, user_id)
+
+        with (
+            patch(
+                "app.services.ai_advisory_service.AIAdvisoryService"
+                ".generate_financial_insights",
+                return_value={
+                    "summary": "Sua semana foi positiva.",
+                    "items": [],
+                    "period_type": "weekly",
+                    "tokens_used": 150,
+                    "cost_usd": 0.00002,
+                    "model": "stub",
+                    "cached": False,
+                },
+            ),
+            patch(
+                "app.cli.ai_insights_cli.dispatch_analysis_ready_notification"
+            ) as mock_notify,
+        ):
+            result = self._invoke(app)
+
+        assert result.exit_code == 0
+        assert mock_notify.call_count == 1
+        assert mock_notify.call_args.kwargs["user_id"] == user_id
+        assert (
+            mock_notify.call_args.kwargs["summary_preview"]
+            == "Sua semana foi positiva."
+        )
+
+    def test_cached_generation_does_not_dispatch_notification(self, app) -> None:
+        user_id = _create_user(app)
+        _grant_advanced_simulations(app, user_id)
+
+        with (
+            patch(
+                "app.services.ai_advisory_service.AIAdvisoryService"
+                ".generate_financial_insights",
+                return_value={"summary": "x", "items": [], "cached": True},
+            ),
+            patch(
+                "app.cli.ai_insights_cli.dispatch_analysis_ready_notification"
+            ) as mock_notify,
+        ):
+            result = self._invoke(app)
+
+        assert result.exit_code == 0
+        mock_notify.assert_not_called()
+
     def test_multiple_premium_users_each_called_once(self, app) -> None:
         user_ids = [_create_user(app) for _ in range(3)]
         for uid in user_ids:

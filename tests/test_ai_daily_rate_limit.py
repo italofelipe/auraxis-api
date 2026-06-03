@@ -371,56 +371,35 @@ class TestAIDailyRateLimitHTTP:
             or "amanhã" in str(data.get("error", {})).lower()
         )
 
-    def test_weekly_summary_also_rate_limited(self, app, client) -> None:
+    def test_weekly_summary_read_is_not_rate_limited(self, app, client) -> None:
+        """The weekly-summary GET is read-only and must NOT consume the AI daily
+        quota — generation (and its rate limit) lives in the scheduled batch."""
         token = _register_and_login(client, "ai-rl-weekly")
         _grant_premium(app, token)
 
-        with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_weekly_summary_narrative",
-            return_value={
-                "narrative": "ok",
-                "tokens_used": 10,
-                "cost_usd": 0.0,
-                "summary": {},
-                "model": "stub",
-            },
-        ):
-            client.get("/ai/insights/weekly-summary", headers=_auth(token))
-            client.get("/ai/insights/weekly-summary", headers=_auth(token))
-            resp = client.get(
-                "/ai/insights/weekly-summary", headers=_auth(token, v2=True)
-            )
+        # Many reads in a row must keep returning 200, never 429.
+        client.get("/ai/insights/weekly-summary", headers=_auth(token))
+        client.get("/ai/insights/weekly-summary", headers=_auth(token))
+        resp = client.get("/ai/insights/weekly-summary", headers=_auth(token, v2=True))
 
-        assert resp.status_code == 429
-        assert resp.get_json()["error"]["code"] == "AI_DAILY_LIMIT_EXCEEDED"
+        assert resp.status_code == 200
 
-    def test_spending_and_weekly_share_same_daily_counter(self, app, client) -> None:
-        """Spending and weekly share one daily counter — at 1/day the second
-        call (weekly) is already blocked."""
+    def test_weekly_read_does_not_consume_spending_counter(self, app, client) -> None:
+        """The weekly-summary read is free; only spending consumes the daily
+        counter, so a weekly read between two spending calls does not shift the
+        limit."""
         token = _register_and_login(client, "ai-rl-shared")
         _grant_premium(app, token)
 
-        with (
-            patch(
-                "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
-                return_value={
-                    "insights": "ok",
-                    "tokens_used": 10,
-                    "cost_usd": 0.0,
-                    "month": "2026-05",
-                    "model": "stub",
-                },
-            ),
-            patch(
-                "app.services.ai_advisory_service.AIAdvisoryService.generate_weekly_summary_narrative",
-                return_value={
-                    "narrative": "ok",
-                    "tokens_used": 10,
-                    "cost_usd": 0.0,
-                    "summary": {},
-                    "model": "stub",
-                },
-            ),
+        with patch(
+            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
+            return_value={
+                "insights": "ok",
+                "tokens_used": 10,
+                "cost_usd": 0.0,
+                "month": "2026-05",
+                "model": "stub",
+            },
         ):
             r1 = client.get("/ai/insights/spending", headers=_auth(token))
             r2 = client.get(
@@ -429,8 +408,8 @@ class TestAIDailyRateLimitHTTP:
             r3 = client.get("/ai/insights/spending", headers=_auth(token, v2=True))
 
         assert r1.status_code == 200
-        assert r2.status_code == 429
-        assert r3.status_code == 429
+        assert r2.status_code == 200  # read-only, not rate limited
+        assert r3.status_code == 429  # second spending call hits the daily cap
 
     def test_free_user_gets_403_not_429(self, app, client) -> None:
         """Free users are blocked by entitlement gate before reaching rate limit."""

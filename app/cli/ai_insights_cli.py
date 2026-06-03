@@ -32,6 +32,9 @@ from app.models.entitlement import Entitlement
 from app.models.user import User
 from app.services.ai_advisory_service import AIAdvisoryService
 from app.services.ai_insight_audit import get_ai_insight_run_dossier
+from app.services.analysis_ready_notification_service import (
+    dispatch_analysis_ready_notification,
+)
 
 ai_insights_cli = AppGroup("ai", help="Scheduled AI insights batch commands.")
 
@@ -164,6 +167,20 @@ def _write_dossier_files(
     return written
 
 
+def _notification_preview(result: dict[str, Any]) -> str:
+    """Build a short email preview from a generated insight result.
+
+    Uses the insight summary truncated to ~280 chars on a word boundary; falls
+    back to the service default when no summary is present.
+    """
+    summary = str(result.get("summary") or "").strip()
+    if not summary:
+        return "Sua análise financeira está disponível."
+    if len(summary) <= 280:
+        return summary
+    return summary[:280].rsplit(" ", 1)[0]
+
+
 def _run_batch(
     *,
     user_ids: list[uuid.UUID],
@@ -214,6 +231,20 @@ def _run_batch(
             else:
                 total_cost += float(result.get("cost_usd", 0))
                 processed += 1
+                # Notify the user that a fresh analysis is ready. This is the
+                # ONLY place the "analysis ready" email is sent — reads of
+                # /ai/insights/weekly-summary are side-effect free. Best-effort:
+                # a notification failure must not abort the batch.
+                try:
+                    dispatch_analysis_ready_notification(
+                        user_id=user_id,
+                        summary_preview=_notification_preview(result),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    click.echo(
+                        f"{label} NOTIFY-WARN user={user_id} error={exc}",
+                        err=True,
+                    )
         except Exception as exc:  # noqa: BLE001
             click.echo(
                 f"{label} ERROR user={user_id} error={exc}",
