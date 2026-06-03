@@ -260,6 +260,48 @@ def _get_latest_insight_for_period_context(
     return insight
 
 
+def _get_latest_insight_by_type(
+    *,
+    user_id: UUID,
+    insight_type: InsightType,
+) -> AIInsight | None:
+    """Return the most recently created AIInsight of a given type, or None."""
+    insight: AIInsight | None = (
+        db.session.query(AIInsight)
+        .filter_by(user_id=user_id, insight_type=insight_type)
+        .order_by(AIInsight.created_at.desc())
+        .first()
+    )
+    return insight
+
+
+def _extract_insight_narrative(content: str) -> str:
+    """Extract a human-readable narrative from a persisted insight's content.
+
+    Insight content is stored as JSON (``{"summary": ..., "items": [...]}``) for
+    period-aware insights, but legacy rows may hold raw prose. This helper
+    tolerates both: it returns the ``summary`` field when present, otherwise the
+    raw content stripped of any markdown code fence.
+    """
+    text = content.strip()
+    if text.startswith("```"):
+        first_newline = text.find("\n")
+        if first_newline != -1:
+            text = text[first_newline + 1 :]
+        if text.rstrip().endswith("```"):
+            text = text.rstrip()[:-3]
+        text = text.strip()
+    try:
+        parsed = json.loads(text)
+    except (ValueError, TypeError):
+        return text
+    if isinstance(parsed, dict):
+        summary = parsed.get("summary")
+        if isinstance(summary, str) and summary.strip():
+            return summary.strip()
+    return text
+
+
 def _period_label_for_anchor(
     *,
     insight_type: InsightType,
@@ -1660,6 +1702,45 @@ class AIAdvisoryService:
             "cost_usd": llm_resp.estimated_cost_usd,
             "summary": summary,
             "model": llm_resp.model,
+        }
+
+    def read_weekly_summary_narrative(self) -> dict[str, Any]:
+        """Read-only weekly briefing for the dashboard.
+
+        Returns the current week's numeric summary (a pure DB aggregation) plus
+        the narrative from the latest persisted weekly insight, if any. This
+        method NEVER calls the LLM and NEVER sends email — generation and
+        notification happen exclusively in the scheduled batch
+        (``flask ai weekly-insights``). When no weekly insight has been
+        generated yet, ``narrative`` is an empty string and ``generated_at`` is
+        ``None`` so the UI can show a "will be generated" state.
+
+        Returns:
+            {"narrative": str, "tokens_used": int, "cost_usd": float,
+             "summary": dict, "model": str, "generated_at": str | None}
+        """
+        summary = compute_weekly_summary(user_id=self._user_id)
+        latest = _get_latest_insight_by_type(
+            user_id=self._user_id, insight_type=InsightType.weekly
+        )
+
+        if latest is None:
+            return {
+                "narrative": "",
+                "tokens_used": 0,
+                "cost_usd": 0.0,
+                "summary": summary,
+                "model": "",
+                "generated_at": None,
+            }
+
+        return {
+            "narrative": _extract_insight_narrative(latest.content),
+            "tokens_used": latest.tokens_used,
+            "cost_usd": float(latest.cost_usd),
+            "summary": summary,
+            "model": latest.model,
+            "generated_at": latest.created_at.isoformat(),
         }
 
 
