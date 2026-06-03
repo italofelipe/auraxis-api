@@ -1074,7 +1074,13 @@ fi
 if [ "$MODE" = "deploy" ]; then
   echo "[i6] applying pending alembic migrations (flask db upgrade) in $WEB_CID..."
   ALEMBIC_STDERR="$(mktemp)"
-  if ! docker exec "$WEB_CID" flask db upgrade 2>"$ALEMBIC_STDERR"; then
+  # Pin FLASK_APP=run.py: the running container leaves FLASK_APP empty, so a bare
+  # `flask` relies on app auto-discovery, which can resolve to a context whose
+  # migrations script_location is wrong → "Can't locate revision ..." (exit 36)
+  # even when image + DB are correct. Setting it explicitly makes app→migrations
+  # resolution deterministic (matches run.py:create_app).
+  if ! docker exec -e FLASK_APP=run.py "$WEB_CID" \\
+    flask db upgrade 2>"$ALEMBIC_STDERR"; then
     echo "[i6] alembic upgrade failed (web_cid=$WEB_CID)"
     # Dump compose diagnostics FIRST, then the alembic stderr LAST: the SSM
     # output is capped (~24KB, keeps the tail), so whatever prints last is what
@@ -1095,9 +1101,9 @@ if [ "$MODE" = "deploy" ]; then
   # this fails the deploy has applied migrations but the resulting tip
   # diverges from the code's expected head — indicates alembic config drift
   # or a manual edit to the live DB. Abort before flipping traffic.
-  CUR_REV="$(docker exec "$WEB_CID" flask db current 2>/dev/null \\
+  CUR_REV="$(docker exec -e FLASK_APP=run.py "$WEB_CID" flask db current 2>/dev/null \\
     | awk '{{print $1}}' | tail -1)"
-  HEAD_REV="$(docker exec "$WEB_CID" flask db heads 2>/dev/null \\
+  HEAD_REV="$(docker exec -e FLASK_APP=run.py "$WEB_CID" flask db heads 2>/dev/null \\
     | awk '{{print $1}}' | tail -1)"
   echo "[i6] alembic current=$CUR_REV heads=$HEAD_REV"
   if [ -z "$CUR_REV" ] || [ -z "$HEAD_REV" ] || [ "$CUR_REV" != "$HEAD_REV" ]; then
