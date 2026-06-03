@@ -11,9 +11,8 @@ on:
         required: true
         type: choice
         options:
-          - dev
           - prod
-        default: dev
+        default: prod
       git_ref:
         description: "Git ref to deploy (branch/tag/sha). Empty = github.sha (manual)"
         required: false
@@ -21,7 +20,7 @@ on:
         default: ""
 
 concurrency:
-  group: deploy-${{ github.ref }}-${{ github.event_name }}-${{ inputs.env || 'dev' }}
+  group: deploy-${{ github.ref }}-${{ github.event_name }}-${{ inputs.env || 'prod' }}
   cancel-in-progress: false
 
 permissions:
@@ -70,161 +69,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy-dev:
-    name: Deploy DEV
-    needs: [build-and-push]
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || inputs.env == 'dev' }}
-    environment: dev
-    permissions:
-      contents: read
-      id-token: write
-      packages: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate required DEV deploy variables
-        run: |
-          [ -n "${AWS_REGION:-}" ] || { echo "Missing var AWS_REGION"; exit 1; }
-          [ -n "${AWS_ROLE_ARN_DEV:-}" ] || { echo "Missing var AWS_ROLE_ARN_DEV"; exit 1; }
-          [ -n "${AURAXIS_DEV_INSTANCE_ID:-}" ] || { echo "Missing var AURAXIS_DEV_INSTANCE_ID"; exit 1; }
-          [ -n "${AURAXIS_PROD_INSTANCE_ID:-}" ] || { echo "Missing var AURAXIS_PROD_INSTANCE_ID"; exit 1; }
-        env:
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          AWS_ROLE_ARN_DEV: ${{ vars.AWS_ROLE_ARN_DEV }}
-          AURAXIS_DEV_INSTANCE_ID: ${{ vars.AURAXIS_DEV_INSTANCE_ID }}
-          AURAXIS_PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN_DEV }}
-          aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Deploy via SSM
-        id: deploy_dev
-        env:
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          DEV_INSTANCE_ID: ${{ vars.AURAXIS_DEV_INSTANCE_ID }}
-          PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
-          DEPLOY_DIAGNOSTICS_PATH: ${{ runner.temp }}/deploy-dev-ssm-diagnostics.json
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.image }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          INPUT_REF="${{ inputs.git_ref }}"
-          REF="${INPUT_REF}"
-          if [ -z "${REF}" ]; then
-            # Use absolute SHA — avoids stale origin/master on EC2 if git fetch
-            # fails to update remote tracking refs (root cause of 9cc86c9 regression).
-            REF="${{ github.sha }}"
-          fi
-          if [ -z "${REF}" ]; then
-            echo "Unable to resolve deploy ref for DEV." >&2
-            exit 1
-          fi
-          echo "Resolved DEV deploy ref:"
-          echo "  event=${{ github.event_name }}"
-          echo "  github_ref=${GITHUB_REF}"
-          echo "  github_ref_name=${GITHUB_REF_NAME}"
-          echo "  input_ref=${INPUT_REF:-<empty>}"
-          echo "  resolved_ref=${REF}"
-          echo "  image=${IMAGE_TAG}"
-          MAX_ATTEMPTS=2
-          ATTEMPT=0
-          while [ "${ATTEMPT}" -lt "${MAX_ATTEMPTS}" ]; do
-            ATTEMPT=$((ATTEMPT + 1))
-            echo "SSM deploy attempt ${ATTEMPT}/${MAX_ATTEMPTS}"
-            if python scripts/aws_deploy_i6.py \
-              --profile "" \
-              --region "${AWS_REGION}" \
-              --dev-instance-id "${DEV_INSTANCE_ID}" \
-              --prod-instance-id "${PROD_INSTANCE_ID}" \
-              --diagnostics-json-path "${DEPLOY_DIAGNOSTICS_PATH}" \
-              deploy --env dev --git-ref "${REF}" \
-              --image "${IMAGE_TAG}" \
-              --ghcr-token "${GHCR_TOKEN}"; then
-              break
-            fi
-            if [ "${ATTEMPT}" -lt "${MAX_ATTEMPTS}" ]; then
-              echo "Attempt ${ATTEMPT} failed — waiting 60s before retry (SSM IPC transient errors are common)..."
-              sleep 60
-            else
-              echo "All ${MAX_ATTEMPTS} deploy attempts failed." >&2
-              exit 1
-            fi
-          done
-
-      - name: Upload deploy diagnostics artifact (DEV)
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: deploy-dev-ssm-diagnostics
-          path: ${{ runner.temp }}/deploy-dev-ssm-diagnostics.json
-          if-no-files-found: ignore
-
-      - name: REST + GraphQL smoke checks (DEV)
-        id: smoke_dev
-        env:
-          DEV_BASE_URL: ${{ vars.AURAXIS_DEV_BASE_URL }}
-        run: |
-          BASE_URL="${DEV_BASE_URL:-http://dev.api.auraxis.com.br}"
-          python scripts/http_smoke_check.py \
-            --env-name dev \
-            --base-url "${BASE_URL}" \
-            --timeout 20 \
-            --skip-cors
-
-      - name: Auto-rollback DEV on deploy failure
-        if: ${{ failure() && (steps.deploy_dev.outcome == 'failure' || steps.smoke_dev.outcome == 'failure') }}
-        continue-on-error: true
-        env:
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          DEV_INSTANCE_ID: ${{ vars.AURAXIS_DEV_INSTANCE_ID }}
-          PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
-        run: |
-          # Log which deploy-critical step triggered the rollback for on-call clarity.
-          echo "::warning::Rollback triggered — deploy_dev=${{ steps.deploy_dev.outcome }}, smoke_dev=${{ steps.smoke_dev.outcome }}"
-          python scripts/aws_deploy_i6.py \
-            --profile "" \
-            --region "${AWS_REGION}" \
-            --dev-instance-id "${DEV_INSTANCE_ID}" \
-            --prod-instance-id "${PROD_INSTANCE_ID}" \
-            rollback --env dev
-
-      - name: Deploy summary (DEV)
-        if: ${{ always() }}
-        run: |
-          {
-            echo "## Deploy DEV"
-            echo ""
-            echo "- branch/ref: \`${{ github.ref }}\`"
-            echo "- event: \`${{ github.event_name }}\`"
-            echo "- target env: \`dev\`"
-            echo "- deploy step outcome: \`${{ steps.deploy_dev.outcome }}\`"
-            echo "- smoke checks: \`enabled (REST + GraphQL)\`"
-            echo "- rollback on failure: \`enabled\`"
-            _diag="${{ runner.temp }}/deploy-dev-ssm-diagnostics.json"
-            if [ -f "${_diag}" ]; then
-              echo "- diagnostics artifact: \`deploy-dev-ssm-diagnostics\`"
-              echo "- SSM command id: \`$(jq -r '.command_id // ""' "${_diag}")\`"
-              echo "- SSM status: \`$(jq -r '.status // ""' "${_diag}")\`"
-              echo "- SSM status details: \`$(jq -r '.status_details // "<none>"' "${_diag}")\`"
-              echo "- SSM response code: \`$(jq -r '.response_code // ""' "${_diag}")\`"
-            fi
-            echo "- ref resolution:"
-            echo "  - event: \`${{ github.event_name }}\`"
-            echo "  - github ref: \`${{ github.ref }}\`"
-            echo "  - github ref name: \`${{ github.ref_name }}\`"
-            echo "  - input git_ref: \`${{ inputs.git_ref }}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
   deploy-prod:
     name: Deploy PROD
     needs: [build-and-push]
@@ -251,12 +95,10 @@ jobs:
         run: |
           [ -n "${AWS_REGION:-}" ] || { echo "Missing var AWS_REGION"; exit 1; }
           [ -n "${AWS_ROLE_ARN_PROD:-}" ] || { echo "Missing var AWS_ROLE_ARN_PROD"; exit 1; }
-          [ -n "${AURAXIS_DEV_INSTANCE_ID:-}" ] || { echo "Missing var AURAXIS_DEV_INSTANCE_ID"; exit 1; }
           [ -n "${AURAXIS_PROD_INSTANCE_ID:-}" ] || { echo "Missing var AURAXIS_PROD_INSTANCE_ID"; exit 1; }
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           AWS_ROLE_ARN_PROD: ${{ vars.AWS_ROLE_ARN_PROD }}
-          AURAXIS_DEV_INSTANCE_ID: ${{ vars.AURAXIS_DEV_INSTANCE_ID }}
           AURAXIS_PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
 
       - name: Setup Python
@@ -274,7 +116,6 @@ jobs:
         id: deploy_prod
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
-          DEV_INSTANCE_ID: ${{ vars.AURAXIS_DEV_INSTANCE_ID }}
           PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
           DEPLOY_DIAGNOSTICS_PATH: ${{ runner.temp }}/deploy-prod-ssm-diagnostics.json
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image }}
@@ -306,7 +147,6 @@ jobs:
             if python scripts/aws_deploy_i6.py \
               --profile "" \
               --region "${AWS_REGION}" \
-              --dev-instance-id "${DEV_INSTANCE_ID}" \
               --prod-instance-id "${PROD_INSTANCE_ID}" \
               --diagnostics-json-path "${DEPLOY_DIAGNOSTICS_PATH}" \
               deploy --env prod --git-ref "${REF}" \
@@ -395,7 +235,6 @@ jobs:
         continue-on-error: true
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
-          DEV_INSTANCE_ID: ${{ vars.AURAXIS_DEV_INSTANCE_ID }}
           PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
         run: |
           # Log which deploy-critical step triggered rollback for on-call clarity (per #1263 AC).
@@ -403,7 +242,6 @@ jobs:
           python scripts/aws_deploy_i6.py \
             --profile "" \
             --region "${AWS_REGION}" \
-            --dev-instance-id "${DEV_INSTANCE_ID}" \
             --prod-instance-id "${PROD_INSTANCE_ID}" \
             rollback --env prod
 
