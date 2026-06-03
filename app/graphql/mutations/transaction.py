@@ -84,6 +84,9 @@ class CreateTransactionMutation(graphene.Mutation):
 class DeleteTransactionMutation(graphene.Mutation):
     class Arguments:
         transaction_id = graphene.UUID(required=True)
+        # "series" soft-deletes the whole recurring series; default deletes
+        # only this occurrence (REST parity with ?scope=).
+        scope = graphene.String(required=False)
 
     ok = graphene.Boolean(required=True)
     message = graphene.String(required=True)
@@ -96,8 +99,12 @@ class DeleteTransactionMutation(graphene.Mutation):
         info: graphene.ResolveInfo,
         service: TransactionApplicationService,
         transaction_id: UUID,
+        scope: str | None = None,
     ) -> "DeleteTransactionMutation":
-        service.delete_transaction(transaction_id)
+        normalized_scope = (
+            "series" if (scope or "").strip().lower() == "series" else "occurrence"
+        )
+        service.delete_transaction(transaction_id, scope=normalized_scope)
         return DeleteTransactionMutation(
             ok=True, message="Transação deletada com sucesso (soft delete)."
         )

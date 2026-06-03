@@ -180,6 +180,11 @@ class RecurrenceService:
                     account_id=template.account_id,
                     credit_card_id=template.credit_card_id,
                     installment_group_id=(template.installment_group_id or template.id),
+                    recurrence_series_id=(
+                        template.recurrence_series_id
+                        or template.installment_group_id
+                        or template.id
+                    ),
                     paid_at=None,
                 )
             )

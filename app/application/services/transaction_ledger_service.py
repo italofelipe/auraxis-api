@@ -105,20 +105,61 @@ class TransactionLedgerService:
             invalidate_cache=self._invalidate_dashboard_cache,
         )
 
-    def delete_transaction(self, transaction_id: UUID) -> None:
+    def _series_members(self, transaction: Transaction) -> list[Transaction]:
+        """Returns all owned, non-deleted rows of a recurring/installment series.
+
+        The series key is resolved from ``recurrence_series_id`` (canonical),
+        falling back to ``installment_group_id`` then the row id so it works for
+        rows created before the backfill and for freshly-created templates.
+
+        @param transaction Any member of the series.
+        @return Owned, non-deleted transactions in the same series.
+        """
+        series_key = (
+            transaction.recurrence_series_id
+            or transaction.installment_group_id
+            or transaction.id
+        )
+        return cast(
+            "list[Transaction]",
+            Transaction.query.filter(
+                Transaction.user_id == self._user_id,
+                Transaction.deleted.is_(False),
+                db.or_(
+                    Transaction.recurrence_series_id == series_key,
+                    Transaction.installment_group_id == series_key,
+                    Transaction.id == series_key,
+                ),
+            ).all(),
+        )
+
+    def delete_transaction(
+        self, transaction_id: UUID, *, scope: str = "occurrence"
+    ) -> None:
+        """Soft-deletes a transaction, or its whole recurring series.
+
+        @param transaction_id Target transaction id.
+        @param scope ``"occurrence"`` (default) deletes only this row;
+            ``"series"`` soft-deletes every occurrence sharing the series key.
+        """
         transaction = self._fetch_owned_transaction(
             transaction_id, forbidden_verb="deletar"
         )
 
+        targets = (
+            self._series_members(transaction) if scope == "series" else [transaction]
+        )
+
         try:
-            transaction.deleted = True
             from app.extensions.audit_trail import record_entity_delete
 
-            record_entity_delete(
-                entity_type="transaction",
-                entity_id=str(transaction_id),
-                actor_id=str(self._user_id),
-            )
+            for target in targets:
+                target.deleted = True
+                record_entity_delete(
+                    entity_type="transaction",
+                    entity_id=str(target.id),
+                    actor_id=str(self._user_id),
+                )
             db.session.commit()
             self._invalidate_dashboard_cache()
         except Exception:
