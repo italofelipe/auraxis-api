@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.54.1](https://github.com/italofelipe/auraxis-api/compare/v1.54.0...v1.54.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* **ai:** make weekly-summary read-only; move email to scheduled batch ([c92da4e](https://github.com/italofelipe/auraxis-api/commit/c92da4ef56224bd51c55ec93b58b672ac579f97d)), closes [#1420](https://github.com/italofelipe/auraxis-api/issues/1420)
+* **ai:** weekly-summary read-only; email só no batch agendado ([014dd60](https://github.com/italofelipe/auraxis-api/commit/014dd60b533d9d35cbceac37e6a8d42148afaee7))
+* **deploy:** pin FLASK_APP=run.py for migration docker exec ([f2271bb](https://github.com/italofelipe/auraxis-api/commit/f2271bb650dbda5409ab7a6adb7adf7ced1cdca7)), closes [#1431](https://github.com/italofelipe/auraxis-api/issues/1431)
+* **deploy:** pinar FLASK_APP=run.py no docker exec das migrations ([db82d34](https://github.com/italofelipe/auraxis-api/commit/db82d34b43d37f5ba735d27f839e4fcd9e7f6e95))
+* **deploy:** reset para origin/&lt;branch&gt; (causa-raiz do exit 36) ([791f75b](https://github.com/italofelipe/auraxis-api/commit/791f75bd3c164fc99f715ae28ecd4c696594e67e))
+* **deploy:** reset to origin/&lt;branch&gt;, not stale local branch (exit 36 root cause) ([3cd02a3](https://github.com/italofelipe/auraxis-api/commit/3cd02a3b4c34f176300014db9b8be56ee77cf426)), closes [#1434](https://github.com/italofelipe/auraxis-api/issues/1434)
+* **deploy:** surface alembic error on exit 36; harden WEB_CID ([57ae41a](https://github.com/italofelipe/auraxis-api/commit/57ae41af2d639563e9e57762cb7572b000e9c781)), closes [#1429](https://github.com/italofelipe/auraxis-api/issues/1429)
+* **deploy:** tornar erro do alembic visível no exit 36 + endurecer $WEB_CID ([3039e65](https://github.com/italofelipe/auraxis-api/commit/3039e65cd06398c4ecb1ff56e50370660583d315))
+* **migrations:** cons1/cc1/cc2/fb1/sq1 idempotentes — destrava deploy prod ([061811d](https://github.com/italofelipe/auraxis-api/commit/061811d564efb4eba8406cb4fd6a9d19a261398d))
+* **migrations:** make cons1/cc1/cc2/fb1/sq1 idempotent ([63655db](https://github.com/italofelipe/auraxis-api/commit/63655dbfd2dc3d9f487636011138280d79449fbd)), closes [#1427](https://github.com/italofelipe/auraxis-api/issues/1427)
+* **migrations:** make rec1 recurrence-cadence idempotent ([4d8fdd6](https://github.com/italofelipe/auraxis-api/commit/4d8fdd67b7df352db8b6d4667dc1c0f45c59e66e)), closes [#1425](https://github.com/italofelipe/auraxis-api/issues/1425)
+* **migrations:** rec1 idempotente — destrava deploy prod (exit 36) ([e50554c](https://github.com/italofelipe/auraxis-api/commit/e50554c2ca2677f76ba0672bc9a461ad55d47642))
+* **recurrence:** add flask reconcile command + daily schedule ([29e679a](https://github.com/italofelipe/auraxis-api/commit/29e679a6aa4fcbbaca4649aced946c1f1a1261c9)), closes [#1422](https://github.com/italofelipe/auraxis-api/issues/1422)
+* **recurrence:** comando flask reconcile + agendamento diário (recorrentes somem em meses futuros) ([44c69a9](https://github.com/italofelipe/auraxis-api/commit/44c69a9368e9ec813b0c43a14e5afe70f4e34e58))
+
 ## [1.54.0](https://github.com/italofelipe/auraxis-api/compare/v1.53.0...v1.54.0) (2026-06-02)
 
 
