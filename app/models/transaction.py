@@ -102,6 +102,10 @@ class Transaction(db.Model):
         UUID(as_uuid=True), db.ForeignKey("credit_cards.id"), nullable=True
     )
     installment_group_id = db.Column(UUID(as_uuid=True), nullable=True)
+    # Links all occurrences of one recurring series so a user can delete a
+    # single occurrence or the whole series. Backfilled from
+    # ``coalesce(installment_group_id, id)`` for legacy recurring rows.
+    recurrence_series_id = db.Column(UUID(as_uuid=True), nullable=True)
     paid_at = db.Column(db.DateTime, nullable=True)
     source = db.Column(
         db.String(40),
@@ -132,6 +136,12 @@ class Transaction(db.Model):
         db.Index("ix_transactions_user_deleted", "user_id", "deleted"),
         db.Index(
             "ix_transactions_user_deleted_due_date", "user_id", "deleted", "due_date"
+        ),
+        # Series lookups for "delete whole recurring series".
+        db.Index(
+            "ix_transactions_user_recurrence_series",
+            "user_id",
+            "recurrence_series_id",
         ),
     )
 

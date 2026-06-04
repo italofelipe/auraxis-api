@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from flask import Response
+from flask import Response, request
 
 from app.application.services.transaction_application_service import (
     TransactionApplicationError,
@@ -37,8 +37,15 @@ class TransactionDeleteMixin:
         dependencies = get_transaction_dependencies()
         service = dependencies.transaction_application_service_factory(user_uuid)
 
+        # Optional scope: "series" soft-deletes the whole recurring series,
+        # anything else (default) deletes just this occurrence. Lenient so an
+        # unknown value never errors a delete.
+        scope = request.args.get("scope", "occurrence").strip().lower()
+        if scope != "series":
+            scope = "occurrence"
+
         try:
-            service.delete_transaction(transaction_id)
+            service.delete_transaction(transaction_id, scope=scope)
         except TransactionApplicationError as exc:
             return _compat_error(
                 legacy_payload={"error": exc.message, "details": exc.details},
