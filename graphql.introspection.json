@@ -10829,6 +10829,18 @@
                   "deprecationReason": null,
                   "description": null,
                   "isDeprecated": false,
+                  "name": "scope",
+                  "type": {
+                    "kind": "SCALAR",
+                    "name": "String",
+                    "ofType": null
+                  }
+                },
+                {
+                  "defaultValue": null,
+                  "deprecationReason": null,
+                  "description": null,
+                  "isDeprecated": false,
                   "name": "transactionId",
                   "type": {
                     "kind": "NON_NULL",
