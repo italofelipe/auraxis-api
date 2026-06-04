@@ -146,6 +146,14 @@ class Config:
     # Brapi config
     BRAPI_KEY = os.getenv("BRAPI_KEY")
 
+    # Web Push (VAPID). Both keys are base64url-encoded (raw EC point for the
+    # public/applicationServerKey, raw 32-byte private value for the private
+    # key). When unset, web-push dispatch is a no-op so the app runs normally.
+    # Generate with: py_vapid / `npx web-push generate-vapid-keys`.
+    VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+    VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+    VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:suporte@auraxis.com.br")
+
     # Cloudflare Turnstile CAPTCHA
     # Set CLOUDFLARE_TURNSTILE_SECRET_KEY in the environment to enable verification.
     # When the key is empty the service falls back to allow-all (dev/test mode).

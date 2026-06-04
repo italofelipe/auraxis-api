@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
 from app.extensions.database import db
 from app.models.alert import Alert, AlertPreference, AlertStatus
 from app.utils.datetime_utils import utc_now_naive
+
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Trigger matrix
@@ -22,6 +25,55 @@ TRIGGER_MATRIX: dict[str, dict[str, str]] = {
     "due_soon_7_days": {"severity": "info", "category": "due_soon"},
     "due_soon_1_day": {"severity": "warning", "category": "due_soon"},
 }
+
+# Browser-push copy per alert type: (title, body, click-through path).
+_PUSH_COPY: dict[str, tuple[str, str, str]] = {
+    "balance_low": (
+        "Saldo baixo",
+        "Seu saldo está baixo. Confira sua carteira.",
+        "/dashboard",
+    ),
+    "goal_deadline": ("Meta chegando", "Uma meta está perto do prazo.", "/goals"),
+    "suspicious_transaction": (
+        "Transação suspeita",
+        "Detectamos uma transação fora do padrão.",
+        "/transactions",
+    ),
+    "subscription_expiring": (
+        "Assinatura expirando",
+        "Sua assinatura está perto de expirar.",
+        "/subscription",
+    ),
+    "due_soon_7_days": (
+        "Vencimento em 7 dias",
+        "Você tem uma conta vencendo em breve.",
+        "/transactions",
+    ),
+    "due_soon_1_day": (
+        "Vence amanhã",
+        "Você tem uma conta vencendo amanhã.",
+        "/transactions",
+    ),
+}
+
+
+def _dispatch_web_push(user_id: UUID, alert_type: str) -> None:
+    """Best-effort browser push for a dispatched alert. Never raises."""
+    copy = _PUSH_COPY.get(alert_type)
+    if copy is None:
+        return
+    title, body, url = copy
+    try:
+        from app.services.web_push_service import send_web_push
+
+        send_web_push(user_id, title=title, body=body, url=url, tag=alert_type)
+    except Exception as exc:  # noqa: BLE001 — push must never break alert creation
+        log.warning(
+            "alert.web_push_failed user_id=%s type=%s error=%s",
+            user_id,
+            alert_type,
+            exc,
+        )
 
 
 class AlertServiceError(Exception):
@@ -104,6 +156,7 @@ def dispatch_alert(
     )
     db.session.add(alert)
     db.session.commit()
+    _dispatch_web_push(user_id, alert_type)
     return alert
 
 
