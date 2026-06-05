@@ -107,7 +107,11 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
+          # On pull_request, diff against the PR base; on push (incl. to the
+          # default branch) diff against the previous tip. Using the default
+          # branch as base on a push to master makes BASE == HEAD, which the
+          # action rejects with "BASE and HEAD are the same" (exit 1).
+          base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           head: HEAD
           extra_args: --only-verified
 
