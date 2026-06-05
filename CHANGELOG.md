@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.55.1](https://github.com/italofelipe/auraxis-api/compare/v1.55.0...v1.55.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* **ci:** correct TruffleHog base ref on push to default branch ([d5422f9](https://github.com/italofelipe/auraxis-api/commit/d5422f9ee08975b377fa0d723b493d0f931c1c96))
+* **graphql:** pin graphql-core + regen introspection bundle; fix TruffleHog base on push ([6f69351](https://github.com/italofelipe/auraxis-api/commit/6f693515a6c2da2bfe718edf1113902d75f2c31e))
+* **graphql:** pin graphql-core==3.2.11 and regenerate introspection bundle ([8287b0f](https://github.com/italofelipe/auraxis-api/commit/8287b0f98dea9e7ac49aa994eeb3942c1736a1a1)), closes [#1450](https://github.com/italofelipe/auraxis-api/issues/1450)
+
 ## [1.55.0](https://github.com/italofelipe/auraxis-api/compare/v1.54.2...v1.55.0) (2026-06-04)
 
 
