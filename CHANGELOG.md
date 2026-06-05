@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.55.0](https://github.com/italofelipe/auraxis-api/compare/v1.54.2...v1.55.0) (2026-06-04)
+
+
+### Features
+
+* **notifications:** web push (VAPID) send + alert dispatch ([#1446](https://github.com/italofelipe/auraxis-api/issues/1446)) ([224d55d](https://github.com/italofelipe/auraxis-api/commit/224d55dde1ba3d027202fda3f799f7034a5f5790))
+* **notifications:** web push (VAPID) send + alert dispatch ([#1446](https://github.com/italofelipe/auraxis-api/issues/1446)) ([8a91873](https://github.com/italofelipe/auraxis-api/commit/8a91873497f1e112416ac0fb560efed9907acbea))
+* **transactions:** delete recurring occurrence vs whole series ([#1444](https://github.com/italofelipe/auraxis-api/issues/1444)) ([f45d689](https://github.com/italofelipe/auraxis-api/commit/f45d6892559441e1cd2f725ba716aa6ca5bbd514))
+* **transactions:** delete recurring occurrence vs whole series ([#1444](https://github.com/italofelipe/auraxis-api/issues/1444)) ([3061478](https://github.com/italofelipe/auraxis-api/commit/306147843e73ae29c17416b286229cade9b5eac2))
+
+
+### Bug Fixes
+
+* **wallet:** expose cost_basis/current_value/change_percent ([#1442](https://github.com/italofelipe/auraxis-api/issues/1442)) ([b6e664e](https://github.com/italofelipe/auraxis-api/commit/b6e664ef6e11cc461fd6321ddd6cc1e0337e5104))
+* **wallet:** expose cost_basis/current_value/change_percent on entries ([b2fd770](https://github.com/italofelipe/auraxis-api/commit/b2fd77060d6dac16692bef2d2d4f254607963907)), closes [#1442](https://github.com/italofelipe/auraxis-api/issues/1442)
+
 ## [1.54.2](https://github.com/italofelipe/auraxis-api/compare/v1.54.1...v1.54.2) (2026-06-03)
 
 
