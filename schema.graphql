@@ -14,6 +14,7 @@ type Query {
   creditCardBill(cardId: UUID!, month: String!): CreditCardBillType
   creditCardUtilization(cardId: UUID!): CreditCardUtilizationType
   aiInsightHistory(page: Int = 1, perPage: Int = 20): AIInsightHistoryResultType
+  spendingPatternsLatest: SpendingPatternsLatestType
   accounts: AccountListType
   account(accountId: UUID!): AccountType
   tags: TagListType
@@ -187,6 +188,23 @@ type AIInsightType {
   tokensUsed: Int!
   costUsd: Float!
   createdAt: String!
+}
+
+"""
+Read-only cached Radar de Gastos (cron-generated, no quota).
+
+The individual ``patterns`` are forwarded from auraxis-api-v2 and their shape
+is intentionally not pinned here; they are exposed as a JSON string
+(``patterns_json``) so the schema stays stable as v2 evolves. ``generated_at``
+is null when no analysis has been cached yet.
+"""
+type SpendingPatternsLatestType {
+  patternsJson: String!
+  generatedAt: String
+  periodLabel: String
+  model: String!
+  costUsd: Float!
+  tokensUsed: Int!
 }
 
 type AccountListType {

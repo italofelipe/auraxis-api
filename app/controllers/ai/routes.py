@@ -12,6 +12,7 @@ from .resources import (
     AISpendingInsightsResource,
     AIWeeklySummaryResource,
 )
+from .spending_patterns_latest import AISpendingPatternsLatestResource
 from .spending_patterns_proxy import AISpendingPatternsProxyResource
 
 _ROUTES_REGISTERED = False
@@ -36,6 +37,13 @@ def register_ai_routes() -> None:
         "/insights/spending-patterns",
         view_func=AISpendingPatternsProxyResource.as_view("ai_spending_patterns"),
         methods=["POST"],
+    )
+    ai_bp.add_url_rule(
+        "/insights/spending-patterns/latest",
+        view_func=AISpendingPatternsLatestResource.as_view(
+            "ai_spending_patterns_latest"
+        ),
+        methods=["GET"],
     )
     ai_bp.add_url_rule(
         "/goals/<goal_id>/projection",
