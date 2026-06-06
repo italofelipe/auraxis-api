@@ -2,8 +2,9 @@
 """
 Auraxis — AI Insights batch job runner via SSM (#1215, #1216).
 
-Runs ``flask ai weekly-insights`` or ``flask ai monthly-insights`` inside
-the production Docker Compose network via AWS SSM Send-Command.
+Runs ``flask ai weekly-insights``, ``flask ai monthly-insights`` or
+``flask ai spending-patterns`` inside the production Docker Compose network via
+AWS SSM Send-Command.
 
 Usage:
     python scripts/aws_ai_insights_job.py \\
@@ -222,7 +223,10 @@ def _build_script(*, env_name: str, mode: str, month: str | None = None) -> str:
         "docker-compose.prod.yml" if env_name == "prod" else "docker-compose.dev.yml"
     )
 
-    flask_cmd = f"flask ai {mode}-insights"
+    if mode == "spending-patterns":
+        flask_cmd = "flask ai spending-patterns"
+    else:
+        flask_cmd = f"flask ai {mode}-insights"
     if mode == "monthly" and month:
         flask_cmd += f" --month {month}"
 
@@ -380,9 +384,9 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["weekly", "monthly"],
+        choices=["weekly", "monthly", "spending-patterns"],
         required=True,
-        help="Which batch job to run: 'weekly' or 'monthly'.",
+        help="Which batch job to run: 'weekly', 'monthly' or 'spending-patterns'.",
     )
     parser.add_argument(
         "--month",

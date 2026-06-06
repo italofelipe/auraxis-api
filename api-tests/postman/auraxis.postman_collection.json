@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Auraxis API",
-    "description": "Auto-generated from openapi.json (83 paths). Do not edit manually — regenerate with: npm run postman:build",
+    "description": "Auto-generated from openapi.json (84 paths). Do not edit manually — regenerate with: npm run postman:build",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -4536,7 +4536,7 @@
       "name": "11 - AI Advisory",
       "item": [
         {
-          "name": "GET — Briefing semanal com IA (Premium)",
+          "name": "GET — Briefing semanal com IA (Premium, somente leitura)",
           "request": {
             "method": "GET",
             "header": [
@@ -4741,6 +4741,47 @@
                 "exec": [
                   "pm.test('AI spending insights — expected 200 or 403 or 429', function () {",
                   "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 429]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET — Radar de gastos em cache (Premium, somente leitura)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Contract",
+                "value": "v2"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/insights/spending-patterns/latest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "insights",
+                "spending-patterns",
+                "latest"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Radar de gastos em cache (Premium, somente leitura) — status 200', function () {",
+                  "  pm.response.to.have.status(200);",
                   "});"
                 ],
                 "type": "text/javascript"

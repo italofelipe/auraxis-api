@@ -721,6 +721,14 @@
   {
     "access": "auth_required",
     "domain": "ai_advisory",
+    "name": "spendingPatternsLatest",
+    "operation_type": "query",
+    "source_module": "app.graphql.queries.ai_insight",
+    "summary": "Retorna o último radar de gastos compulsivos já gerado pelo cron diário (somente leitura, sem consumir cota de IA). 'patternsJson' traz os padrões serializados; 'generatedAt' é null quando ainda não há análise. Paridade com GET /ai/insights/spending-patterns/latest."
+  },
+  {
+    "access": "auth_required",
+    "domain": "ai_advisory",
     "name": "generateAiInsight",
     "operation_type": "mutation",
     "source_module": "app.graphql.mutations.ai_insight",

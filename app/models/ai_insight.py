@@ -22,6 +22,7 @@ class InsightType(enum.Enum):
     weekly = "weekly"
     monthly = "monthly"
     recap = "recap"  # end-of-month comprehensive analysis
+    spending_patterns = "spending_patterns"  # cached "Radar de Gastos" (cron-generated)
 
 
 class AIInsight(db.Model):
@@ -55,10 +56,11 @@ class AIInsight(db.Model):
         nullable=False,
     )
     # Human-readable period key for deduplication and display.
-    # daily   → "YYYY-MM-DD"
-    # weekly  → "YYYY-WNN"  (ISO week, e.g. "2026-W20")
-    # monthly → "YYYY-MM"
-    # recap   → "YYYY-MM-recap"
+    # daily             → "YYYY-MM-DD"
+    # weekly            → "YYYY-WNN"  (ISO week, e.g. "2026-W20")
+    # monthly           → "YYYY-MM"
+    # recap             → "YYYY-MM-recap"
+    # spending_patterns → "YYYY-MM-DD"
     period_label = db.Column(db.String(30), nullable=False)
     period_start = db.Column(db.Date, nullable=False)
     period_end = db.Column(db.Date, nullable=False)

@@ -852,6 +852,20 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         ),
         source_module=QUERY_AI_INSIGHT_MODULE,
     ),
+    # AI Advisory — cached Radar de Gastos (#1455)
+    GraphQLOperationDoc(
+        name="spendingPatternsLatest",
+        operation_type="query",
+        domain="ai_advisory",
+        access="auth_required",
+        summary=(
+            "Retorna o último radar de gastos compulsivos já gerado pelo cron "
+            "diário (somente leitura, sem consumir cota de IA). 'patternsJson' "
+            "traz os padrões serializados; 'generatedAt' é null quando ainda não "
+            "há análise. Paridade com GET /ai/insights/spending-patterns/latest."
+        ),
+        source_module=QUERY_AI_INSIGHT_MODULE,
+    ),
     # AI Advisory — generate (MVP-3 / #1287 #1288)
     GraphQLOperationDoc(
         name="generateAiInsight",

@@ -325,6 +325,18 @@
               "deprecationReason": null,
               "description": null,
               "isDeprecated": false,
+              "name": "spendingPatternsLatest",
+              "type": {
+                "kind": "OBJECT",
+                "name": "SpendingPatternsLatestType",
+                "ofType": null
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
               "name": "accounts",
               "type": {
                 "kind": "OBJECT",
@@ -3024,6 +3036,106 @@
           "interfaces": [],
           "kind": "OBJECT",
           "name": "AIInsightType",
+          "possibleTypes": null,
+          "specifiedByURL": null
+        },
+        {
+          "description": "Read-only cached Radar de Gastos (cron-generated, no quota).\n\nThe individual ``patterns`` are forwarded from auraxis-api-v2 and their shape\nis intentionally not pinned here; they are exposed as a JSON string\n(``patterns_json``) so the schema stays stable as v2 evolves. ``generated_at``\nis null when no analysis has been cached yet.",
+          "enumValues": null,
+          "fields": [
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "patternsJson",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "generatedAt",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "periodLabel",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "model",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "costUsd",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "Float",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "tokensUsed",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "Int",
+                  "ofType": null
+                }
+              }
+            }
+          ],
+          "inputFields": null,
+          "interfaces": [],
+          "kind": "OBJECT",
+          "name": "SpendingPatternsLatestType",
           "possibleTypes": null,
           "specifiedByURL": null
         },
