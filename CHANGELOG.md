@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.56.0](https://github.com/italofelipe/auraxis-api/compare/v1.55.1...v1.56.0) (2026-06-06)
+
+
+### Features
+
+* **ai:** cache spending-patterns via cron + read-only endpoint (no quota) ([#1456](https://github.com/italofelipe/auraxis-api/issues/1456)) ([37a05a0](https://github.com/italofelipe/auraxis-api/commit/37a05a016840a1f8135cef38316173bedb669ed5)), closes [#1455](https://github.com/italofelipe/auraxis-api/issues/1455)
+
 ## [1.55.1](https://github.com/italofelipe/auraxis-api/compare/v1.55.0...v1.55.1) (2026-06-05)
 
 
