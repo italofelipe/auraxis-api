@@ -9,6 +9,9 @@ from uuid import UUID
 
 from flask import request
 
+from app.application.services.credit_card_application_service import (
+    delete_card_with_transactions,
+)
 from app.auth import current_user_id
 from app.controllers.response_contract import compat_error_tuple, compat_success_tuple
 from app.decorators import require_email_verified
@@ -366,17 +369,14 @@ def update_credit_card(credit_card_id: UUID) -> tuple[dict[str, Any], int]:
 def delete_credit_card(credit_card_id: UUID) -> tuple[dict[str, Any], int]:
     """Delete a credit card belonging to the authenticated user."""
     user_id = current_user_id()
-    card = CreditCard.query.filter_by(id=credit_card_id, user_id=user_id).first()
-    if card is None:
+    deleted = delete_card_with_transactions(card_id=credit_card_id, user_id=user_id)
+    if not deleted:
         return compat_error_tuple(
             legacy_payload={"error": CREDIT_CARD_NOT_FOUND_MESSAGE},
             status_code=404,
             message=CREDIT_CARD_NOT_FOUND_MESSAGE,
             error_code="NOT_FOUND",
         )
-
-    db.session.delete(card)
-    db.session.commit()
 
     return compat_success_tuple(
         legacy_payload={"message": "Cartão removido com sucesso"},
