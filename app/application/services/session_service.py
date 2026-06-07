@@ -23,6 +23,15 @@ from app.utils.datetime_utils import utc_now_naive
 _REFRESH_TOKEN_TTL_DAYS = 30
 _MAX_SESSIONS = int(os.getenv("MAX_SESSIONS_PER_USER", str(_MAX_SESSIONS_PER_USER)))
 
+# Grace window for refresh-token reuse detection. A client booting/reloading can
+# fire two concurrent POST /auth/refresh with the same (still-old) cookie before
+# the rotated cookie propagates. The loser presents a token that was revoked a
+# fraction of a second ago — that is a benign concurrent refresh, NOT a stolen
+# token replayed minutes later. Within this window we reject the loser softly
+# (ConcurrentRefreshError) without nuking the whole token family; outside it we
+# treat reuse as theft and revoke the family.
+_REUSE_GRACE_SECONDS = int(os.getenv("AURAXIS_REFRESH_REUSE_GRACE_SECONDS", "15"))
+
 
 class SessionInfo(TypedDict):
     id: str
@@ -38,6 +47,18 @@ class SessionNotFoundError(Exception):
 
 class TokenReuseError(Exception):
     """Raised when a revoked refresh token is presented (possible theft)."""
+
+
+class ConcurrentRefreshError(Exception):
+    """Raised when a just-rotated refresh token is presented again within the
+    reuse grace window — a benign concurrent refresh (e.g. boot/F5 double-submit
+    or a second tab). The request is rejected softly: the token family is NOT
+    revoked, so the winning refresh and other sessions stay valid."""
+
+
+def _is_within_reuse_grace(revoked_at: datetime) -> bool:
+    """True when *revoked_at* is recent enough to be a benign concurrent refresh."""
+    return utc_now_naive() - revoked_at <= timedelta(seconds=_REUSE_GRACE_SECONDS)
 
 
 def _hash_token(raw_token: str) -> str:
@@ -138,6 +159,11 @@ def rotate_session(
         raise SessionNotFoundError("Refresh token not found.")
 
     if existing.revoked_at is not None:
+        if _is_within_reuse_grace(existing.revoked_at):
+            # Benign concurrent refresh — reject softly, keep the family alive.
+            raise ConcurrentRefreshError(
+                "Concurrent refresh — token rotated moments ago."
+            )
         # Token reuse detected — revoke the entire family.
         _revoke_family(existing.family_id)
         raise TokenReuseError(
@@ -191,6 +217,12 @@ def rotate_session_by_jti(
     # Revocation check is already done by @jwt_required(refresh=True), but
     # handle the edge case defensively.
     if existing.revoked_at is not None:
+        if _is_within_reuse_grace(existing.revoked_at):
+            # Benign concurrent refresh (boot/F5 double-submit) — reject softly
+            # without revoking the family so the winning session stays valid.
+            raise ConcurrentRefreshError(
+                "Concurrent refresh — token rotated moments ago."
+            )
         _revoke_family(existing.family_id)
         raise TokenReuseError("Refresh token already used — possible theft detected.")
 
@@ -337,6 +369,7 @@ def _fmt(dt: datetime) -> str:
 
 __all__ = [
     "SessionInfo",
+    "ConcurrentRefreshError",
     "SessionNotFoundError",
     "TokenReuseError",
     "check_refresh_jti_revoked",

@@ -195,7 +195,14 @@ class TestSessionServiceRotate:
             assert old is not None and old.revoked_at is not None
 
     def test_rotate_revoked_jti_raises_token_reuse_error(self, app) -> None:
+        """Reuse OUTSIDE the grace window is treated as theft → family revoked."""
         with app.app_context():
+            from datetime import timedelta
+
+            from app.application.services import session_service
+            from app.extensions.database import db
+            from app.utils.datetime_utils import utc_now_naive
+
             user_id = uuid.uuid4()
             rt = create_session(
                 user_id=user_id,
@@ -203,9 +210,11 @@ class TestSessionServiceRotate:
                 refresh_jti="reuse-jti",
                 access_jti="reuse-acc",
             )
-            rt.revoke()
-            from app.extensions.database import db
-
+            # Revoked well outside the grace window → genuine replay, not a
+            # concurrent boot refresh.
+            rt.revoked_at = utc_now_naive() - timedelta(
+                seconds=session_service._REUSE_GRACE_SECONDS + 60
+            )
             db.session.commit()
             with pytest.raises(TokenReuseError):
                 rotate_session_by_jti(
@@ -214,6 +223,53 @@ class TestSessionServiceRotate:
                     new_refresh_jti="any-new",
                     new_access_jti="any-acc",
                 )
+
+    def test_rotate_within_grace_raises_concurrent_and_keeps_family(self, app) -> None:
+        """A just-rotated token re-presented within the grace window is a benign
+        concurrent refresh: ConcurrentRefreshError, family NOT revoked."""
+        with app.app_context():
+            from app.application.services.session_service import (
+                ConcurrentRefreshError,
+            )
+            from app.extensions.database import db
+
+            user_id = uuid.uuid4()
+            create_session(
+                user_id=user_id,
+                raw_refresh_token="raw-grace",
+                refresh_jti="grace-jti",
+                access_jti="grace-acc",
+            )
+            # Winner rotates the token (revokes it ~now) and creates a successor.
+            winner = rotate_session_by_jti(
+                old_jti="grace-jti",
+                new_raw_refresh_token="winner-raw",
+                new_refresh_jti="winner-jti",
+                new_access_jti="winner-acc",
+            )
+            db.session.commit()
+            assert winner is not None
+            family_id = winner.family_id
+
+            # Loser presents the same (now just-revoked) jti within the grace window.
+            with pytest.raises(ConcurrentRefreshError):
+                rotate_session_by_jti(
+                    old_jti="grace-jti",
+                    new_raw_refresh_token="loser-raw",
+                    new_refresh_jti="loser-jti",
+                    new_access_jti="loser-acc",
+                )
+
+            # The winning successor must still be active — family NOT nuked.
+            successor = RefreshToken.query.filter_by(jti="winner-jti").first()
+            assert successor is not None
+            assert successor.revoked_at is None
+            active = (
+                RefreshToken.query.filter_by(family_id=family_id)
+                .filter(RefreshToken.revoked_at.is_(None))
+                .count()
+            )
+            assert active == 1
 
     def test_rotate_unknown_jti_returns_none(self, app) -> None:
         with app.app_context():
