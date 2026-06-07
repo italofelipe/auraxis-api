@@ -32,11 +32,9 @@ class CreditCardType(graphene.ObjectType):
     limit_amount = DecimalScalar()
     closing_day = graphene.Int()
     due_day = graphene.Int()
-    last_four_digits = graphene.String()
     bank = graphene.String()
     description = graphene.String()
     benefits = graphene.List(graphene.String)
-    validity_date = graphene.String()
     created_at = graphene.String()
     updated_at = graphene.String()
 
@@ -86,11 +84,9 @@ def _to_card_type(c: CreditCard) -> CreditCardType:
         limit_amount=c.limit_amount,
         closing_day=c.closing_day,
         due_day=c.due_day,
-        last_four_digits=c.last_four_digits,
         bank=c.bank,
         description=c.description,
         benefits=c.benefits_list,
-        validity_date=c.validity_date.isoformat() if c.validity_date else None,
         created_at=c.created_at.isoformat() if c.created_at else None,
         updated_at=c.updated_at.isoformat() if c.updated_at else None,
     )

@@ -978,8 +978,7 @@ class FinancialInsightContextBuilder:
 
         Returns one entry per card belonging to the user. Cards without
         closing_day/due_day are skipped (utilization undefined). PII is
-        never emitted — raw user_id / last_four_digits / external IDs stay
-        out of the snapshot.
+        never emitted — raw user IDs and external IDs stay out of the snapshot.
         """
         cards = (
             CreditCard.query.filter_by(user_id=user_id).order_by(CreditCard.name).all()

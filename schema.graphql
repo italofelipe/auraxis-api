@@ -123,11 +123,9 @@ type CreditCardType {
   limitAmount: DecimalScalar
   closingDay: Int
   dueDay: Int
-  lastFourDigits: String
   bank: String
   description: String
   benefits: [String]
-  validityDate: String
   createdAt: String
   updatedAt: String
 }
