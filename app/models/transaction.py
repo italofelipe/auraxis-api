@@ -99,7 +99,9 @@ class Transaction(db.Model):
         UUID(as_uuid=True), db.ForeignKey("accounts.id"), nullable=True
     )
     credit_card_id = db.Column(
-        UUID(as_uuid=True), db.ForeignKey("credit_cards.id"), nullable=True
+        UUID(as_uuid=True),
+        db.ForeignKey("credit_cards.id", ondelete="SET NULL"),
+        nullable=True,
     )
     installment_group_id = db.Column(UUID(as_uuid=True), nullable=True)
     # Links all occurrences of one recurring series so a user can delete a
