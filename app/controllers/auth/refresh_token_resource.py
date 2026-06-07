@@ -8,6 +8,7 @@ from flask_apispec.views import MethodResource
 from flask_jwt_extended import get_jwt, get_jwt_identity, set_refresh_cookies
 
 from app.application.services.session_service import (
+    ConcurrentRefreshError,
     SessionNotFoundError,
     TokenReuseError,
     rotate_session_by_jti,
@@ -113,6 +114,18 @@ class RefreshTokenResource(MethodResource):
                     remote_addr=request_context.client_ip,
                 )
             except TokenReuseError:
+                return compat_error(
+                    legacy_payload={"message": _TOKEN_INVALID_OR_USED_MESSAGE},
+                    status_code=401,
+                    message=_TOKEN_INVALID_OR_USED_MESSAGE,
+                    error_code="TOKEN_REUSED",
+                )
+            except ConcurrentRefreshError:
+                # Benign concurrent refresh (boot/F5 double-submit): the other
+                # request already rotated the token. Reject this one softly with
+                # a plain 401 — do NOT revoke the family and do NOT touch user
+                # state, so the winning session and other devices stay valid.
+                db.session.rollback()
                 return compat_error(
                     legacy_payload={"message": _TOKEN_INVALID_OR_USED_MESSAGE},
                     status_code=401,
