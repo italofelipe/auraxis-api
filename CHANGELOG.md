@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.56.1](https://github.com/italofelipe/auraxis-api/compare/v1.56.0...v1.56.1) (2026-06-07)
+
+
+### Bug Fixes
+
+* **auth:** grace window in refresh reuse-detection (F5 no longer revokes session) ([#1460](https://github.com/italofelipe/auraxis-api/issues/1460)) ([e5cb72d](https://github.com/italofelipe/auraxis-api/commit/e5cb72dcc3b8d5e71ad41d0c3deafd79172f534d)), closes [#1458](https://github.com/italofelipe/auraxis-api/issues/1458)
+* **credit-card:** deleting a card removes its debts/installments ([#1461](https://github.com/italofelipe/auraxis-api/issues/1461)) ([c86748c](https://github.com/italofelipe/auraxis-api/commit/c86748c2b0307ab49ac3899f2e7c7243e27a3f61)), closes [#1459](https://github.com/italofelipe/auraxis-api/issues/1459)
+
 ## [1.56.0](https://github.com/italofelipe/auraxis-api/compare/v1.55.1...v1.56.0) (2026-06-06)
 
 
