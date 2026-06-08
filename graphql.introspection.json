@@ -9889,6 +9889,18 @@
               "deprecationReason": null,
               "description": null,
               "isDeprecated": false,
+              "name": "onboardingCompletedAt",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
               "name": "emailVerified",
               "type": {
                 "kind": "SCALAR",
@@ -13668,6 +13680,18 @@
                 "name": "AIInsightFeedbackPayload",
                 "ofType": null
               }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": "Mark the authenticated user's onboarding as completed (idempotent).\n\nREST parity: ``POST /user/onboarding/complete``.",
+              "isDeprecated": false,
+              "name": "completeOnboarding",
+              "type": {
+                "kind": "OBJECT",
+                "name": "CompleteOnboardingPayload",
+                "ofType": null
+              }
             }
           ],
           "inputFields": null,
@@ -17042,6 +17066,86 @@
           "interfaces": [],
           "kind": "OBJECT",
           "name": "AIInsightFeedbackPayload",
+          "possibleTypes": null,
+          "specifiedByURL": null
+        },
+        {
+          "description": "Canonical payload for completeOnboarding mutation.",
+          "enumValues": null,
+          "fields": [
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": "True when the mutation completed without errors.",
+              "isDeprecated": false,
+              "name": "ok",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "Boolean",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": "Human-readable status message.",
+              "isDeprecated": false,
+              "name": "message",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": "Field-level validation errors (empty on success).",
+              "isDeprecated": false,
+              "name": "errors",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "LIST",
+                  "name": null,
+                  "ofType": {
+                    "kind": "NON_NULL",
+                    "name": null,
+                    "ofType": {
+                      "kind": "OBJECT",
+                      "name": "ValidationError",
+                      "ofType": null
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": "ISO 8601 timestamp when onboarding was completed.",
+              "isDeprecated": false,
+              "name": "onboardingCompletedAt",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            }
+          ],
+          "inputFields": null,
+          "interfaces": [],
+          "kind": "OBJECT",
+          "name": "CompleteOnboardingPayload",
           "possibleTypes": null,
           "specifiedByURL": null
         },

@@ -741,5 +741,13 @@
     "operation_type": "mutation",
     "source_module": "app.graphql.mutations.ai_insight",
     "summary": "Registra feedback (notas 0–5 de relevância/veracidade/profundidade/utilidade + comentário) de um insight do próprio usuário. Paridade com POST /ai/insights/<id>/feedback."
+  },
+  {
+    "access": "auth_required",
+    "domain": "user",
+    "name": "completeOnboarding",
+    "operation_type": "mutation",
+    "source_module": "app.graphql.mutations.user",
+    "summary": "Marca o onboarding do usuário autenticado como concluído (idempotente). Paridade com POST /user/onboarding/complete."
   }
 ]

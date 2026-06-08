@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Auraxis API",
-    "description": "Auto-generated from openapi.json (84 paths). Do not edit manually — regenerate with: npm run postman:build",
+    "description": "Auto-generated from openapi.json (85 paths). Do not edit manually — regenerate with: npm run postman:build",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -1106,6 +1106,50 @@
                 "exec": [
                   "pm.test('Remover avatar do usuário — expected 200 or 404', function () {",
                   "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /user/onboarding/complete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Contract",
+                "value": "v2"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/onboarding/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "onboarding",
+                "complete"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('POST /user/onboarding/complete — status 200', function () {",
+                  "  pm.response.to.have.status(200);",
                   "});"
                 ],
                 "type": "text/javascript"
