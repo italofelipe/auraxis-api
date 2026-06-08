@@ -89,6 +89,14 @@
     "summary": "Retorna o plano projetado de uma meta existente."
   },
   {
+    "access": "auth_required",
+    "domain": "goals",
+    "name": "goalContributions",
+    "operation_type": "query",
+    "source_module": "app.graphql.queries.goal",
+    "summary": "Lista o histórico paginado de contribuições (aportes/retiradas) de uma meta. Paridade com GET /goals/{id}/contributions."
+  },
+  {
     "access": "public",
     "domain": "simulations",
     "name": "installmentVsCashCalculate",
@@ -319,6 +327,14 @@
     "operation_type": "mutation",
     "source_module": "app.graphql.mutations.goal",
     "summary": "Simula o plano de aporte de uma meta sem persistir dados."
+  },
+  {
+    "access": "auth_required",
+    "domain": "goals",
+    "name": "recordGoalContribution",
+    "operation_type": "mutation",
+    "source_module": "app.graphql.mutations.goal",
+    "summary": "Registra um aporte (+) ou retirada (-) em uma meta, atualizando o valor acumulado. Paridade com POST /goals/{id}/contributions."
   },
   {
     "access": "auth_required",
