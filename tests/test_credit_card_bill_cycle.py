@@ -142,16 +142,62 @@ class TestBillCycleEquality:
 class TestComputeBillCycleValidation:
     """Invalid inputs raise ValueError."""
 
-    @pytest.mark.parametrize("invalid_day", [0, -1, 29, 32, 100])
-    def test_closing_day_outside_1_28_raises(self, invalid_day: int) -> None:
+    @pytest.mark.parametrize("invalid_day", [0, -1, 32, 100])
+    def test_closing_day_outside_1_31_raises(self, invalid_day: int) -> None:
         with pytest.raises(ValueError, match="closing_day"):
             compute_bill_cycle(
                 closing_day=invalid_day, due_day=15, anchor=date(2026, 5, 5)
             )
 
-    @pytest.mark.parametrize("invalid_day", [0, -1, 29, 32])
-    def test_due_day_outside_1_28_raises(self, invalid_day: int) -> None:
+    @pytest.mark.parametrize("invalid_day", [0, -1, 32])
+    def test_due_day_outside_1_31_raises(self, invalid_day: int) -> None:
         with pytest.raises(ValueError, match="due_day"):
             compute_bill_cycle(
                 closing_day=10, due_day=invalid_day, anchor=date(2026, 5, 5)
             )
+
+    @pytest.mark.parametrize("valid_day", [29, 30, 31])
+    def test_days_29_to_31_are_accepted(self, valid_day: int) -> None:
+        # Days 29-31 used to be blocked; they are now valid and clamped per
+        # month in short months. Issue #1469.
+        cycle = compute_bill_cycle(
+            closing_day=valid_day, due_day=valid_day, anchor=date(2026, 5, 5)
+        )
+        assert isinstance(cycle, BillCycle)
+
+
+class TestComputeBillCycleMonthEndClamp:
+    """closing_day/due_day 29-31 clamp to the last valid day in short months."""
+
+    def test_closing_day_30_clamps_in_february_non_leap(self) -> None:
+        # Card closes on the 30th; February 2026 has 28 days → closes Feb 28.
+        cycle = compute_bill_cycle(closing_day=30, due_day=5, anchor=date(2026, 2, 15))
+        assert cycle.end_date == date(2026, 2, 28)
+        # Previous close (Jan 30) + 1 day → cycle start.
+        assert cycle.start_date == date(2026, 1, 31)
+        # due_day 5 < closing_day → rolls to the month after closing.
+        assert cycle.due_date == date(2026, 3, 5)
+        assert cycle.status == "open"
+
+    def test_closing_day_31_clamps_in_february_leap_year(self) -> None:
+        # February 2024 has 29 days (leap) → closes Feb 29.
+        cycle = compute_bill_cycle(closing_day=31, due_day=10, anchor=date(2024, 2, 20))
+        assert cycle.end_date == date(2024, 2, 29)
+        assert cycle.start_date == date(2024, 2, 1)
+        assert cycle.due_date == date(2024, 3, 10)
+
+    def test_closing_day_31_clamps_in_30_day_month(self) -> None:
+        # April has 30 days → a day-31 card closes April 30.
+        cycle = compute_bill_cycle(closing_day=31, due_day=31, anchor=date(2026, 4, 10))
+        assert cycle.end_date == date(2026, 4, 30)
+        assert cycle.start_date == date(2026, 4, 1)
+        # due_day == closing_day → not strictly greater → rolls to next month,
+        # clamped to May 31 (May has 31 days).
+        assert cycle.due_date == date(2026, 5, 31)
+
+    def test_due_day_30_clamps_in_february(self) -> None:
+        # closing in January, due on the 30th of February → clamps to Feb 28.
+        cycle = compute_bill_cycle(closing_day=20, due_day=30, anchor=date(2026, 1, 25))
+        assert cycle.end_date == date(2026, 2, 20)
+        # due_day 30 > closing_day 20 → same month as closing (Feb), clamp 28.
+        assert cycle.due_date == date(2026, 2, 28)

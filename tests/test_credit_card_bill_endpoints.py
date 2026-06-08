@@ -187,6 +187,22 @@ class TestBillEndpoint:
         )
         assert response.status_code == 400
 
+    def test_accepts_day_30_and_bills_february_without_error(self, client) -> None:
+        # Regression for #1469: a card closing on the 30th used to be rejected
+        # with 400 INVALID_DAY. It must now be created and its February bill
+        # must compute a clamped cycle (Feb 28) without raising.
+        token = _register_and_login(client, prefix="bill-day-30")
+        headers = _auth_headers(token)
+        card = _create_card(client, headers, closing_day=30, due_day=5)
+
+        response = client.get(
+            f"/credit-cards/{card['id']}/bill?month=2026-02", headers=headers
+        )
+        assert response.status_code == 200
+        cycle = response.get_json()["data"]["cycle"]
+        assert cycle["end_date"] == "2026-02-28"
+        assert cycle["due_date"] == "2026-03-05"
+
 
 class TestUtilizationEndpoint:
     def test_empty_card_returns_zero(self, client) -> None:

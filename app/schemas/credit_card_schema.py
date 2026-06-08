@@ -46,18 +46,18 @@ class CreditCardSchema(Schema):
     closing_day = fields.Int(
         required=False,
         allow_none=True,
-        validate=validate.Range(min=1, max=28),
+        validate=validate.Range(min=1, max=31),
         metadata={
-            "description": "Dia de fechamento da fatura (1-28)",
+            "description": "Dia de fechamento da fatura (1-31)",
             "example": 20,
         },
     )
     due_day = fields.Int(
         required=False,
         allow_none=True,
-        validate=validate.Range(min=1, max=28),
+        validate=validate.Range(min=1, max=31),
         metadata={
-            "description": "Dia de vencimento da fatura (1-28)",
+            "description": "Dia de vencimento da fatura (1-31)",
             "example": 5,
         },
     )
