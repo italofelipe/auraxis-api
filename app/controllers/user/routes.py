@@ -21,6 +21,7 @@ from .helpers import validate_user_token
 from .me_export_resource import MeExportResource
 from .me_resource import UserMeResource
 from .notification_preferences_resource import NotificationPreferencesResource
+from .onboarding_resource import OnboardingCompleteResource
 from .profile_resource import UserProfileResource
 from .questionnaire_resource import UserQuestionnaireResource
 
@@ -112,6 +113,11 @@ def register_user_routes() -> None:
         "/me/avatar",
         view_func=AvatarResource.as_view("avatar"),
         methods=["POST", "DELETE"],
+    )
+    user_bp.add_url_rule(
+        "/onboarding/complete",
+        view_func=OnboardingCompleteResource.as_view("onboarding_complete"),
+        methods=["POST"],
     )
     _ROUTES_REGISTERED = True
 

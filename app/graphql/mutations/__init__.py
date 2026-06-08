@@ -71,6 +71,7 @@ from app.graphql.mutations.transaction import (
     DeleteTransactionMutation,
     UpdateTransactionMutation,
 )
+from app.graphql.mutations.user import CompleteOnboardingMutation
 from app.graphql.mutations.wallet import (
     AddWalletEntryMutation,
     DeleteWalletEntryMutation,
@@ -187,6 +188,8 @@ class Mutation(graphene.ObjectType):
     # AI Advisory — canonical GraphQL parity for POST /ai/insights/generate
     generate_ai_insight = GenerateAiInsightMutation.Field()
     submit_ai_insight_feedback = SubmitAiInsightFeedbackMutation.Field()
+    # Onboarding completion — REST parity: POST /user/onboarding/complete (#1471)
+    complete_onboarding = CompleteOnboardingMutation.Field()
 
 
 __all__ = ["Mutation"]

@@ -33,6 +33,8 @@ class AuthenticatedUserProfile:
     taxonomy_version: str | None
     entitlements_version: int
     avatar_url: str | None
+    # Onboarding completion timestamp (ISO 8601) or None (#1471)
+    onboarding_completed_at: str | None = None
     # Email verification status (14d grace period soft-block)
     email_verified: bool = False
     email_verification_deadline_at: str | None = None
@@ -124,6 +126,9 @@ class AuthenticatedUserContextService:
             taxonomy_version=user.taxonomy_version,
             entitlements_version=int(user.entitlements_version or 0),
             avatar_url=user.avatar_url,
+            onboarding_completed_at=_datetime_isoformat_or_none(
+                user.onboarding_completed_at
+            ),
             email_verified=bool(user.email_verified),
             email_verification_deadline_at=_datetime_isoformat_or_none(
                 user.email_verification_deadline_at

@@ -70,6 +70,7 @@ class AuthenticatedUserInvestorProfilePayload(TypedDict):
 
 class AuthenticatedUserProductContextPayload(TypedDict):
     entitlements_version: int
+    onboarding_completed_at: str | None
 
 
 class AuthenticatedUserEmailVerificationPayload(TypedDict):
@@ -133,6 +134,7 @@ def to_user_profile_payload(profile: AuthenticatedUserProfile) -> UserProfilePay
     """
     payload = asdict(profile)
     payload.pop("entitlements_version", None)
+    payload.pop("onboarding_completed_at", None)
     payload.pop("email_verified", None)
     payload.pop("email_verification_deadline_at", None)
     payload.pop("email_verification_required_now", None)
@@ -172,6 +174,7 @@ def to_authenticated_user_canonical_payload(
         },
         "product_context": {
             "entitlements_version": profile.entitlements_version,
+            "onboarding_completed_at": profile.onboarding_completed_at,
         },
         "email_verification": {
             "verified": profile.email_verified,

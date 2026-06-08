@@ -892,6 +892,18 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         ),
         source_module="app.graphql.mutations.ai_insight",
     ),
+    # Onboarding completion (#1471)
+    GraphQLOperationDoc(
+        name="completeOnboarding",
+        operation_type="mutation",
+        domain="user",
+        access="auth_required",
+        summary=(
+            "Marca o onboarding do usuário autenticado como concluído "
+            "(idempotente). Paridade com POST /user/onboarding/complete."
+        ),
+        source_module="app.graphql.mutations.user",
+    ),
 )
 
 
