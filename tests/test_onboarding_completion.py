@@ -67,6 +67,16 @@ class TestOnboardingCompleteEndpoint:
             == completed_at
         )
 
+    def test_v2_flat_me_exposes_onboarding_marker(self, client) -> None:
+        # The v2 web client reads the flat /user/me; the field must be present
+        # there too (additive), starting as null for new users.
+        token = _register_and_login(client)
+        resp = client.get("/user/me", headers=_auth(token, "v2"))
+        assert resp.status_code == 200
+        user = resp.get_json()["data"]["user"]
+        assert "onboarding_completed_at" in user
+        assert user["onboarding_completed_at"] is None
+
     def test_complete_is_idempotent(self, client) -> None:
         token = _register_and_login(client)
         first = client.post("/user/onboarding/complete", headers=_auth(token, "v2"))

@@ -67,6 +67,7 @@ USER_FIELDS = {
     "profile_quiz_score",
     "taxonomy_version",
     "avatar_url",
+    "onboarding_completed_at",
 }
 
 CANONICAL_USER_KEYS = {
