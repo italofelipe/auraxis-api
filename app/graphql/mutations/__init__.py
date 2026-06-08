@@ -41,6 +41,7 @@ from app.graphql.mutations.fiscal import (
 from app.graphql.mutations.goal import (
     CreateGoalMutation,
     DeleteGoalMutation,
+    RecordGoalContributionMutation,
     SimulateGoalPlanMutation,
     UpdateGoalMutation,
 )
@@ -109,6 +110,9 @@ class Mutation(graphene.ObjectType):
         deprecation_reason="ADR-0002: use DELETE /goals/{id}"
     )
     simulate_goal_plan = SimulateGoalPlanMutation.Field()
+    # Goal contributions — canonical GraphQL parity for
+    # POST /goals/{id}/contributions (#1470)
+    record_goal_contribution = RecordGoalContributionMutation.Field()
     save_installment_vs_cash_simulation = (
         SaveInstallmentVsCashSimulationMutation.Field()
     )

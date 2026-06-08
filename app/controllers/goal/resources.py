@@ -351,6 +351,91 @@ class GoalProjectionResource(MethodResource):
         )
 
 
+class GoalContributionsResource(MethodResource):
+    @doc(
+        description=(
+            "Registra um aporte (valor positivo) ou retirada (valor negativo) "
+            "na meta, atualizando o valor acumulado e o histórico."
+        ),
+        tags=["Metas"],
+        security=[{"BearerAuth": []}],
+        params={"goal_id": {"in": "path", "type": "string", "required": True}},
+        responses={
+            201: {"description": "Contribuição registrada com sucesso"},
+            400: {"description": "Dados inválidos ou saldo insuficiente"},
+            401: {"description": "Token inválido"},
+            403: {"description": "Sem permissão"},
+            404: {"description": "Meta não encontrada"},
+        },
+    )
+    @jwt_required()
+    @require_email_verified
+    def post(self, goal_id: UUID) -> Any:
+        user_id = current_user_id()
+        payload = request.get_json() or {}
+        dependencies = get_goal_dependencies()
+        service = dependencies.goal_application_service_factory(user_id)
+        try:
+            result = service.add_contribution(goal_id, payload)
+        except GoalApplicationError as exc:
+            return goal_application_error_response(exc)
+
+        return compat_success(
+            legacy_payload={
+                "message": "Contribuição registrada com sucesso",
+                "goal": result["goal"],
+                "contribution": result["contribution"],
+            },
+            status_code=201,
+            message="Contribuição registrada com sucesso",
+            data={
+                "goal": result["goal"],
+                "contribution": result["contribution"],
+            },
+        )
+
+    @doc(
+        description="Lista o histórico de contribuições de uma meta (paginado).",
+        tags=["Metas"],
+        security=[{"BearerAuth": []}],
+        params={
+            "goal_id": {"in": "path", "type": "string", "required": True},
+        },
+        responses={
+            200: {"description": "Histórico paginado de contribuições"},
+            401: {"description": "Token inválido"},
+            403: {"description": "Sem permissão"},
+            404: {"description": "Meta não encontrada"},
+        },
+    )
+    @use_kwargs(
+        {
+            "page": fields.Int(load_default=1, validate=lambda x: x > 0),
+            "per_page": fields.Int(load_default=10, validate=lambda x: 0 < x <= 100),
+        },
+        location="query",
+    )
+    @jwt_required()
+    def get(self, goal_id: UUID, page: int, per_page: int) -> Any:
+        user_id = current_user_id()
+        dependencies = get_goal_dependencies()
+        service = dependencies.goal_application_service_factory(user_id)
+        try:
+            result = service.list_contributions(goal_id, page=page, per_page=per_page)
+        except GoalApplicationError as exc:
+            return goal_application_error_response(exc)
+
+        items = result["items"]
+        pagination = result["pagination"]
+        return compat_success(
+            legacy_payload={"items": items, **pagination},
+            status_code=200,
+            message="Histórico de contribuições retornado com sucesso",
+            data={"items": items},
+            meta={"pagination": pagination},
+        )
+
+
 class GoalSimulationResource(MethodResource):
     @doc(
         description=(

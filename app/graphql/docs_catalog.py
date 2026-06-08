@@ -176,6 +176,17 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         source_module=QUERY_GOAL_MODULE,
     ),
     GraphQLOperationDoc(
+        name="goalContributions",
+        operation_type="query",
+        domain="goals",
+        access="auth_required",
+        summary=(
+            "Lista o histórico paginado de contribuições (aportes/retiradas) "
+            "de uma meta. Paridade com GET /goals/{id}/contributions."
+        ),
+        source_module=QUERY_GOAL_MODULE,
+    ),
+    GraphQLOperationDoc(
         name="installmentVsCashCalculate",
         operation_type="query",
         domain="simulations",
@@ -408,6 +419,17 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         domain="goals",
         access="auth_required",
         summary="Simula o plano de aporte de uma meta sem persistir dados.",
+        source_module=MUTATION_GOAL_MODULE,
+    ),
+    GraphQLOperationDoc(
+        name="recordGoalContribution",
+        operation_type="mutation",
+        domain="goals",
+        access="auth_required",
+        summary=(
+            "Registra um aporte (+) ou retirada (-) em uma meta, atualizando o "
+            "valor acumulado. Paridade com POST /goals/{id}/contributions."
+        ),
         source_module=MUTATION_GOAL_MODULE,
     ),
     GraphQLOperationDoc(

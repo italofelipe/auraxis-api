@@ -42,6 +42,7 @@ type Query {
   goals(page: Int = 1, perPage: Int = 10, status: String): GoalListPayloadType
   goal(goalId: UUID!): GoalTypeObject
   goalPlan(goalId: UUID!): GoalPlanType
+  goalContributions(goalId: UUID!, page: Int = 1, perPage: Int = 10): GoalContributionListPayloadType
   transactions(page: Int = 1, perPage: Int = 10, type: String, status: String, startDate: String, endDate: String, tagId: UUID, accountId: UUID, creditCardId: UUID): TransactionListPayloadType
   transactionSummary(month: String!, page: Int = 1, perPage: Int = 10, pageSize: Int @deprecated(reason: "Use perPage.")): TransactionSummaryPayloadType
   transactionDashboard(month: String!): TransactionDashboardPayloadType @deprecated(reason: "Use dashboardOverview.")
@@ -651,6 +652,20 @@ type GoalRecommendationType {
   estimatedDate: String
 }
 
+type GoalContributionListPayloadType {
+  items: [GoalContributionType]!
+  pagination: PaginationType!
+}
+
+type GoalContributionType {
+  id: ID!
+  goalId: ID!
+  amount: String!
+  note: String
+  occurredAt: String!
+  createdAt: String
+}
+
 type TransactionListPayloadType {
   items: [TransactionTypeObject]!
   pagination: PaginationType!
@@ -825,6 +840,13 @@ type Mutation {
   updateGoal(category: String, currentAmount: String, description: String, goalId: UUID!, priority: Int, status: GoalStatus, targetAmount: String, targetDate: String, title: String): UpdateGoalMutation @deprecated(reason: "ADR-0002: use PATCH /goals/{id}")
   deleteGoal(goalId: UUID!): DeleteGoalMutation @deprecated(reason: "ADR-0002: use DELETE /goals/{id}")
   simulateGoalPlan(currentAmount: String, monthlyContribution: String, monthlyExpenses: String, monthlyIncome: String, targetAmount: String!, targetDate: String): SimulateGoalPlanMutation
+
+  """
+  Register a deposit (+) or withdrawal (-) against a goal.
+  
+  REST parity: ``POST /goals/{goal_id}/contributions``.
+  """
+  recordGoalContribution(amount: String!, goalId: UUID!, note: String, occurredAt: String): RecordGoalContributionMutation
   saveInstallmentVsCashSimulation(cashPrice: String!, feesEnabled: Boolean = false, feesUpfront: String = "0.00", firstPaymentDelayDays: Int = 30, inflationRateAnnual: String!, installmentAmount: String, installmentCount: Int!, installmentTotal: String, opportunityRateAnnual: String, opportunityRateType: String = "manual", scenarioLabel: String): SaveInstallmentVsCashSimulationMutation
   createGoalFromInstallmentVsCashSimulation(category: String = "planned_purchase", currentAmount: String = "0.00", description: String, priority: Int = 3, selectedOption: String!, simulationId: UUID!, targetDate: String, title: String!): CreateGoalFromInstallmentVsCashSimulationMutation
   createPlannedExpenseFromInstallmentVsCashSimulation(accountId: UUID, creditCardId: UUID, currency: String = "BRL", description: String, dueDate: String, firstDueDate: String, observation: String, selectedOption: String!, simulationId: UUID!, status: String = "pending", tagId: UUID, title: String!, upfrontDueDate: String): CreatePlannedExpenseFromInstallmentVsCashSimulationMutation
@@ -1015,6 +1037,17 @@ type DeleteGoalMutation {
 type SimulateGoalPlanMutation {
   message: String!
   goalPlan: GoalPlanType!
+}
+
+"""
+Register a deposit (+) or withdrawal (-) against a goal.
+
+REST parity: ``POST /goals/{goal_id}/contributions``.
+"""
+type RecordGoalContributionMutation {
+  message: String!
+  goal: GoalTypeObject!
+  contribution: GoalContributionType!
 }
 
 type SaveInstallmentVsCashSimulationMutation {

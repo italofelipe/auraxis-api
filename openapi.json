@@ -5745,6 +5745,95 @@
         ]
       }
     },
+    "/goals/{goal_id}/contributions": {
+      "get": {
+        "description": "Lista o histórico de contribuições de uma meta (paginado).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "goal_id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Histórico paginado de contribuições"
+          },
+          "401": {
+            "description": "Token inválido"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "404": {
+            "description": "Meta não encontrada"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Metas"
+        ]
+      },
+      "post": {
+        "description": "Registra um aporte (valor positivo) ou retirada (valor negativo) na meta, atualizando o valor acumulado e o histórico.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "goal_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Contribuição registrada com sucesso"
+          },
+          "400": {
+            "description": "Dados inválidos ou saldo insuficiente"
+          },
+          "401": {
+            "description": "Token inválido"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "404": {
+            "description": "Meta não encontrada"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Metas"
+        ]
+      }
+    },
     "/goals/{goal_id}/plan": {
       "get": {
         "description": "Calcula o plano da meta considerando renda, despesas e capacidade de aporte do usuário.",

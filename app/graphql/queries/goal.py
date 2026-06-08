@@ -12,11 +12,17 @@ from app.application.services.goal_application_service import (
 from app.graphql.auth import get_current_user_required
 from app.graphql.goal_presenters import (
     raise_goal_graphql_error,
+    to_goal_contribution_type,
     to_goal_plan_type,
     to_goal_type_object,
 )
 from app.graphql.queries.common import paginate
-from app.graphql.types import GoalListPayloadType, GoalPlanType, GoalTypeObject
+from app.graphql.types import (
+    GoalContributionListPayloadType,
+    GoalListPayloadType,
+    GoalPlanType,
+    GoalTypeObject,
+)
 
 
 class GoalQueryMixin:
@@ -33,6 +39,12 @@ class GoalQueryMixin:
     goal_plan = graphene.Field(
         GoalPlanType,
         goal_id=graphene.UUID(required=True),
+    )
+    goal_contributions = graphene.Field(
+        GoalContributionListPayloadType,
+        goal_id=graphene.UUID(required=True),
+        page=graphene.Int(default_value=1),
+        per_page=graphene.Int(default_value=10),
     )
 
     def resolve_goals(
@@ -89,3 +101,28 @@ class GoalQueryMixin:
         except GoalApplicationError as exc:
             raise_goal_graphql_error(exc)
         return to_goal_plan_type(cast(dict[str, Any], result["goal_plan"]))
+
+    def resolve_goal_contributions(
+        self,
+        _info: graphene.ResolveInfo,
+        goal_id: UUID,
+        page: int,
+        per_page: int,
+    ) -> GoalContributionListPayloadType:
+        user = get_current_user_required()
+        service = GoalApplicationService.with_defaults(UUID(str(user.id)))
+        try:
+            result = service.list_contributions(goal_id, page=page, per_page=per_page)
+        except GoalApplicationError as exc:
+            raise_goal_graphql_error(exc)
+
+        items = [to_goal_contribution_type(item) for item in result["items"]]
+        pagination_meta = result["pagination"]
+        return GoalContributionListPayloadType(
+            items=items,
+            pagination=paginate(
+                total=pagination_meta["total"],
+                page=pagination_meta["page"],
+                per_page=pagination_meta["per_page"],
+            ),
+        )

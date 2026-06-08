@@ -216,6 +216,20 @@ class GoalListPayloadType(graphene.ObjectType):
     pagination = graphene.Field(PaginationType, required=True)
 
 
+class GoalContributionType(graphene.ObjectType):
+    id = graphene.ID(required=True)
+    goal_id = graphene.ID(required=True)
+    amount = graphene.String(required=True)
+    note = graphene.String()
+    occurred_at = graphene.String(required=True)
+    created_at = graphene.String()
+
+
+class GoalContributionListPayloadType(graphene.ObjectType):
+    items = graphene.List(GoalContributionType, required=True)
+    pagination = graphene.Field(PaginationType, required=True)
+
+
 class GoalRecommendationType(graphene.ObjectType):
     priority = graphene.String(required=True)
     title = graphene.String(required=True)
