@@ -6,7 +6,7 @@ column can be NOT NULL. created_at stays as the immutable audit timestamp
 (#1470).
 
 Revision ID: gc1_goal_contrib_date
-Revises: cc2_card_privacy
+Revises: onb1_user_onboarding
 Create Date: 2026-06-08
 
 """
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "gc1_goal_contrib_date"
-down_revision = "cc2_card_privacy"
+down_revision = "onb1_user_onboarding"
 branch_labels = None
 depends_on = None
 
