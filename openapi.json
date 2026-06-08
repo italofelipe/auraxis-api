@@ -11793,6 +11793,28 @@
         ]
       }
     },
+    "/user/onboarding/complete": {
+      "post": {
+        "description": "Marca o onboarding do usuário como concluído (idempotente).",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Onboarding marcado como concluído"
+          },
+          "401": {
+            "description": "Token inválido ou expirado"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Usuário"
+        ]
+      }
+    },
     "/user/profile": {
       "get": {
         "description": "Retorna o perfil reduzido do usuário autenticado (sem transações e sem carteira).",

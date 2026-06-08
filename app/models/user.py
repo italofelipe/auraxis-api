@@ -63,6 +63,11 @@ class User(db.Model):
     # User avatar — URL of the uploaded image stored in S3/CDN.
     avatar_url = db.Column(db.String(500), nullable=True)
 
+    # Onboarding — server-side completion marker (#1471).
+    # Persisted so clearing browser storage on any device does NOT re-trigger
+    # the onboarding wizard. Null means the user has not finished onboarding.
+    onboarding_completed_at = db.Column(db.DateTime, nullable=True)
+
     # LGPD — soft-delete / account erasure.
     # When set, this account has been anonymised and must be treated as deleted.
     deleted_at = db.Column(db.DateTime, nullable=True)

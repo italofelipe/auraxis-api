@@ -36,6 +36,7 @@ class UserProfilePayload(TypedDict):
     profile_quiz_score: int | None
     taxonomy_version: str | None
     avatar_url: str | None
+    onboarding_completed_at: str | None
 
 
 class AuthenticatedUserIdentityPayload(TypedDict):
@@ -70,6 +71,7 @@ class AuthenticatedUserInvestorProfilePayload(TypedDict):
 
 class AuthenticatedUserProductContextPayload(TypedDict):
     entitlements_version: int
+    onboarding_completed_at: str | None
 
 
 class AuthenticatedUserEmailVerificationPayload(TypedDict):
@@ -126,10 +128,11 @@ class WalletEntryPayload(TypedDict):
 def to_user_profile_payload(profile: AuthenticatedUserProfile) -> UserProfilePayload:
     """Build the legacy v2 flat user payload.
 
-    The v2 contract is **frozen**: it does not include the new
-    email-verification fields. Clients on v2 read verification status
-    from a separate header/endpoint; v3 surfaces it inside the canonical
-    ``email_verification`` block.
+    The v2 contract excludes the email-verification fields (clients read
+    those from a separate header/endpoint; v3 surfaces them in the canonical
+    ``email_verification`` block). ``onboarding_completed_at`` is exposed here
+    too as an additive, backward-compatible field so the v2 web client can
+    decide whether to show onboarding without migrating to v3 (#1471).
     """
     payload = asdict(profile)
     payload.pop("entitlements_version", None)
@@ -172,6 +175,7 @@ def to_authenticated_user_canonical_payload(
         },
         "product_context": {
             "entitlements_version": profile.entitlements_version,
+            "onboarding_completed_at": profile.onboarding_completed_at,
         },
         "email_verification": {
             "verified": profile.email_verified,

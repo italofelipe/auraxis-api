@@ -27,6 +27,8 @@ class UserType(graphene.ObjectType):
     profile_quiz_score = graphene.Int()
     taxonomy_version = graphene.String()
     avatar_url = graphene.String()
+    # #1471: server-side onboarding completion marker (ISO 8601 or null)
+    onboarding_completed_at = graphene.String()
     # #1325 / #1331: 14-day email verification grace period
     email_verified = graphene.Boolean()
     email_verification_deadline_at = graphene.String()
