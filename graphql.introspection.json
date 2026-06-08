@@ -2326,18 +2326,6 @@
               "deprecationReason": null,
               "description": null,
               "isDeprecated": false,
-              "name": "lastFourDigits",
-              "type": {
-                "kind": "SCALAR",
-                "name": "String",
-                "ofType": null
-              }
-            },
-            {
-              "args": [],
-              "deprecationReason": null,
-              "description": null,
-              "isDeprecated": false,
               "name": "bank",
               "type": {
                 "kind": "SCALAR",
@@ -2371,18 +2359,6 @@
                   "name": "String",
                   "ofType": null
                 }
-              }
-            },
-            {
-              "args": [],
-              "deprecationReason": null,
-              "description": null,
-              "isDeprecated": false,
-              "name": "validityDate",
-              "type": {
-                "kind": "SCALAR",
-                "name": "String",
-                "ofType": null
               }
             },
             {

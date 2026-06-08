@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 # mypy: disable-error-code=untyped-decorator
-from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -34,7 +33,6 @@ INVALID_DAY_MESSAGE = (
 INVALID_BENEFITS_MESSAGE = (
     "Field 'benefits' must be a list of strings (max 12 items × 120 chars each)"
 )
-INVALID_VALIDITY_DATE_MESSAGE = "Field 'validity_date' must be ISO YYYY-MM-DD"
 BANK_TOO_LONG_MESSAGE = "Field 'bank' must be at most 80 characters"
 DESCRIPTION_TOO_LONG_MESSAGE = "Field 'description' must be at most 300 characters"
 
@@ -52,13 +50,9 @@ def _serialize_card(c: CreditCard) -> dict[str, Any]:
         "limit_amount": float(c.limit_amount) if c.limit_amount is not None else None,
         "closing_day": c.closing_day,
         "due_day": c.due_day,
-        "last_four_digits": c.last_four_digits,
         "bank": c.bank,
         "description": c.description,
         "benefits": c.benefits_list,
-        "validity_date": (
-            c.validity_date.isoformat() if c.validity_date is not None else None
-        ),
         "created_at": c.created_at.isoformat() if c.created_at is not None else None,
         "updated_at": c.updated_at.isoformat() if c.updated_at is not None else None,
     }
@@ -112,18 +106,6 @@ def _validate_days(payload: dict[str, Any]) -> tuple[dict[str, Any], int] | None
     return None
 
 
-def _validate_last_four(payload: dict[str, Any]) -> tuple[dict[str, Any], int] | None:
-    last_four = payload.get("last_four_digits")
-    if last_four is None:
-        return None
-    if not isinstance(last_four, str) or len(last_four) != 4:
-        return _err_400(
-            "Field 'last_four_digits' must be a 4-character string",
-            "INVALID_LAST_FOUR_DIGITS",
-        )
-    return None
-
-
 def _validate_string_max(
     value: Any, *, max_len: int, message: str, error_code: str
 ) -> tuple[dict[str, Any], int] | None:
@@ -146,21 +128,6 @@ def _validate_benefits(payload: dict[str, Any]) -> tuple[dict[str, Any], int] | 
     return None
 
 
-def _validate_validity_date(
-    payload: dict[str, Any],
-) -> tuple[dict[str, Any], int] | None:
-    validity = payload.get("validity_date")
-    if validity is None:
-        return None
-    if not isinstance(validity, str):
-        return _err_400(INVALID_VALIDITY_DATE_MESSAGE, "INVALID_VALIDITY_DATE")
-    try:
-        date.fromisoformat(validity)
-    except ValueError:
-        return _err_400(INVALID_VALIDITY_DATE_MESSAGE, "INVALID_VALIDITY_DATE")
-    return None
-
-
 def _validate_card_payload(
     payload: dict[str, Any],
 ) -> tuple[dict[str, Any], int] | None:
@@ -168,7 +135,6 @@ def _validate_card_payload(
     for validator in (
         _validate_brand,
         _validate_days,
-        _validate_last_four,
         lambda p: _validate_string_max(
             p.get("bank"),
             max_len=BANK_MAX_LENGTH,
@@ -182,7 +148,6 @@ def _validate_card_payload(
             error_code="DESCRIPTION_TOO_LONG",
         ),
         _validate_benefits,
-        _validate_validity_date,
     ):
         error = validator(payload)
         if error is not None:
@@ -229,11 +194,6 @@ def create_credit_card() -> tuple[dict[str, Any], int]:
     due_day_raw = payload.get("due_day")
     due_day = int(due_day_raw) if due_day_raw is not None else None
 
-    validity_raw = payload.get("validity_date")
-    validity_value = (
-        date.fromisoformat(validity_raw) if isinstance(validity_raw, str) else None
-    )
-
     card = CreditCard(
         user_id=user_id,
         name=name,
@@ -241,10 +201,8 @@ def create_credit_card() -> tuple[dict[str, Any], int]:
         limit_amount=limit_amount,
         closing_day=closing_day,
         due_day=due_day,
-        last_four_digits=payload.get("last_four_digits") or None,
         bank=payload.get("bank") or None,
         description=payload.get("description") or None,
-        validity_date=validity_value,
     )
     benefits_value = payload.get("benefits")
     if benefits_value is not None:
@@ -282,10 +240,6 @@ def _coerce_benefits(raw: Any) -> Any:
     return list(raw) if raw is not None else None
 
 
-def _coerce_validity_date(raw: Any) -> Any:
-    return date.fromisoformat(raw) if isinstance(raw, str) else None
-
-
 # Maps payload keys to (attribute name, coercion fn). Keeps update logic
 # table-driven so cognitive complexity stays under the Sonar/Ruff cap.
 _CARD_UPDATE_FIELDS: tuple[tuple[str, str, Any], ...] = (
@@ -293,11 +247,9 @@ _CARD_UPDATE_FIELDS: tuple[tuple[str, str, Any], ...] = (
     ("limit_amount", "limit_amount", _coerce_decimal),
     ("closing_day", "closing_day", _coerce_int),
     ("due_day", "due_day", _coerce_int),
-    ("last_four_digits", "last_four_digits", _coerce_text),
     ("bank", "bank", _coerce_text),
     ("description", "description", _coerce_text),
     ("benefits", "benefits_list", _coerce_benefits),
-    ("validity_date", "validity_date", _coerce_validity_date),
 )
 
 
