@@ -28,7 +28,7 @@ INVALID_BRAND_MESSAGE = (
     "Field 'brand' must be one of: visa, mastercard, elo, hipercard, amex, other"
 )
 INVALID_DAY_MESSAGE = (
-    "Fields 'closing_day' and 'due_day' must be integers between 1 and 28"
+    "Fields 'closing_day' and 'due_day' must be integers between 1 and 31"
 )
 INVALID_BENEFITS_MESSAGE = (
     "Field 'benefits' must be a list of strings (max 12 items × 120 chars each)"
@@ -99,7 +99,7 @@ def _validate_days(payload: dict[str, Any]) -> tuple[dict[str, Any], int] | None
             continue
         try:
             v = int(val)
-            if not (1 <= v <= 28):
+            if not (1 <= v <= 31):
                 raise ValueError
         except (ValueError, TypeError):
             return _err_400(INVALID_DAY_MESSAGE, "INVALID_DAY")
