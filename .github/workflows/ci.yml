@@ -735,138 +735,34 @@ jobs:
         with:
           name: security-evidence
           path: reports/security/security-evidence.md
-
-  sonar:
-    name: SonarQube Cloud
+  # ── Semgrep SAST ─────────────────────────────────────────────────────────────
+  # SAST OSS cross-file/dataflow (standalone, sem conta). Bloqueia merge em finding
+  # de severidade ERROR; SARIF como artifact (Code Scanning exige GHAS pago em repo
+  # privado). Dashboard de qualidade: SonarQube Community Build local no
+  # auraxis-platform (`make sonar`). sonar-project.properties e scripts/sonar_*.sh
+  # permanecem no repo para uso local; saíram apenas do CI.
+  semgrep:
+    name: Semgrep SAST
     runs-on: ubuntu-latest
-    needs: [tests, schemathesis, mutation, trivy, osv-scanner, security-evidence]
-
     steps:
-      - name: Check Sonar capability
-        id: capability
-        env:
-          SONAR_TOKEN_VALUE: ${{ secrets.SONAR_TOKEN }}
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Semgrep
+        run: pip install --quiet semgrep
+      - name: Run Semgrep (blocking on ERROR)
         run: |
-          if [ -n "${SONAR_TOKEN_VALUE:-}" ] && [ -n "${{ vars.SONAR_PROJECT_KEY }}" ] && [ -n "${{ vars.SONAR_ORGANIZATION }}" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::SonarQube Cloud skipped: token or repo variables not available for this run."
-          fi
-
-      - name: Checkout
-        if: steps.capability.outputs.enabled == 'true'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download coverage artifact
-        if: steps.capability.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-report
-          path: .
-
-      - name: SonarQube Scan
-        if: steps.capability.outputs.enabled == 'true'
-        uses: SonarSource/sonarqube-scan-action@v6
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
-        with:
-          args: >
-            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
-            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
-            -Dsonar.python.coverage.reportPaths=coverage.xml
-
-      - name: SonarQube Quality Gate
-        id: sonar_quality_gate
-        if: steps.capability.outputs.enabled == 'true'
-        continue-on-error: true
-        uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
-        timeout-minutes: 5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
-
-      - name: Enforce Sonar Policy (A ratings + no critical bugs)
-        id: sonar_policy
-        if: steps.capability.outputs.enabled == 'true'
-        continue-on-error: true
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
-          SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
-          SONAR_BRANCH: ${{ github.head_ref || github.ref_name }}
-          SONAR_PULL_REQUEST: ${{ github.event.pull_request.number || '' }}
-          SONAR_POLICY_REPORT_PATH: ${{ runner.temp }}/sonar-policy-report.json
-        run: |
-          bash scripts/sonar_enforce_ci.sh
-
-      - name: Upload Sonar policy report artifact
-        if: ${{ always() && steps.capability.outputs.enabled == 'true' }}
+          semgrep scan \
+            --config p/python --config p/flask \
+            --config p/security-audit --config p/owasp-top-ten --config p/secrets \
+            --severity ERROR --error --metrics=off \
+            --sarif --output semgrep.sarif
+      - name: Upload Semgrep SARIF
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sonar-policy-report
-          path: ${{ runner.temp }}/sonar-policy-report.json
+          name: semgrep-sarif
+          path: semgrep.sarif
           if-no-files-found: ignore
 
-      - name: Summarize Sonar outcome
-        if: ${{ always() && steps.capability.outputs.enabled == 'true' }}
-        env:
-          SONAR_QUALITY_GATE_OUTCOME: ${{ steps.sonar_quality_gate.outcome }}
-          SONAR_POLICY_OUTCOME: ${{ steps.sonar_policy.outcome }}
-          SONAR_POLICY_REPORT_PATH: ${{ runner.temp }}/sonar-policy-report.json
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
-          report_path = Path(os.environ["SONAR_POLICY_REPORT_PATH"])
-          quality_gate_outcome = os.environ.get("SONAR_QUALITY_GATE_OUTCOME", "unknown")
-          policy_outcome = os.environ.get("SONAR_POLICY_OUTCOME", "unknown")
-
-          lines = [
-              "## Sonar Outcome",
-              "",
-              f"- Quality Gate step outcome: `{quality_gate_outcome}`",
-              f"- Custom policy step outcome: `{policy_outcome}`",
-          ]
-
-          if report_path.exists():
-              payload = json.loads(report_path.read_text(encoding="utf-8"))
-              errors = payload.get("errors", [])
-              lines.append("- Policy artifact: `sonar-policy-report`")
-              if quality_gate_outcome == "success" and policy_outcome == "failure":
-                  lines.extend([
-                      "",
-                      "### Why the job is red",
-                      "",
-                      "The Sonar scan and quality gate completed, but the **custom Auraxis Sonar policy** rejected the run.",
-                  ])
-              if errors:
-                  lines.extend(["", "### Policy rejection details", ""])
-                  lines.extend(f"- {error}" for error in errors)
-          else:
-              lines.extend([
-                  "",
-                  "### Policy report unavailable",
-                  "",
-                  "- The custom policy report file was not generated.",
-              ])
-
-          with open(summary_path, "a", encoding="utf-8") as handle:
-              handle.write("\n".join(lines) + "\n")
-          PY
-
-      - name: Fail on Sonar gate or policy rejection
-        if: >-
-          ${{
-            steps.capability.outputs.enabled == 'true' &&
-            (steps.sonar_quality_gate.outcome == 'failure' || steps.sonar_policy.outcome == 'failure')
-          }}
-        run: |
-          echo "Sonar pipeline failed. Review the Sonar Outcome section in the job summary." >&2
-          exit 1
