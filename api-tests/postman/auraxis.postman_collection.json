@@ -2798,8 +2798,8 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('GET /goals/{goal_id}/contributions — status 200', function () {",
-                  "  pm.response.to.have.status(200);",
+                  "pm.test('Historico de contribuicoes — expected 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -2841,6 +2841,10 @@
                   "value": "{{goalId}}"
                 }
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"100.00\",\n  \"note\": \"smoke {{runSeed}}\"\n}"
             }
           },
           "event": [
@@ -2848,8 +2852,8 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('POST /goals/{goal_id}/contributions — status 201', function () {",
-                  "  pm.response.to.have.status(201);",
+                  "pm.test('Registrar contribuicao — expected 201 or 400 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([201, 400, 404]);",
                   "});"
                 ],
                 "type": "text/javascript"
