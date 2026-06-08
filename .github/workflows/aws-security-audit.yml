@@ -51,9 +51,11 @@ jobs:
       - name: Run IAM audit
         if: ${{ steps.guard.outputs.configured == 'true' }}
         shell: bash
+        env:
+          FAIL_ON_INPUT: ${{ github.event.inputs.fail_on }}
         run: |
           set -euo pipefail
-          FAIL_ON="${{ github.event.inputs.fail_on }}"
+          FAIL_ON="${FAIL_ON_INPUT}"
           if [ -z "${FAIL_ON}" ]; then
             FAIL_ON="fail"
           fi

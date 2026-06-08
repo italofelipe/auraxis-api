@@ -45,9 +45,11 @@ jobs:
         run: npm run postman:build
 
       - name: Run privileged Newman suite
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
         run: |
-          ENV_FILE="api-tests/postman/environments/${{ inputs.environment }}.postman_environment.json"
-          POSTMAN_REPORT_FILE="reports/newman-privileged-${{ inputs.environment }}-report.xml" \
+          ENV_FILE="api-tests/postman/environments/${ENVIRONMENT}.postman_environment.json"
+          POSTMAN_REPORT_FILE="reports/newman-privileged-${ENVIRONMENT}-report.xml" \
           bash scripts/run_postman_suite.sh "$ENV_FILE" --profile privileged
 
       - name: Upload Newman privileged report

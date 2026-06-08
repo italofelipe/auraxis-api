@@ -8,7 +8,13 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Sequence
-from xml.etree import ElementTree
+
+# Element (type) and ParseError (malformed-XML exception) are not parsers — the
+# XXE vector is XML *parsing*, which uses defusedxml above. Type/exception-only
+# import, so the use-defused-xml rule is suppressed on this line.
+from xml.etree.ElementTree import Element, ParseError  # nosemgrep
+
+import defusedxml.ElementTree as DefusedET
 
 from app.services.csv_ingestion_service import _parse_amount, _parse_date
 
@@ -82,8 +88,8 @@ def parse_nubank_csv(content: str) -> list[ParsedEntry]:
 
 def _parse_ofx_xml(content: str, bank_name: str) -> list[ParsedEntry]:
     try:
-        root = ElementTree.fromstring(content)
-    except ElementTree.ParseError as exc:
+        root = DefusedET.fromstring(content)
+    except ParseError as exc:
         raise ValueError("Invalid OFX XML content") from exc
 
     statement_nodes = list(root.iterfind(".//STMTTRN"))
@@ -113,7 +119,7 @@ def _parse_ofx_sgml(content: str, bank_name: str) -> list[ParsedEntry]:
 
 
 def _build_ofx_entries(
-    statement_nodes: Sequence[ElementTree.Element | dict[str, str]],
+    statement_nodes: Sequence[Element | dict[str, str]],
     *,
     bank_name: str,
 ) -> list[ParsedEntry]:
@@ -149,7 +155,7 @@ def _build_ofx_entries(
 
 
 def _extract_ofx_value(
-    node: ElementTree.Element | dict[str, str],
+    node: Element | dict[str, str],
     field_name: str,
 ) -> str | None:
     if isinstance(node, dict):

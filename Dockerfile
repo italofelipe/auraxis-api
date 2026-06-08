@@ -10,6 +10,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY . .
 
+# Drop root: create and switch to a non-root user (port 3333 > 1024).
+RUN adduser -D -u 10001 appuser && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 3333
 
 CMD ["flask", "run", "--host=0.0.0.0"]
