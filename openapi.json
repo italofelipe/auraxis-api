@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "InstallmentVsCashCalculation": {
+        "additionalProperties": false,
         "properties": {
           "cash_price": {
             "minimum": 0.01,
@@ -75,6 +76,7 @@
         "type": "object"
       },
       "InstallmentVsCashGoalBridge": {
+        "additionalProperties": false,
         "properties": {
           "category": {
             "default": "planned_purchase",
@@ -125,6 +127,7 @@
         "type": "object"
       },
       "InstallmentVsCashPlannedExpenseBridge": {
+        "additionalProperties": false,
         "properties": {
           "account_id": {
             "default": null,
@@ -211,6 +214,7 @@
         "type": "object"
       },
       "InstallmentVsCashSave": {
+        "additionalProperties": false,
         "properties": {
           "cash_price": {
             "minimum": 0.01,
@@ -284,6 +288,7 @@
         "type": "object"
       },
       "TransactionCreate": {
+        "additionalProperties": false,
         "properties": {
           "account_id": {
             "description": "ID da conta bancária associada",
@@ -484,6 +489,7 @@
         "type": "object"
       },
       "TransactionCreate_7d3b606eab": {
+        "additionalProperties": false,
         "properties": {
           "account_id": {
             "description": "ID da conta bancária associada",
@@ -678,6 +684,7 @@
         "type": "object"
       },
       "app_schemas_ai_insight_schema_AIInsightGenerateRequestSchema": {
+        "additionalProperties": false,
         "properties": {
           "anchor_date": {
             "description": "Data âncora do período no formato YYYY-MM-DD.",
@@ -716,6 +723,7 @@
         "type": "object"
       },
       "app_schemas_ai_insight_schema_AIMonthlyReportRequestSchema": {
+        "additionalProperties": false,
         "properties": {
           "anchor_date": {
             "description": "Data âncora do mês a consolidar. Quando omitida, a API usa a data atual.",
@@ -734,6 +742,7 @@
         "type": "object"
       },
       "app_schemas_auth_schema_AuthSchema": {
+        "additionalProperties": false,
         "properties": {
           "captcha_token": {
             "default": null,
@@ -761,6 +770,7 @@
         "type": "object"
       },
       "app_schemas_auth_schema_ConfirmEmailSchema": {
+        "additionalProperties": false,
         "properties": {
           "token": {
             "description": "Token de confirmacao recebido por email",
@@ -776,6 +786,7 @@
         "type": "object"
       },
       "app_schemas_auth_schema_ForgotPasswordSchema": {
+        "additionalProperties": false,
         "properties": {
           "email": {
             "description": "Email da conta que deseja recuperar acesso",
@@ -790,6 +801,7 @@
         "type": "object"
       },
       "app_schemas_auth_schema_ResetPasswordSchema": {
+        "additionalProperties": false,
         "properties": {
           "new_password": {
             "description": "Nova senha (mínimo 10 caracteres, com maiúscula, número e símbolo)",
@@ -813,6 +825,7 @@
         "type": "object"
       },
       "app_schemas_consent_schemas_ConsentRecordSchema": {
+        "additionalProperties": false,
         "properties": {
           "action": {
             "enum": [
@@ -855,6 +868,7 @@
         "type": "object"
       },
       "app_schemas_push_subscription_schema_SubscribeSchema": {
+        "additionalProperties": false,
         "properties": {
           "device_label": {
             "default": null,
@@ -889,6 +903,7 @@
         "type": "object"
       },
       "app_schemas_push_subscription_schema_UnsubscribeSchema": {
+        "additionalProperties": false,
         "properties": {
           "endpoint": {
             "type": "string"
@@ -900,6 +915,7 @@
         "type": "object"
       },
       "app_schemas_user_schemas_DeleteAccountSchema": {
+        "additionalProperties": false,
         "properties": {
           "password": {
             "description": "Senha atual do usuário para confirmar a exclusão da conta",
@@ -914,6 +930,7 @@
         "type": "object"
       },
       "app_schemas_user_schemas_QuestionnaireAnswerSchema": {
+        "additionalProperties": false,
         "properties": {
           "answers": {
             "description": "Lista de 5 respostas — pontos da opção escolhida em cada pergunta (1–3).",
@@ -933,6 +950,7 @@
         "type": "object"
       },
       "app_schemas_user_schemas_SalaryIncreaseSimulationRequestSchema": {
+        "additionalProperties": false,
         "properties": {
           "base_date": {
             "description": "Data base do salário atual",
@@ -968,6 +986,7 @@
         "type": "object"
       },
       "app_schemas_user_schemas_UserProfileSchema": {
+        "additionalProperties": false,
         "properties": {
           "birth_date": {
             "description": "Data de nascimento",
@@ -1080,6 +1099,7 @@
         "type": "object"
       },
       "app_schemas_user_schemas_UserRegistrationSchema": {
+        "additionalProperties": false,
         "properties": {
           "captcha_token": {
             "default": null,
@@ -5704,6 +5724,95 @@
           },
           "400": {
             "description": "Dados inválidos"
+          },
+          "401": {
+            "description": "Token inválido"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "404": {
+            "description": "Meta não encontrada"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Metas"
+        ]
+      }
+    },
+    "/goals/{goal_id}/contributions": {
+      "get": {
+        "description": "Lista o histórico de contribuições de uma meta (paginado).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "goal_id",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Histórico paginado de contribuições"
+          },
+          "401": {
+            "description": "Token inválido"
+          },
+          "403": {
+            "description": "Sem permissão"
+          },
+          "404": {
+            "description": "Meta não encontrada"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Metas"
+        ]
+      },
+      "post": {
+        "description": "Registra um aporte (valor positivo) ou retirada (valor negativo) na meta, atualizando o valor acumulado e o histórico.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "goal_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Contribuição registrada com sucesso"
+          },
+          "400": {
+            "description": "Dados inválidos ou saldo insuficiente"
           },
           "401": {
             "description": "Token inválido"
