@@ -3,6 +3,7 @@ from __future__ import annotations
 from .blueprint import goal_bp
 from .resources import (
     GoalCollectionResource,
+    GoalContributionsResource,
     GoalPlanResource,
     GoalProjectionResource,
     GoalResource,
@@ -41,6 +42,11 @@ def register_goal_routes() -> None:
         "/<uuid:goal_id>/projection",
         view_func=GoalProjectionResource.as_view("goal_projection"),
         methods=["GET"],
+    )
+    goal_bp.add_url_rule(
+        "/<uuid:goal_id>/contributions",
+        view_func=GoalContributionsResource.as_view("goal_contributions"),
+        methods=["GET", "POST"],
     )
 
     _ROUTES_REGISTERED = True

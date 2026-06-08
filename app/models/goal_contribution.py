@@ -35,6 +35,11 @@ class GoalContribution(db.Model):
     )
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     note = db.Column(db.String(200), nullable=True)
+    # User-facing contribution date (may be back-dated by the client). Defaults
+    # to the creation date. created_at stays as the immutable audit timestamp.
+    occurred_at = db.Column(
+        db.Date, default=lambda: utc_now_naive().date(), nullable=False
+    )
     created_at = db.Column(db.DateTime, default=utc_now_naive, nullable=False)
 
     __table_args__ = (
