@@ -42,7 +42,7 @@ redis==5.3.1
 rq==2.8.0
 croniter==6.2.2
 tenacity==9.1.4
-sentry-sdk[flask]==2.60.0
+sentry-sdk[flask]==2.61.1
 SQLAlchemy==2.0.50
 typing_extensions>=4.14.1
 webargs==8.7.1
