@@ -105,17 +105,23 @@ class BudgetService:
         """
         Calculates the total spent amount for a given budget in its current period.
 
-        - monthly: sums paid expense transactions for the current calendar month
-          filtered by tag_id (or all if tag_id is null).
-        - weekly: sums paid expense transactions for the current ISO week.
-        - custom: sums paid expense transactions between start_date and end_date.
+        - monthly: sums committed expense transactions for the current calendar
+          month filtered by category/tag_id (or all if both are null).
+        - weekly: sums committed expense transactions for the current ISO week.
+        - custom: sums committed expense transactions between start_date and
+          end_date.
         """
         today = date.today()
+        committed_statuses = (
+            TransactionStatus.PAID,
+            TransactionStatus.PENDING,
+            TransactionStatus.OVERDUE,
+        )
 
         query = db.session.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
             Transaction.user_id == self.user_id,
             Transaction.type == TransactionType.EXPENSE,
-            Transaction.status == TransactionStatus.PAID,
+            Transaction.status.in_(committed_statuses),
             Transaction.deleted.is_(False),
         )
 
