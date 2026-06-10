@@ -874,6 +874,20 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         ),
         source_module=QUERY_AI_INSIGHT_MODULE,
     ),
+    # AI Advisory — change detection sem LLM (#1482)
+    GraphQLOperationDoc(
+        name="aiInsightChangeStatus",
+        operation_type="query",
+        domain="ai_advisory",
+        access="auth_required",
+        summary=(
+            "Indica se o snapshot financeiro mudou desde o último insight do "
+            "período (compara context_hash) SEM chamar o LLM — sem custo de tokens "
+            "e sem consumir cota. Usado para confirmar 'nada mudou, gerar mesmo "
+            "assim?'. Paridade com GET /ai/insights/change-status."
+        ),
+        source_module=QUERY_AI_INSIGHT_MODULE,
+    ),
     # AI Advisory — cached Radar de Gastos (#1455)
     GraphQLOperationDoc(
         name="spendingPatternsLatest",

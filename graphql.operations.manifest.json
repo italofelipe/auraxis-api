@@ -737,6 +737,14 @@
   {
     "access": "auth_required",
     "domain": "ai_advisory",
+    "name": "aiInsightChangeStatus",
+    "operation_type": "query",
+    "source_module": "app.graphql.queries.ai_insight",
+    "summary": "Indica se o snapshot financeiro mudou desde o último insight do período (compara context_hash) SEM chamar o LLM — sem custo de tokens e sem consumir cota. Usado para confirmar 'nada mudou, gerar mesmo assim?'. Paridade com GET /ai/insights/change-status."
+  },
+  {
+    "access": "auth_required",
+    "domain": "ai_advisory",
     "name": "spendingPatternsLatest",
     "operation_type": "query",
     "source_module": "app.graphql.queries.ai_insight",
