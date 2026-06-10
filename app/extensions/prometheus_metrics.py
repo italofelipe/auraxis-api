@@ -52,6 +52,7 @@ _AI_INSIGHT_RUNS_TOTAL: Any = None
 _AI_INSIGHT_COST_USD_TOTAL: Any = None
 _AI_INSIGHT_REJECTIONS_TOTAL: Any = None
 _AI_INSIGHT_TRUNCATED_TOTAL: Any = None
+_AI_INSIGHT_DEPTH_BELOW_TARGET_TOTAL: Any = None
 _AI_INSIGHT_DATA_QUALITY_DOMAINS: Any = None
 _AI_INSIGHT_RUNS_PURGED_TOTAL: Any = None
 
@@ -61,7 +62,7 @@ _AI_SNAPSHOT_BYTES_BUCKETS = (1024, 2048, 4096, 8192, 12288, 16384, 32768)
 _AI_DATA_QUALITY_DOMAIN_BUCKETS = (0, 1, 2, 3, 4, 5, 6)
 
 
-def _init_ai_insight_metrics() -> None:
+def _init_ai_insight_metrics() -> None:  # noqa: C901 — flat list of counter inits
     """Lazily initialise the MVP-3 AI insight observability instruments."""
     global \
         _AI_INSIGHT_GENERATED_TOTAL, \
@@ -71,6 +72,7 @@ def _init_ai_insight_metrics() -> None:
         _AI_INSIGHT_COST_USD_TOTAL, \
         _AI_INSIGHT_REJECTIONS_TOTAL, \
         _AI_INSIGHT_TRUNCATED_TOTAL, \
+        _AI_INSIGHT_DEPTH_BELOW_TARGET_TOTAL, \
         _AI_INSIGHT_DATA_QUALITY_DOMAINS, \
         _AI_INSIGHT_RUNS_PURGED_TOTAL
 
@@ -122,6 +124,12 @@ def _init_ai_insight_metrics() -> None:
         _AI_INSIGHT_TRUNCATED_TOTAL = Counter(
             "auraxis_ai_insight_truncated_total",
             "AI insight runs whose snapshot was truncated before the LLM call",
+            ["period_type"],
+        )
+    if _AI_INSIGHT_DEPTH_BELOW_TARGET_TOTAL is None:
+        _AI_INSIGHT_DEPTH_BELOW_TARGET_TOTAL = Counter(
+            "auraxis_ai_insight_depth_below_target_total",
+            "AI insight generations whose text fell below the reading-time target",
             ["period_type"],
         )
     if _AI_INSIGHT_DATA_QUALITY_DOMAINS is None:
@@ -366,6 +374,20 @@ def record_ai_insight_truncated(*, period_type: str) -> None:
     _ensure_metrics_initialized()
     if _AI_INSIGHT_TRUNCATED_TOTAL is not None:
         _AI_INSIGHT_TRUNCATED_TOTAL.labels(
+            period_type=period_type or "unknown",
+        ).inc()
+
+
+def record_ai_insight_depth_below_target(*, period_type: str) -> None:
+    """Count one AI insight whose text fell short of the reading-time target.
+
+    The depth gate is *advisory* (#1481): it never re-calls the LLM (that would
+    double the cost) — it only surfaces shallow generations for monitoring so we
+    can tune prompts/`max_tokens` over time.
+    """
+    _ensure_metrics_initialized()
+    if _AI_INSIGHT_DEPTH_BELOW_TARGET_TOTAL is not None:
+        _AI_INSIGHT_DEPTH_BELOW_TARGET_TOTAL.labels(
             period_type=period_type or "unknown",
         ).inc()
 
