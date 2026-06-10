@@ -29,7 +29,10 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy import case, func, or_
 
 from app.extensions.database import db
-from app.extensions.prometheus_metrics import record_ai_insight_generated
+from app.extensions.prometheus_metrics import (
+    record_ai_insight_depth_below_target,
+    record_ai_insight_generated,
+)
 from app.models.ai_insight import AIInsight, InsightType
 from app.models.ai_insight_run import AIInsightRun, AIInsightRunStatus
 from app.models.budget import Budget
@@ -1163,6 +1166,7 @@ class AIAdvisoryService:
             llm_resp = self._provider.generate_with_usage(
                 prompt,
                 response_schema=_FINANCIAL_INSIGHT_RESPONSE_SCHEMA,
+                max_tokens=_period_max_tokens(normalized_period_type),
             )
         except LLMProviderError as exc:
             log.warning(
@@ -1253,6 +1257,25 @@ class AIAdvisoryService:
                 self._user_id,
                 normalized_period_type,
             )
+
+        # Depth gate (#1481): advisory-only — flag shallow generations for
+        # monitoring. We never re-call the LLM (that would double the cost);
+        # the signal feeds prompt/max_tokens tuning over time.
+        word_count = _insight_reading_word_count(summary, items)
+        target = _DEPTH_WORD_TARGETS.get(normalized_period_type, 0)
+        if target and word_count < target:
+            log.info(
+                "ai_advisory.financial_insights.below_depth_target "
+                "user=%s period=%s words=%s target=%s",
+                self._user_id,
+                normalized_period_type,
+                word_count,
+                target,
+            )
+            try:
+                record_ai_insight_depth_below_target(period_type=normalized_period_type)
+            except Exception:  # pragma: no cover — metrics are fire-and-forget
+                pass
 
         return {
             "id": str(saved_insight.id),
@@ -2193,6 +2216,60 @@ def _build_monthly_budget_by_category(
 # ---------------------------------------------------------------------------
 
 
+# Depth targets (#1481): reading-time-driven verbosity per period. Daily stays
+# lean (~3 min); weekly/monthly are deep reports (~15 min).
+_DEPTH_INSTRUCTIONS: dict[str, str] = {
+    "daily": (
+        "PROFUNDIDADE ALVO: aproximadamente 3 minutos de leitura (cerca de 500 a "
+        "700 palavras no total da resposta). Vá além de uma frase por dimensão: "
+        "para cada dimensão com dados, escreva itens substantivos com 'message' "
+        "denso (2 a 4 frases), trazendo números concretos do snapshot, ao menos "
+        "uma comparação e uma recomendação acionável. Use markdown leve (negrito "
+        "em valores) quando ajudar a leitura. Não seja telegráfico nem repita."
+    ),
+    "weekly": (
+        "PROFUNDIDADE ALVO: aproximadamente 15 minutos de leitura (cerca de 2500 a "
+        "3500 palavras no total). Para cada dimensão com dados, produza MÚLTIPLOS "
+        "itens ricos, com 'message' longo em markdown (parágrafos), cobrindo "
+        "tendências da semana, comparações período-a-período, causas prováveis, "
+        "riscos e recomendações priorizadas. Aprofunde as projeções (3/6/12m) "
+        "quando 'projections' existir. Cada item agrega informação nova — não repita."
+    ),
+    "monthly": (
+        "PROFUNDIDADE ALVO: aproximadamente 15 minutos de leitura (cerca de 2500 a "
+        "3500 palavras no total). Faça um relatório mensal completo: para cada "
+        "dimensão com dados, vários itens com 'message' longo em markdown "
+        "(parágrafos) cobrindo o panorama do mês, extremos, tendências, "
+        "comparações, riscos e um plano de ação priorizado. Aprofunde as projeções "
+        "(3/6/12m) quando 'projections' existir. Cada item agrega informação nova."
+    ),
+}
+
+# Approximate reading-time word targets used by the advisory depth gate (#1481).
+_DEPTH_WORD_TARGETS: dict[str, int] = {"daily": 450, "weekly": 2200, "monthly": 2200}
+
+
+def _period_max_tokens(period_type: str) -> int:
+    """Output token budget per period — deep reports need a much larger budget."""
+    if period_type == "daily":
+        env_key, default = "AI_INSIGHT_MAX_TOKENS_DAILY", 1500
+    else:
+        env_key, default = "AI_INSIGHT_MAX_TOKENS_LONG", 6000
+    try:
+        return max(1, int(os.getenv(env_key, str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+def _insight_reading_word_count(summary: str, items: list[dict[str, Any]]) -> int:
+    """Approximate human reading length: words in summary + each item title+message."""
+    parts = [summary or ""]
+    for item in items:
+        parts.append(str(item.get("title", "")))
+        parts.append(str(item.get("message", "")))
+    return sum(len(part.split()) for part in parts)
+
+
 def _build_financial_insight_prompt(
     snapshot: dict[str, Any],
     *,
@@ -2234,6 +2311,10 @@ def _build_financial_insight_prompt(
             ),
         }[period_type]
 
+    depth_instruction = _DEPTH_INSTRUCTIONS.get(
+        period_type, _DEPTH_INSTRUCTIONS["daily"]
+    )
+
     insight_types = ", ".join(_SPENDING_INSIGHT_TYPES)
     contract = snapshot.get("insight_contract")
     required_dimensions_raw = (
@@ -2271,6 +2352,7 @@ def _build_financial_insight_prompt(
         "financeiro estruturado abaixo e gere insights em português brasileiro, "
         "objetivos, personalizados e acionáveis.\n"
         f"{period_instruction}\n"
+        f"{depth_instruction}\n"
         f"{coverage_instruction}"
         f"Presença de dados por domínio: {domain_presence_json}.\n"
         "Use somente os dados do snapshot fornecido. Não invente transações, metas, "

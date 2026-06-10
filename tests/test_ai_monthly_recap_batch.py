@@ -79,7 +79,9 @@ def _seed_monthly_recap(user_id: uuid.UUID, *, period_label: str) -> None:
 
 
 class _RecapProvider:
-    def generate_with_usage(self, prompt: str, response_schema=None) -> LLMResponse:
+    def generate_with_usage(
+        self, prompt: str, response_schema=None, max_tokens=None
+    ) -> LLMResponse:
         dimensions = [
             "general",
             "transactions",
