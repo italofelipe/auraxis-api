@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any  # noqa: UP006
 
 # ---------------------------------------------------------------------------
@@ -161,6 +163,129 @@ def test_budget_spent_calculation_monthly(client) -> None:
     assert float(budget["spent"]) == 0.0
     assert float(budget["remaining"]) == 500.0
     assert budget["percentage_used"] == 0.0
+    assert budget["is_over_budget"] is False
+
+
+def test_budget_spent_uses_committed_monthly_expenses_for_tag_envelope(
+    client, app
+) -> None:
+    """Monthly envelope usage counts paid, pending and overdue expenses only."""
+    token = _register_and_login(client, prefix="budget-committed")
+    tag_id = _create_tag(client, token, name="Streaming")
+    other_tag_id = _create_tag(client, token, name="Mercado")
+
+    create_resp = client.post(
+        "/budgets",
+        json=_budget_payload(name="Streaming", amount="500.00", tag_id=tag_id),
+        headers=_auth(token),
+    )
+    assert create_resp.status_code == 201
+    budget_id = create_resp.get_json()["data"]["budget"]["id"]
+
+    from flask_jwt_extended import decode_token
+
+    from app.extensions.database import db
+    from app.models.transaction import Transaction, TransactionStatus, TransactionType
+
+    user_id = uuid.UUID(decode_token(token)["sub"])
+    current_month_day = date.today().replace(day=10)
+    previous_month_day = current_month_day.replace(day=1) - timedelta(days=1)
+
+    with app.app_context():
+        db.session.add_all(
+            [
+                Transaction(
+                    user_id=user_id,
+                    title="Netflix pago",
+                    amount=Decimal("50.00"),
+                    type=TransactionType.EXPENSE,
+                    status=TransactionStatus.PAID,
+                    due_date=current_month_day,
+                    tag_id=uuid.UUID(tag_id),
+                ),
+                Transaction(
+                    user_id=user_id,
+                    title="Prime pendente",
+                    amount=Decimal("70.00"),
+                    type=TransactionType.EXPENSE,
+                    status=TransactionStatus.PENDING,
+                    due_date=current_month_day,
+                    tag_id=uuid.UUID(tag_id),
+                ),
+                Transaction(
+                    user_id=user_id,
+                    title="Spotify vencido",
+                    amount=Decimal("30.00"),
+                    type=TransactionType.EXPENSE,
+                    status=TransactionStatus.OVERDUE,
+                    due_date=current_month_day,
+                    tag_id=uuid.UUID(tag_id),
+                ),
+                Transaction(
+                    user_id=user_id,
+                    title="Assinatura cancelada",
+                    amount=Decimal("90.00"),
+                    type=TransactionType.EXPENSE,
+                    status=TransactionStatus.CANCELLED,
+                    due_date=current_month_day,
+                    tag_id=uuid.UUID(tag_id),
+                ),
+                Transaction(
+                    user_id=user_id,
+                    title="Assinatura postergada",
+                    amount=Decimal("60.00"),
+                    type=TransactionType.EXPENSE,
+                    status=TransactionStatus.POSTPONED,
+                    due_date=current_month_day,
+                    tag_id=uuid.UUID(tag_id),
+                ),
+                Transaction(
+                    user_id=user_id,
+                    title="Reembolso streaming",
+                    amount=Decimal("200.00"),
+                    type=TransactionType.INCOME,
+                    status=TransactionStatus.PAID,
+                    due_date=current_month_day,
+                    tag_id=uuid.UUID(tag_id),
+                ),
+                Transaction(
+                    user_id=user_id,
+                    title="Despesa deletada",
+                    amount=Decimal("40.00"),
+                    type=TransactionType.EXPENSE,
+                    status=TransactionStatus.PAID,
+                    due_date=current_month_day,
+                    tag_id=uuid.UUID(tag_id),
+                    deleted=True,
+                ),
+                Transaction(
+                    user_id=user_id,
+                    title="Outro envelope",
+                    amount=Decimal("20.00"),
+                    type=TransactionType.EXPENSE,
+                    status=TransactionStatus.PENDING,
+                    due_date=current_month_day,
+                    tag_id=uuid.UUID(other_tag_id),
+                ),
+                Transaction(
+                    user_id=user_id,
+                    title="Streaming mês anterior",
+                    amount=Decimal("100.00"),
+                    type=TransactionType.EXPENSE,
+                    status=TransactionStatus.PAID,
+                    due_date=previous_month_day,
+                    tag_id=uuid.UUID(tag_id),
+                ),
+            ],
+        )
+        db.session.commit()
+
+    detail_resp = client.get(f"/budgets/{budget_id}", headers=_auth(token))
+    assert detail_resp.status_code == 200
+    budget = detail_resp.get_json()["data"]["budget"]
+    assert Decimal(budget["spent"]) == Decimal("150.00")
+    assert Decimal(budget["remaining"]) == Decimal("350.00")
+    assert budget["percentage_used"] == 30.0
     assert budget["is_over_budget"] is False
 
 

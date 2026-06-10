@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.57.0](https://github.com/italofelipe/auraxis-api/compare/v1.56.1...v1.57.0) (2026-06-08)
+
+
+### Features
+
+* **goals:** add contribution endpoints (deposit/withdrawal + history) ([507ae02](https://github.com/italofelipe/auraxis-api/commit/507ae0261c26b1338e3e9c80be110eaac852ea7f)), closes [#1470](https://github.com/italofelipe/auraxis-api/issues/1470)
+* **goals:** registrar aporte/retirada + histórico de contribuições (REST + GraphQL) ([bed4b02](https://github.com/italofelipe/auraxis-api/commit/bed4b02f07fd8d701bf1f4ff17cac5025f3811f9))
+* **onboarding:** persist completion server-side (REST + GraphQL) ([d43f7da](https://github.com/italofelipe/auraxis-api/commit/d43f7da6d75d40be118ba6322879889003efb3b8)), closes [#1471](https://github.com/italofelipe/auraxis-api/issues/1471)
+* **onboarding:** persistir conclusão server-side (flag no usuário, REST + GraphQL) ([eb5d631](https://github.com/italofelipe/auraxis-api/commit/eb5d6314e3b20deb4db70c38aecc04de270dab72))
+
+
+### Bug Fixes
+
+* **credit-card:** aceitar dia de vencimento/fechamento 1–31 com clamp em meses curtos ([6169982](https://github.com/italofelipe/auraxis-api/commit/616998238b65bee519b032e093fe3b23dd5fa1bf))
+* **credit-card:** allow billing days 1-31 with month-end clamp ([374ed4b](https://github.com/italofelipe/auraxis-api/commit/374ed4b5f67bf0a6778085e0e0d1ca61964e887a)), closes [#1469](https://github.com/italofelipe/auraxis-api/issues/1469)
+* **goals:** chain gc1 migration on onb1 + resync postman after master merge ([d3c32a8](https://github.com/italofelipe/auraxis-api/commit/d3c32a8a936995519fcbab9bf137bfb6a17f967f))
+* **goals:** commit regenerated graphql bundle (introspection + operations manifest) ([b63502b](https://github.com/italofelipe/auraxis-api/commit/b63502b268cf679ed0c0d6b955e81a0dc3e4b105))
+* **onboarding:** expose onboarding_completed_at in v2 flat /user/me + commit graphql bundle ([d535229](https://github.com/italofelipe/auraxis-api/commit/d535229e8fb2f72f53fd2855f9eb7d8376164dab))
+
 ## [1.56.1](https://github.com/italofelipe/auraxis-api/compare/v1.56.0...v1.56.1) (2026-06-07)
 
 
