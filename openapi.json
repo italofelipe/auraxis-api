@@ -1453,6 +1453,135 @@
         ]
       }
     },
+    "/ai/insights/change-status": {
+      "get": {
+        "description": "Compara o snapshot financeiro atual com o último insight persistido do mesmo período e retorna `changed`. NÃO chama o LLM: sem custo de tokens e sem consumir a cota diária. Usado pelo front para confirmar 'nada mudou, gerar mesmo assim?' antes de gastar uma geração.",
+        "parameters": [
+          {
+            "description": "Timezone IANA do usuário (para anchor_date omitido).",
+            "example": "America/Sao_Paulo",
+            "in": "header",
+            "name": "X-Auraxis-Timezone",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "description": "Data âncora ISO (YYYY-MM-DD). Default: hoje.",
+            "example": "2026-05-17",
+            "in": "query",
+            "name": "anchor_date",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "description": "daily, weekly ou monthly.",
+            "example": "daily",
+            "in": "query",
+            "name": "period_type",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": {
+                    "changed": false,
+                    "current_context_hash": "sha256",
+                    "last_context_hash": "sha256",
+                    "last_generated_at": "2026-05-17T03:15:00",
+                    "period_label": "2026-05-17",
+                    "period_type": "daily"
+                  },
+                  "message": "Status de mudança do insight"
+                },
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Status de mudança calculado",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador único da requisição gerado pela API.",
+                "example": "9fcd2e4f4d8747b4a7d8a2b1b930f52a",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "VALIDATION_ERROR",
+                  "message": "period_type deve ser daily, weekly ou monthly",
+                  "status_code": 400
+                },
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Parâmetros inválidos",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador único da requisição gerado pela API.",
+                "example": "9fcd2e4f4d8747b4a7d8a2b1b930f52a",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Verificar se houve mudança desde o último insight (sem IA)",
+        "tags": [
+          "AI Advisory"
+        ]
+      }
+    },
     "/ai/insights/generate": {
       "post": {
         "description": "Gera insights financeiros com contexto daily, weekly ou monthly, incluindo evidências estruturadas extraídas do snapshot financeiro.",

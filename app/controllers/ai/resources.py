@@ -412,6 +412,130 @@ class AIInsightGenerateResource(MethodResource):
         )
 
 
+class AIInsightChangeStatusResource(MethodResource):
+    """GET /ai/insights/change-status — detect snapshot change without the LLM."""
+
+    @doc(
+        summary="Verificar se houve mudança desde o último insight (sem IA)",
+        description=(
+            "Compara o snapshot financeiro atual com o último insight persistido "
+            "do mesmo período e retorna `changed`. NÃO chama o LLM: sem custo de "
+            "tokens e sem consumir a cota diária. Usado pelo front para confirmar "
+            "'nada mudou, gerar mesmo assim?' antes de gastar uma geração."
+        ),
+        tags=["AI Advisory"],
+        security=[{"BearerAuth": []}],
+        params={
+            "period_type": {
+                "in": "query",
+                "description": "daily, weekly ou monthly.",
+                "type": "string",
+                "required": True,
+                "example": "daily",
+            },
+            "anchor_date": {
+                "in": "query",
+                "description": "Data âncora ISO (YYYY-MM-DD). Default: hoje.",
+                "type": "string",
+                "required": False,
+                "example": "2026-05-17",
+            },
+            timezone_utils.USER_TIMEZONE_HEADER: {
+                "in": "header",
+                "description": "Timezone IANA do usuário (para anchor_date omitido).",
+                "type": "string",
+                "required": False,
+                "example": "America/Sao_Paulo",
+            },
+        },
+        responses={
+            200: json_success_response(
+                description="Status de mudança calculado",
+                message="Status de mudança do insight",
+                data_example={
+                    "period_type": "daily",
+                    "period_label": "2026-05-17",
+                    "changed": False,
+                    "current_context_hash": "sha256",
+                    "last_context_hash": "sha256",
+                    "last_generated_at": "2026-05-17T03:15:00",
+                },
+            ),
+            400: json_error_response(
+                description="Parâmetros inválidos",
+                message="period_type deve ser daily, weekly ou monthly",
+                error_code="VALIDATION_ERROR",
+                status_code=400,
+            ),
+        },
+    )
+    @jwt_required()
+    def get(self) -> Response:
+        token_error = _guard_revoked_token()
+        if token_error is not None:
+            return token_error
+
+        user_id = current_user_id()
+
+        period_type = str(request.args.get("period_type", "")).strip().lower()
+        if period_type not in _AI_INSIGHT_PERIOD_TYPES:
+            return compat_error_response(
+                legacy_payload={
+                    "error": "period_type deve ser daily, weekly ou monthly"
+                },
+                status_code=400,
+                message="period_type deve ser daily, weekly ou monthly",
+                error_code="VALIDATION_ERROR",
+            )
+
+        anchor_error, anchor_date = _parse_optional_iso_date(
+            request.args.get("anchor_date")
+        )
+        if anchor_error is not None:
+            return anchor_error
+
+        raw_timezone = request.headers.get(
+            timezone_utils.USER_TIMEZONE_HEADER
+        ) or request.args.get("timezone")
+        timezone_resolution = timezone_utils.resolve_user_timezone(raw_timezone)
+        anchor_was_omitted = anchor_date is None
+        if anchor_was_omitted:
+            anchor_date = timezone_utils.local_today(timezone_resolution)
+
+        # Mirror AIInsightGenerateResource: only thread timezone kwargs when a
+        # timezone was actually supplied (or the anchor was omitted), so the
+        # change-status hash matches what generate would compute for the same
+        # request — otherwise the snapshot's timezone metadata diverges.
+        timezone_kwargs: dict[str, Any] = {}
+        if raw_timezone not in (None, "") or anchor_was_omitted:
+            timezone_kwargs = {
+                "timezone_name": timezone_resolution.name,
+                "timezone_fallback": timezone_resolution.fallback_used,
+            }
+
+        service = AIAdvisoryService(user_id=user_id)
+        try:
+            result = service.financial_insight_change_status(
+                period_type=period_type,
+                anchor_date=anchor_date,
+                **timezone_kwargs,
+            )
+        except Exception:
+            return compat_error_response(
+                legacy_payload={"error": "Erro ao verificar mudança do insight"},
+                status_code=500,
+                message="Erro ao verificar mudança do insight",
+                error_code="INTERNAL_ERROR",
+            )
+
+        return compat_success_response(
+            legacy_payload=result,
+            status_code=200,
+            message="Status de mudança do insight",
+            data=result,
+        )
+
+
 class AISpendingInsightsResource(MethodResource):
     """GET /ai/insights/spending — monthly spending analysis with AI insights."""
 
