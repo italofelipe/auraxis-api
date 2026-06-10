@@ -38,14 +38,6 @@ AI_DAILY_LIMIT_MESSAGE = (
     "Tente novamente amanhã."
 )
 
-AI_MONTHLY_LIMIT = 30
-AI_MONTHLY_LIMIT_ERROR_CODE = "AI_MONTHLY_LIMIT_EXCEEDED"
-AI_MONTHLY_LIMIT_MESSAGE = (
-    "Limite mensal de insights atingido. "
-    "Você pode gerar até 30 insights por mês. "
-    "O limite renova no primeiro dia do próximo mês."
-)
-
 _BRT = timezone(timedelta(hours=-3))
 
 # Module-level Redis client — initialised lazily, shared across requests.
@@ -63,20 +55,6 @@ def _seconds_until_midnight_brt() -> int:
 
 def _brt_date_str() -> str:
     return datetime.now(_BRT).strftime("%Y-%m-%d")
-
-
-def _brt_month_str() -> str:
-    return datetime.now(_BRT).strftime("%Y-%m")
-
-
-def _seconds_until_month_end_brt() -> int:
-    """Seconds from now until 00:00 BRT of the first day of next month."""
-    now = datetime.now(_BRT)
-    if now.month == 12:
-        next_month = datetime(now.year + 1, 1, 1, tzinfo=_BRT)
-    else:
-        next_month = datetime(now.year, now.month + 1, 1, tzinfo=_BRT)
-    return max(1, int((next_month - now).total_seconds()))
 
 
 def _get_redis() -> Any | None:
@@ -155,38 +133,6 @@ def record_ai_daily_success(user_id: UUID) -> tuple[int, int]:
     """Increment the daily counter after a successful, non-cached AI insight."""
     key = _counter_key(user_id)
     ttl = _seconds_until_midnight_brt()
-
-    client = _get_redis()
-    if client is not None:
-        count = int(client.incr(key))
-        if count == 1:
-            client.expire(key, ttl)
-        return count, ttl
-
-    return _InMemoryAICounter.incr(key, ttl), ttl
-
-
-def _monthly_counter_key(user_id: UUID) -> str:
-    return f"auraxis:ai-monthly:{user_id}:{_brt_month_str()}"
-
-
-def get_ai_monthly_usage(user_id: UUID) -> tuple[int, int]:
-    """Return current monthly successful insight count without incrementing it."""
-    key = _monthly_counter_key(user_id)
-    ttl = _seconds_until_month_end_brt()
-
-    client = _get_redis()
-    if client is not None:
-        raw_count = client.get(key)
-        return int(raw_count or 0), ttl
-
-    return _InMemoryAICounter.get(key), ttl
-
-
-def record_ai_monthly_success(user_id: UUID) -> tuple[int, int]:
-    """Increment the monthly counter after a successful, non-cached AI insight."""
-    key = _monthly_counter_key(user_id)
-    ttl = _seconds_until_month_end_brt()
 
     client = _get_redis()
     if client is not None:
@@ -287,29 +233,12 @@ def ai_daily_limit(
                 resp.headers["X-AI-Calls-Remaining"] = "0"
                 return resp
 
-            monthly_count, monthly_retry_after = get_ai_monthly_usage(user_id)
-            if monthly_count >= AI_MONTHLY_LIMIT:
-                resp = compat_error_response(
-                    legacy_payload={"error": AI_MONTHLY_LIMIT_MESSAGE},
-                    status_code=429,
-                    message=AI_MONTHLY_LIMIT_MESSAGE,
-                    error_code=AI_MONTHLY_LIMIT_ERROR_CODE,
-                )
-                resp.headers["Retry-After"] = str(monthly_retry_after)
-                resp.headers["X-AI-Calls-Remaining"] = "0"
-                resp.headers["X-AI-Calls-Remaining-Month"] = "0"
-                return resp
-
             response = cast(Response, fn(*args, **kwargs))
             if _is_countable_ai_success(response):
                 count, retry_after = record_ai_daily_success(user_id)
-                monthly_count, _ = record_ai_monthly_success(user_id)
 
             remaining = max(0, max_calls - count)
             response.headers["X-AI-Calls-Remaining"] = str(remaining)
-            response.headers["X-AI-Calls-Remaining-Month"] = str(
-                max(0, AI_MONTHLY_LIMIT - monthly_count)
-            )
             return response
 
         return wrapper  # type: ignore[return-value]
@@ -321,19 +250,12 @@ __all__ = [
     "AI_DAILY_LIMIT",
     "AI_DAILY_LIMIT_ERROR_CODE",
     "AI_DAILY_LIMIT_MESSAGE",
-    "AI_MONTHLY_LIMIT",
-    "AI_MONTHLY_LIMIT_ERROR_CODE",
-    "AI_MONTHLY_LIMIT_MESSAGE",
     "ai_daily_limit",
     "request_is_admin",
     "check_ai_daily_limit",
     "get_ai_daily_usage",
-    "get_ai_monthly_usage",
     "record_ai_daily_success",
-    "record_ai_monthly_success",
     "_InMemoryAICounter",
     "_brt_date_str",
-    "_brt_month_str",
     "_seconds_until_midnight_brt",
-    "_seconds_until_month_end_brt",
 ]
