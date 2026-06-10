@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Auraxis API",
-    "description": "Auto-generated from openapi.json (86 paths). Do not edit manually — regenerate with: npm run postman:build",
+    "description": "Auto-generated from openapi.json (87 paths). Do not edit manually — regenerate with: npm run postman:build",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -4926,6 +4926,56 @@
                 "exec": [
                   "pm.test('Radar de gastos em cache (Premium, somente leitura) — status 200', function () {",
                   "  pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET — Verificar se houve mudança desde o último insight (sem IA)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Contract",
+                "value": "v2"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/insights/change-status?period_type=daily&anchor_date={{runToday}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "insights",
+                "change-status"
+              ],
+              "query": [
+                {
+                  "key": "period_type",
+                  "value": "daily"
+                },
+                {
+                  "key": "anchor_date",
+                  "value": "{{runToday}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('AI change-status — expected 200 or 401', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 401]);",
                   "});"
                 ],
                 "type": "text/javascript"

@@ -62,13 +62,55 @@ class SpendingPatternsLatestType(graphene.ObjectType):
     tokens_used = graphene.Int(required=True)
 
 
+class AIInsightChangeStatusType(graphene.ObjectType):
+    """Whether the snapshot changed since the last insight (no LLM call)."""
+
+    period_type = graphene.String(required=True)
+    period_label = graphene.String(required=True)
+    changed = graphene.Boolean(required=True)
+    current_context_hash = graphene.String(required=True)
+    last_context_hash = graphene.String()
+    last_generated_at = graphene.String()
+
+
 class AIInsightQueryMixin:
     ai_insight_history = graphene.Field(
         AIInsightHistoryResultType,
         page=graphene.Int(default_value=1),
         per_page=graphene.Int(default_value=20),
     )
+    ai_insight_change_status = graphene.Field(
+        AIInsightChangeStatusType,
+        period_type=graphene.String(required=True),
+        anchor_date=graphene.String(),
+    )
     spending_patterns_latest = graphene.Field(SpendingPatternsLatestType)
+
+    def resolve_ai_insight_change_status(
+        self,
+        _info: graphene.ResolveInfo,
+        period_type: str,
+        anchor_date: str | None = None,
+    ) -> AIInsightChangeStatusType:
+        from datetime import date as _date
+
+        from app.services.ai_advisory_service import AIAdvisoryService
+
+        user = get_current_user_required()
+        parsed_anchor = _date.fromisoformat(anchor_date) if anchor_date else None
+        service = AIAdvisoryService(user_id=user.id)
+        result = service.financial_insight_change_status(
+            period_type=period_type,
+            anchor_date=parsed_anchor,
+        )
+        return AIInsightChangeStatusType(
+            period_type=result["period_type"],
+            period_label=result["period_label"],
+            changed=result["changed"],
+            current_context_hash=result["current_context_hash"],
+            last_context_hash=result["last_context_hash"],
+            last_generated_at=result["last_generated_at"],
+        )
 
     def resolve_spending_patterns_latest(
         self,

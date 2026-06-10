@@ -1,9 +1,10 @@
-"""Cost ceiling + monthly cap enforcement for AI insights (#1386, slice A).
+"""Cost ceiling + non-cumulative daily quota for AI insights (#1386, #1482).
 
 Covers:
-- Per-user monthly LLM budget = 50% of the Premium plan price (FX-adjusted).
+- Per-user monthly LLM *cost* budget = 50% of the Premium plan price (kept).
 - Per-user month-to-date cost enforcement (isolated per user).
-- Monthly generation counter (30/month) + HTTP 429 at the cap.
+- Removal of the monthly *generation* pool (30/month): only the 1/day,
+  non-cumulative cap remains (#1482).
 """
 
 from __future__ import annotations
@@ -195,56 +196,28 @@ class TestUserCostEnforcement:
 
 
 # ---------------------------------------------------------------------------
-# Monthly generation cap (30/month)
+# Non-cumulative quota — the monthly generation pool (30/month) was removed
+# (#1482). Only the 1/day cap remains; unused daily allowance never accumulates.
 # ---------------------------------------------------------------------------
 
 
-class TestMonthlyCounter:
+class TestNoMonthlyCap:
     def setup_method(self) -> None:
         _reset_ai_counter()
 
-    def test_record_and_get_monthly_usage(self) -> None:
-        from app.middleware.ai_rate_limit import (
-            get_ai_monthly_usage,
-            record_ai_monthly_success,
-        )
+    def test_monthly_cap_symbols_removed(self) -> None:
+        import app.middleware.ai_rate_limit as rl
 
-        user_id = uuid.uuid4()
-        for _ in range(3):
-            record_ai_monthly_success(user_id)
-        count, ttl = get_ai_monthly_usage(user_id)
-        assert count == 3
-        assert ttl > 0
+        assert not hasattr(rl, "AI_MONTHLY_LIMIT")
+        assert not hasattr(rl, "record_ai_monthly_success")
+        assert not hasattr(rl, "get_ai_monthly_usage")
 
-    def test_monthly_usage_isolated_per_user(self) -> None:
-        from app.middleware.ai_rate_limit import (
-            get_ai_monthly_usage,
-            record_ai_monthly_success,
-        )
-
-        a, b = uuid.uuid4(), uuid.uuid4()
-        record_ai_monthly_success(a)
-        count_b, _ = get_ai_monthly_usage(b)
-        assert count_b == 0
-
-
-class TestMonthlyCapHTTP:
-    def setup_method(self) -> None:
-        _reset_ai_counter()
-
-    def test_returns_429_when_monthly_cap_reached(self, app, client) -> None:
-        from app.middleware.ai_rate_limit import (
-            AI_MONTHLY_LIMIT,
-            record_ai_monthly_success,
-        )
-
-        token = _register_and_login(client, "ai-monthly-cap")
-        user_id = _grant_premium(app, token)
-
-        # Saturate the monthly counter (daily stays at 0, so the monthly cap is
-        # the gate that trips).
-        for _ in range(AI_MONTHLY_LIMIT):
-            record_ai_monthly_success(user_id)
+    def test_only_daily_cap_enforced_no_monthly_pool(self, app, client) -> None:
+        # With the monthly pool gone, the ONLY gate is the 1/day cap. The second
+        # call the same day is rejected by the DAILY cap, never a monthly one,
+        # and no monthly header leaks anymore.
+        token = _register_and_login(client, "ai-no-monthly")
+        _grant_premium(app, token)
 
         with patch(
             "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
@@ -256,11 +229,13 @@ class TestMonthlyCapHTTP:
                 "model": "stub",
             },
         ):
-            resp = client.get("/ai/insights/spending", headers=_auth(token, v2=True))
+            first = client.get("/ai/insights/spending", headers=_auth(token, v2=True))
+            second = client.get("/ai/insights/spending", headers=_auth(token, v2=True))
 
-        assert resp.status_code == 429
-        assert resp.get_json()["error"]["code"] == "AI_MONTHLY_LIMIT_EXCEEDED"
-        assert resp.headers.get("X-AI-Calls-Remaining-Month") == "0"
+        assert first.status_code == 200
+        assert second.status_code == 429
+        assert second.get_json()["error"]["code"] == "AI_DAILY_LIMIT_EXCEEDED"
+        assert "X-AI-Calls-Remaining-Month" not in second.headers
 
 
 # ---------------------------------------------------------------------------
@@ -282,16 +257,9 @@ class TestAdminBypass:
         with patch("app.auth.get_active_auth_context", return_value=user_ctx):
             assert request_is_admin() is False
 
-    def test_admin_bypasses_daily_and_monthly_caps(self, app, client) -> None:
-        from app.middleware.ai_rate_limit import AI_MONTHLY_LIMIT
-
+    def test_admin_bypasses_daily_cap(self, app, client) -> None:
         token = _register_and_login(client, "ai-admin")
-        user_id = _grant_premium(app, token)
-        # Pre-saturate both counters; an admin must still pass through.
-        from app.middleware.ai_rate_limit import record_ai_monthly_success
-
-        for _ in range(AI_MONTHLY_LIMIT):
-            record_ai_monthly_success(user_id)
+        _grant_premium(app, token)
 
         with (
             patch(

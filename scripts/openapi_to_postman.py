@@ -903,6 +903,17 @@ ENRICHMENT: dict[str, dict[str, Any]] = {
         ],
     },
     # ── AI Advisory ───────────────────────────────────────────────────
+    "GET /ai/insights/change-status": {
+        "query_params": [
+            {"key": "period_type", "value": "daily"},
+            {"key": "anchor_date", "value": "{{runToday}}"},
+        ],
+        "test_lines": [
+            "pm.test('AI change-status — expected 200 or 401', function () {",
+            "  pm.expect(pm.response.code).to.be.oneOf([200, 401]);",
+            "});",
+        ],
+    },
     "GET /ai/insights/spending": {
         "test_lines": [
             "pm.test('AI spending insights — expected 200 or 403 or 429', function () {",

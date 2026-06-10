@@ -3,6 +3,7 @@ from __future__ import annotations
 from .blueprint import ai_bp
 from .resources import (
     AIGoalProjectionResource,
+    AIInsightChangeStatusResource,
     AIInsightDetailResource,
     AIInsightFeedbackResource,
     AIInsightGenerateResource,
@@ -27,6 +28,11 @@ def register_ai_routes() -> None:
         "/insights/generate",
         view_func=AIInsightGenerateResource.as_view("ai_insight_generate"),
         methods=["POST"],
+    )
+    ai_bp.add_url_rule(
+        "/insights/change-status",
+        view_func=AIInsightChangeStatusResource.as_view("ai_insight_change_status"),
+        methods=["GET"],
     )
     ai_bp.add_url_rule(
         "/insights/spending",
