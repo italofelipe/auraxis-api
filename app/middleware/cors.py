@@ -42,9 +42,13 @@ def _build_cors_policy_from_env() -> CorsPolicy:
     # the browser preflights POST /auth/refresh with this header whenever
     # AURAXIS_CSRF_ENFORCE=true, so omitting it blocks session restore on every
     # hard reload (#1436).
+    # X-Auraxis-Timezone is sent by GET /ai/insights/change-status (#1482); the
+    # browser preflights it, so it must be advertised or the request is blocked
+    # by CORS (#1485).
     allowed_headers = os.getenv(
         "CORS_ALLOWED_HEADERS",
-        "Authorization,Content-Type,X-API-Contract,Idempotency-Key,X-CSRF-TOKEN",
+        "Authorization,Content-Type,X-API-Contract,Idempotency-Key,"
+        "X-CSRF-TOKEN,X-Auraxis-Timezone",
     ).strip()
     return CorsPolicy(
         allowed_origins=_parse_allowed_origins(os.getenv("CORS_ALLOWED_ORIGINS")),
