@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.58.1](https://github.com/italofelipe/auraxis-api/compare/v1.58.0...v1.58.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* **cors:** advertise X-Auraxis-Timezone in allow-headers for change-status preflight ([#1485](https://github.com/italofelipe/auraxis-api/issues/1485)) ([#1486](https://github.com/italofelipe/auraxis-api/issues/1486)) ([5220002](https://github.com/italofelipe/auraxis-api/commit/52200026f8824e8e32b607950447fbf5adb4f8c7))
+
 ## [1.58.0](https://github.com/italofelipe/auraxis-api/compare/v1.57.0...v1.58.0) (2026-06-10)
 
 
