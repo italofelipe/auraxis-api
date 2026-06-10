@@ -164,7 +164,9 @@ class StaticProvider:
     def __init__(self) -> None:
         self.calls = 0
 
-    def generate_with_usage(self, prompt: str, response_schema=None) -> LLMResponse:
+    def generate_with_usage(
+        self, prompt: str, response_schema=None, max_tokens=None
+    ) -> LLMResponse:
         self.calls += 1
         assert "monthly_report_context" in prompt
         assert "Daily 1" in prompt
@@ -173,7 +175,9 @@ class StaticProvider:
 
 
 class FailingProvider:
-    def generate_with_usage(self, prompt: str, response_schema=None) -> LLMResponse:
+    def generate_with_usage(
+        self, prompt: str, response_schema=None, max_tokens=None
+    ) -> LLMResponse:
         raise RuntimeError("provider unavailable")
 
 
