@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.58.0](https://github.com/italofelipe/auraxis-api/compare/v1.57.0...v1.58.0) (2026-06-10)
+
+
+### Features
+
+* **ai-insights:** quota 1/dia não-cumulativa + endpoint change-status ([#1482](https://github.com/italofelipe/auraxis-api/issues/1482)) ([#1483](https://github.com/italofelipe/auraxis-api/issues/1483)) ([4acd707](https://github.com/italofelipe/auraxis-api/commit/4acd707c1a3cbba0ef1a0caf6526d33103bf97db))
+* **ai-insights:** relatórios profundos por período (3min/15min) + max_tokens ([#1481](https://github.com/italofelipe/auraxis-api/issues/1481)) ([#1484](https://github.com/italofelipe/auraxis-api/issues/1484)) ([29b0e2a](https://github.com/italofelipe/auraxis-api/commit/29b0e2ab710071dbe78b0771bd6cb94b8fa60234))
+* count committed budget envelope spend ([#1479](https://github.com/italofelipe/auraxis-api/issues/1479)) ([384cde1](https://github.com/italofelipe/auraxis-api/commit/384cde1b773560302e2cce21928435a1161581d5))
+
 ## [1.57.0](https://github.com/italofelipe/auraxis-api/compare/v1.56.1...v1.57.0) (2026-06-08)
 
 
