@@ -1,0 +1,56 @@
+name: pr-requires-closes-issue
+
+# Keeps the GitHub Projects board self-healing.
+# Replica of italofelipe/auraxis-platform#838.
+#
+# Fails a PR whose body does not reference a closing issue
+# (Closes/Fixes/Resolves #<n>). When the PR merges, GitHub auto-closes the
+# referenced issue, and the project's built-in "Item closed → Done" workflow
+# moves the card — no agent has to remember to drag it.
+#
+# Exemptions: Dependabot and release-please automation (they have no issue).
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  closes-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require Closes/Fixes/Resolves #<n>
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_ACTOR: ${{ github.event.pull_request.user.login }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+
+          # --- Exemptions -----------------------------------------------------
+          case "$PR_ACTOR" in
+            dependabot|dependabot[bot]|github-actions|github-actions[bot])
+              echo "Exempt actor: $PR_ACTOR"; exit 0 ;;
+          esac
+          case "$HEAD_REF" in
+            release-please--*|release-please/*)
+              echo "Exempt release-please branch: $HEAD_REF"; exit 0 ;;
+          esac
+          case "$PR_TITLE" in
+            "chore(master): release"*|"chore(main): release"*)
+              echo "Exempt release PR: $PR_TITLE"; exit 0 ;;
+          esac
+
+          # --- Gate -----------------------------------------------------------
+          # Accepts: Closes #12 | Fixes owner/repo#12 | Resolves #12 (any case).
+          pattern='(clos(e|es|ed)|fix(es|ed)?|resolv(e|es|ed))[[:space:]]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+'
+          if printf '%s' "$PR_BODY" | grep -qiE "$pattern"; then
+            echo "OK: PR references a closing issue."
+            exit 0
+          fi
+
+          echo "::error title=Missing closing-issue reference::PR body must reference an issue with 'Closes #<n>' (or Fixes/Resolves). This keeps the Projects board in sync: merging the PR auto-closes the issue, which the 'Item closed → Done' workflow moves to Done. Exemptions: Dependabot and release-please."
+          exit 1
