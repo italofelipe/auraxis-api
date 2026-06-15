@@ -47,7 +47,7 @@ SQLAlchemy==2.0.50
 typing_extensions>=4.14.1
 webargs==8.7.1
 Werkzeug==3.1.8
-types-python-dateutil==2.9.0.20260508
+types-python-dateutil==2.9.0.20260518
 types-requests==2.33.0.20260518
 reportlab==4.5.1
 boto3==1.43.24
