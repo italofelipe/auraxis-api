@@ -74,7 +74,7 @@ def serialize_transaction_payload(transaction: Transaction) -> TransactionPayloa
         ),
         "impact_policy": (
             impact_policy.value
-            if hasattr(impact_policy, "value")
+            if impact_policy is not None and hasattr(impact_policy, "value")
             else str(impact_policy or "full")
         ),
         "status": transaction.status.value,

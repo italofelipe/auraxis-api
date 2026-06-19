@@ -61,7 +61,7 @@ def _serialize_transaction(tx: Any) -> dict[str, Any]:
         "type": tx.type.value if hasattr(tx.type, "value") else str(tx.type),
         "impact_policy": (
             impact_policy.value
-            if hasattr(impact_policy, "value")
+            if impact_policy is not None and hasattr(impact_policy, "value")
             else str(impact_policy or "full")
         ),
     }

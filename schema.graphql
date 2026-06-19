@@ -856,7 +856,7 @@ type Mutation {
 
   """
   Register a deposit (+) or withdrawal (-) against a goal.
-
+  
   REST parity: ``POST /goals/{goal_id}/contributions``.
   """
   recordGoalContribution(amount: String!, goalId: UUID!, note: String, occurredAt: String): RecordGoalContributionMutation
@@ -866,7 +866,7 @@ type Mutation {
 
   """
   Consome 1 simulação da quota freemium (#1409).
-
+  
   Parity de ``POST /simulations/quota/consume``. Não falha em esgotamento:
   retorna ``quota.allowed=False`` para o cliente exibir o paywall.
   """
@@ -973,7 +973,7 @@ type Mutation {
 
   """
   Mark the authenticated user's onboarding as completed (idempotent).
-
+  
   REST parity: ``POST /user/onboarding/complete``.
   """
   completeOnboarding: CompleteOnboardingPayload
