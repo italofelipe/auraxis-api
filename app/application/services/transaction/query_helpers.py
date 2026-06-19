@@ -8,7 +8,7 @@ module under the 600-line ceiling.
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 from sqlalchemy import case, func
 
@@ -54,6 +54,30 @@ _MUTABLE_TRANSACTION_FIELDS = frozenset(
         "paid_at",
     }
 )
+
+
+def _coerce_transaction_type(value: Any) -> TransactionType | None:
+    return TransactionType(str(value).lower()) if value is not None else None
+
+
+def _coerce_transaction_status(value: Any) -> TransactionStatus | None:
+    return TransactionStatus(str(value).lower()) if value is not None else None
+
+
+def _coerce_transaction_category(value: Any) -> TransactionCategory | None:
+    return TransactionCategory(str(value).lower()) if value else None
+
+
+def _coerce_impact_policy(value: Any) -> TransactionImpactPolicy | None:
+    return TransactionImpactPolicy(str(value).lower()) if value is not None else None
+
+
+_TRANSACTION_FIELD_CONVERTERS: dict[str, Callable[[Any], Any]] = {
+    "type": _coerce_transaction_type,
+    "status": _coerce_transaction_status,
+    "category": _coerce_transaction_category,
+    "impact_policy": _coerce_impact_policy,
+}
 
 # ---------------------------------------------------------------------------
 # Ordering
@@ -121,23 +145,8 @@ def _apply_transaction_updates(
     for field, value in updates.items():
         if field not in _MUTABLE_TRANSACTION_FIELDS:
             continue
-        if field == "type" and value is not None:
-            setattr(transaction, field, TransactionType(str(value).lower()))
-            continue
-        if field == "status" and value is not None:
-            setattr(transaction, field, TransactionStatus(str(value).lower()))
-            continue
-        if field == "category":
-            setattr(
-                transaction,
-                field,
-                TransactionCategory(str(value).lower()) if value else None,
-            )
-            continue
-        if field == "impact_policy" and value is not None:
-            setattr(transaction, field, TransactionImpactPolicy(str(value).lower()))
-            continue
-        setattr(transaction, field, value)
+        converter = _TRANSACTION_FIELD_CONVERTERS.get(field)
+        setattr(transaction, field, converter(value) if converter else value)
 
 
 # ---------------------------------------------------------------------------
