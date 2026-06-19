@@ -218,6 +218,9 @@ CUSTOM_VALIDATION_ENDPOINTS: set[str] = {
     "POST /wallet",
     "PATCH /wallet/{investment_id}",
     "PUT /wallet/{investment_id}",
+    # goal_schema.py GoalContributionInputSchema — @validates amount (non-zero)
+    # and occurred_at (no future dates); auto-body fails these.
+    "POST /goals/{goal_id}/contributions",
 }
 
 # ---------------------------------------------------------------------------
@@ -561,6 +564,28 @@ ENRICHMENT: dict[str, dict[str, Any]] = {
             indent=2,
         ),
     },
+    "POST /goals/{goal_id}/contributions": {
+        "body_override": json.dumps(
+            {"amount": "100.00", "note": "smoke {{runSeed}}"},
+            indent=2,
+        ),
+        # Custom @validates (amount non-zero, no future date) + ownership:
+        # with a real {{goalId}} and valid body this is 201; tolerate 400/404
+        # when the goal var is unset in a partial run.
+        "test_lines": [
+            "pm.test('Registrar contribuicao — expected 201 or 400 or 404', "
+            "function () {",
+            "  pm.expect(pm.response.code).to.be.oneOf([201, 400, 404]);",
+            "});",
+        ],
+    },
+    "GET /goals/{goal_id}/contributions": {
+        "test_lines": [
+            "pm.test('Historico de contribuicoes — expected 200 or 404', function () {",
+            "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+            "});",
+        ],
+    },
     # ── Wallet ────────────────────────────────────────────────────────
     "PATCH /wallet/{investment_id}": {
         "body_override": json.dumps(
@@ -878,6 +903,17 @@ ENRICHMENT: dict[str, dict[str, Any]] = {
         ],
     },
     # ── AI Advisory ───────────────────────────────────────────────────
+    "GET /ai/insights/change-status": {
+        "query_params": [
+            {"key": "period_type", "value": "daily"},
+            {"key": "anchor_date", "value": "{{runToday}}"},
+        ],
+        "test_lines": [
+            "pm.test('AI change-status — expected 200 or 401', function () {",
+            "  pm.expect(pm.response.code).to.be.oneOf([200, 401]);",
+            "});",
+        ],
+    },
     "GET /ai/insights/spending": {
         "test_lines": [
             "pm.test('AI spending insights — expected 200 or 403 or 429', function () {",

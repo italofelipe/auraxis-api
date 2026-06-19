@@ -13,9 +13,8 @@ obscurely, so clients can degrade gracefully.
 from __future__ import annotations
 
 import logging
-import os
 
-import requests
+import requests  # re-exported for test monkeypatching of the underlying client
 from flask import Response, request
 from flask_apispec.views import MethodResource
 
@@ -26,6 +25,10 @@ from app.controllers.response_contract import (
 )
 from app.controllers.transaction.utils import _guard_revoked_token
 from app.middleware.ai_rate_limit import ai_daily_limit
+from app.services.ai_spending_patterns_service import (
+    SpendingPatternsUpstreamError,
+    call_v2_spending_patterns,
+)
 from app.services.entitlement_service import has_entitlement
 from app.utils.typed_decorators import typed_doc as doc
 from app.utils.typed_decorators import typed_jwt_required as jwt_required
@@ -33,13 +36,11 @@ from app.utils.typed_decorators import typed_jwt_required as jwt_required
 log = logging.getLogger(__name__)
 
 _ENTITLEMENT_KEY = "advanced_simulations"
-_V2_PATH = "/v2/insights/spending-patterns"
-_TIMEOUT_SECONDS = 30.0
 
-
-def _v2_base_url() -> str:
-    """Return the configured v2 base URL without a trailing slash (or empty)."""
-    return os.getenv("AURAXIS_API_V2_BASE_URL", "").rstrip("/")
+# Keep ``requests`` referenced so existing tests that monkeypatch
+# ``spending_patterns_proxy.requests.post`` continue to patch the same client
+# object used by the service layer.
+assert requests is not None
 
 
 class AISpendingPatternsProxyResource(MethodResource):
@@ -72,44 +73,27 @@ class AISpendingPatternsProxyResource(MethodResource):
                 error_code="ENTITLEMENT_REQUIRED",
             )
 
-        base_url = _v2_base_url()
-        if not base_url:
-            log.warning("spending_patterns_proxy.v2_unconfigured")
-            return compat_error_response(
-                legacy_payload={"error": "Serviço de insights indisponível."},
-                status_code=503,
-                message="Serviço de insights temporariamente indisponível.",
-                error_code="SERVICE_UNAVAILABLE",
-            )
-
         body = request.get_json(silent=True) or {}
         auth_header = request.headers.get("Authorization", "")
 
         try:
-            upstream = requests.post(
-                f"{base_url}{_V2_PATH}",
-                json=body,
-                headers={"Authorization": auth_header},
-                timeout=_TIMEOUT_SECONDS,
+            status_code, payload = call_v2_spending_patterns(
+                transactions=body.get("transactions") or [],
+                period_days=int(body.get("period_days") or 90),
+                auth_header=auth_header,
             )
-        except requests.exceptions.RequestException:
-            log.warning("spending_patterns_proxy.v2_unreachable", exc_info=True)
+        except SpendingPatternsUpstreamError as exc:
             return compat_error_response(
                 legacy_payload={"error": "Serviço de insights indisponível."},
-                status_code=503,
-                message="Serviço de insights temporariamente indisponível.",
+                status_code=exc.status_code,
+                message=str(exc),
                 error_code="SERVICE_UNAVAILABLE",
             )
 
-        try:
-            payload = upstream.json()
-        except ValueError:
-            payload = {}
-
-        if upstream.status_code >= 400:
+        if status_code >= 400:
             return compat_error_response(
                 legacy_payload=payload or {"error": "Falha no serviço de insights."},
-                status_code=upstream.status_code,
+                status_code=status_code,
                 message="Falha ao gerar o radar de gastos.",
                 error_code="UPSTREAM_ERROR",
             )

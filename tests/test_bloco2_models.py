@@ -1,6 +1,6 @@
 """Tests for Bloco 2 model enrichments:
 - Account: account_type, institution, initial_balance (#889)
-- CreditCard: brand, limit_amount, closing_day, due_day, last_four_digits (#889)
+- CreditCard: brand, limit_amount, closing_day, due_day (#889)
 - Tag: color, icon, default seeds on registration (#890)
 """
 
@@ -165,6 +165,7 @@ def test_create_credit_card_with_brand_and_financials(client) -> None:
             "closing_day": 20,
             "due_day": 5,
             "last_four_digits": "1234",
+            "validity_date": "2030-12-31",
         },
     )
     assert resp.status_code == 201, resp.get_json()
@@ -173,7 +174,8 @@ def test_create_credit_card_with_brand_and_financials(client) -> None:
     assert float(card["limit_amount"]) == 5000.0
     assert card["closing_day"] == 20
     assert card["due_day"] == 5
-    assert card["last_four_digits"] == "1234"
+    assert "last_four_digits" not in card
+    assert "validity_date" not in card
 
 
 def test_create_credit_card_invalid_brand_returns_400(client) -> None:
@@ -187,13 +189,25 @@ def test_create_credit_card_invalid_brand_returns_400(client) -> None:
     assert resp.status_code == 400
 
 
+def test_create_credit_card_accepts_closing_day_30(client) -> None:
+    # #1469: day 30 used to be rejected; it is now valid (clamped per month).
+    token, _ = _register_and_login(client, "cc-day-30")
+
+    resp = client.post(
+        "/credit-cards",
+        headers=_auth(token),
+        json={"name": "Cartão", "closing_day": 30, "due_day": 5},
+    )
+    assert resp.status_code == 201
+
+
 def test_create_credit_card_invalid_closing_day_returns_400(client) -> None:
     token, _ = _register_and_login(client, "cc-invalid-day")
 
     resp = client.post(
         "/credit-cards",
         headers=_auth(token),
-        json={"name": "Cartão", "closing_day": 30},
+        json={"name": "Cartão", "closing_day": 32},
     )
     assert resp.status_code == 400
 
@@ -216,7 +230,8 @@ def test_list_credit_cards_returns_enriched_fields(client) -> None:
     assert "limit_amount" in card
     assert "closing_day" in card
     assert "due_day" in card
-    assert "last_four_digits" in card
+    assert "last_four_digits" not in card
+    assert "validity_date" not in card
 
 
 # ===========================================================================

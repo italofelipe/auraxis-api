@@ -3,6 +3,7 @@ from __future__ import annotations
 from .blueprint import ai_bp
 from .resources import (
     AIGoalProjectionResource,
+    AIInsightChangeStatusResource,
     AIInsightDetailResource,
     AIInsightFeedbackResource,
     AIInsightGenerateResource,
@@ -12,6 +13,7 @@ from .resources import (
     AISpendingInsightsResource,
     AIWeeklySummaryResource,
 )
+from .spending_patterns_latest import AISpendingPatternsLatestResource
 from .spending_patterns_proxy import AISpendingPatternsProxyResource
 
 _ROUTES_REGISTERED = False
@@ -28,6 +30,11 @@ def register_ai_routes() -> None:
         methods=["POST"],
     )
     ai_bp.add_url_rule(
+        "/insights/change-status",
+        view_func=AIInsightChangeStatusResource.as_view("ai_insight_change_status"),
+        methods=["GET"],
+    )
+    ai_bp.add_url_rule(
         "/insights/spending",
         view_func=AISpendingInsightsResource.as_view("ai_spending_insights"),
         methods=["GET"],
@@ -36,6 +43,13 @@ def register_ai_routes() -> None:
         "/insights/spending-patterns",
         view_func=AISpendingPatternsProxyResource.as_view("ai_spending_patterns"),
         methods=["POST"],
+    )
+    ai_bp.add_url_rule(
+        "/insights/spending-patterns/latest",
+        view_func=AISpendingPatternsLatestResource.as_view(
+            "ai_spending_patterns_latest"
+        ),
+        methods=["GET"],
     )
     ai_bp.add_url_rule(
         "/goals/<goal_id>/projection",

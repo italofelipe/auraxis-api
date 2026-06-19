@@ -89,6 +89,14 @@
     "summary": "Retorna o plano projetado de uma meta existente."
   },
   {
+    "access": "auth_required",
+    "domain": "goals",
+    "name": "goalContributions",
+    "operation_type": "query",
+    "source_module": "app.graphql.queries.goal",
+    "summary": "Lista o histórico paginado de contribuições (aportes/retiradas) de uma meta. Paridade com GET /goals/{id}/contributions."
+  },
+  {
     "access": "public",
     "domain": "simulations",
     "name": "installmentVsCashCalculate",
@@ -319,6 +327,14 @@
     "operation_type": "mutation",
     "source_module": "app.graphql.mutations.goal",
     "summary": "Simula o plano de aporte de uma meta sem persistir dados."
+  },
+  {
+    "access": "auth_required",
+    "domain": "goals",
+    "name": "recordGoalContribution",
+    "operation_type": "mutation",
+    "source_module": "app.graphql.mutations.goal",
+    "summary": "Registra um aporte (+) ou retirada (-) em uma meta, atualizando o valor acumulado. Paridade com POST /goals/{id}/contributions."
   },
   {
     "access": "auth_required",
@@ -721,6 +737,22 @@
   {
     "access": "auth_required",
     "domain": "ai_advisory",
+    "name": "aiInsightChangeStatus",
+    "operation_type": "query",
+    "source_module": "app.graphql.queries.ai_insight",
+    "summary": "Indica se o snapshot financeiro mudou desde o último insight do período (compara context_hash) SEM chamar o LLM — sem custo de tokens e sem consumir cota. Usado para confirmar 'nada mudou, gerar mesmo assim?'. Paridade com GET /ai/insights/change-status."
+  },
+  {
+    "access": "auth_required",
+    "domain": "ai_advisory",
+    "name": "spendingPatternsLatest",
+    "operation_type": "query",
+    "source_module": "app.graphql.queries.ai_insight",
+    "summary": "Retorna o último radar de gastos compulsivos já gerado pelo cron diário (somente leitura, sem consumir cota de IA). 'patternsJson' traz os padrões serializados; 'generatedAt' é null quando ainda não há análise. Paridade com GET /ai/insights/spending-patterns/latest."
+  },
+  {
+    "access": "auth_required",
+    "domain": "ai_advisory",
     "name": "generateAiInsight",
     "operation_type": "mutation",
     "source_module": "app.graphql.mutations.ai_insight",
@@ -733,5 +765,13 @@
     "operation_type": "mutation",
     "source_module": "app.graphql.mutations.ai_insight",
     "summary": "Registra feedback (notas 0–5 de relevância/veracidade/profundidade/utilidade + comentário) de um insight do próprio usuário. Paridade com POST /ai/insights/<id>/feedback."
+  },
+  {
+    "access": "auth_required",
+    "domain": "user",
+    "name": "completeOnboarding",
+    "operation_type": "mutation",
+    "source_module": "app.graphql.mutations.user",
+    "summary": "Marca o onboarding do usuário autenticado como concluído (idempotente). Paridade com POST /user/onboarding/complete."
   }
 ]

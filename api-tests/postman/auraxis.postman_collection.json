@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Auraxis API",
-    "description": "Auto-generated from openapi.json (83 paths). Do not edit manually — regenerate with: npm run postman:build",
+    "description": "Auto-generated from openapi.json (87 paths). Do not edit manually — regenerate with: npm run postman:build",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -1106,6 +1106,50 @@
                 "exec": [
                   "pm.test('Remover avatar do usuário — expected 200 or 404', function () {",
                   "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /user/onboarding/complete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Contract",
+                "value": "v2"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/onboarding/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "onboarding",
+                "complete"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('POST /user/onboarding/complete — status 200', function () {",
+                  "  pm.response.to.have.status(200);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -2710,6 +2754,106 @@
                 "exec": [
                   "pm.test('DELETE /goals/{goal_id} — status 200', function () {",
                   "  pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /goals/{goal_id}/contributions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Contract",
+                "value": "v2"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/goals/:goal_id/contributions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "goals",
+                ":goal_id",
+                "contributions"
+              ],
+              "variable": [
+                {
+                  "key": "goal_id",
+                  "value": "{{goalId}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Historico de contribuicoes — expected 200 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /goals/{goal_id}/contributions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Contract",
+                "value": "v2"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/goals/:goal_id/contributions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "goals",
+                ":goal_id",
+                "contributions"
+              ],
+              "variable": [
+                {
+                  "key": "goal_id",
+                  "value": "{{goalId}}"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"100.00\",\n  \"note\": \"smoke {{runSeed}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Registrar contribuicao — expected 201 or 400 or 404', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([201, 400, 404]);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -4536,7 +4680,7 @@
       "name": "11 - AI Advisory",
       "item": [
         {
-          "name": "GET — Briefing semanal com IA (Premium)",
+          "name": "GET — Briefing semanal com IA (Premium, somente leitura)",
           "request": {
             "method": "GET",
             "header": [
@@ -4741,6 +4885,97 @@
                 "exec": [
                   "pm.test('AI spending insights — expected 200 or 403 or 429', function () {",
                   "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 429]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET — Radar de gastos em cache (Premium, somente leitura)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Contract",
+                "value": "v2"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/insights/spending-patterns/latest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "insights",
+                "spending-patterns",
+                "latest"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Radar de gastos em cache (Premium, somente leitura) — status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET — Verificar se houve mudança desde o último insight (sem IA)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Contract",
+                "value": "v2"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/insights/change-status?period_type=daily&anchor_date={{runToday}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "insights",
+                "change-status"
+              ],
+              "query": [
+                {
+                  "key": "period_type",
+                  "value": "daily"
+                },
+                {
+                  "key": "anchor_date",
+                  "value": "{{runToday}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('AI change-status — expected 200 or 401', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 401]);",
                   "});"
                 ],
                 "type": "text/javascript"

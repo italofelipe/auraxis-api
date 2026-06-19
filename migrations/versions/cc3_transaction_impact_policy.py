@@ -1,7 +1,7 @@
 """Add transaction impact policy for credit-card launches.
 
 Revision ID: cc3_transaction_impact_policy
-Revises: rs1_recurrence_series_id
+Revises: gc1_goal_contrib_date
 Create Date: 2026-06-19 01:40:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "cc3_transaction_impact_policy"
-down_revision = "rs1_recurrence_series_id"
+down_revision = "gc1_goal_contrib_date"
 branch_labels = None
 depends_on = None
 

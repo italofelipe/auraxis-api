@@ -67,6 +67,7 @@ USER_FIELDS = {
     "profile_quiz_score",
     "taxonomy_version",
     "avatar_url",
+    "onboarding_completed_at",
 }
 
 CANONICAL_USER_KEYS = {
@@ -102,7 +103,7 @@ INVESTOR_PROFILE_FIELDS = {
     "taxonomy_version",
     "financial_objectives",
 }
-PRODUCT_CONTEXT_FIELDS = {"entitlements_version"}
+PRODUCT_CONTEXT_FIELDS = {"entitlements_version", "onboarding_completed_at"}
 
 TRANSACTION_ITEM_FIELDS = {
     "id",

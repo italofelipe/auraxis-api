@@ -54,6 +54,33 @@ class LLMResponse:
         ) / 1_000_000
 
 
+_DEFAULT_MAX_TOKENS = 512
+
+
+def _resolve_max_tokens(max_tokens: int | None) -> int:
+    """Resolve the output token budget for a single LLM call.
+
+    Callers (e.g. the AI advisory service) pass a period-specific budget so deep
+    reports (~15 min reading) get enough room while daily insights stay lean.
+    Falls back to ``AI_INSIGHT_MAX_TOKENS_DEFAULT`` (then 512) for back-compat.
+    """
+    if max_tokens is not None and max_tokens > 0:
+        return int(max_tokens)
+    try:
+        return max(1, int(os.getenv("AI_INSIGHT_MAX_TOKENS_DEFAULT", "512")))
+    except (TypeError, ValueError):
+        return _DEFAULT_MAX_TOKENS
+
+
+def _timeout_for_max_tokens(max_tokens: int) -> int:
+    """Scale the HTTP timeout with the output budget.
+
+    A 6k-token report can take far longer than the old 20s default; scale up
+    (capped at 120s) so long generations are not cut off mid-stream.
+    """
+    return min(120, max(20, max_tokens // 25))
+
+
 @runtime_checkable
 class LLMProvider(Protocol):
     def generate(self, prompt: str) -> str:
@@ -65,6 +92,7 @@ class LLMProvider(Protocol):
         prompt: str,
         *,
         response_schema: dict[str, Any] | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """Generate a response and return structured usage data."""
         ...
@@ -90,8 +118,9 @@ class StubLLMProvider:
         prompt: str,
         *,
         response_schema: dict[str, Any] | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
-        del prompt
+        del prompt, max_tokens
         content = self._STUB_CONTENT
         if (
             response_schema
@@ -137,16 +166,18 @@ class OpenAILLMProvider:
         prompt: str,
         *,
         response_schema: dict[str, Any] | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         if not self._api_key:
             raise LLMProviderError("OPENAI_API_KEY is not configured.")
         import requests  # lazy import to keep startup fast
 
+        resolved_max_tokens = _resolve_max_tokens(max_tokens)
         start = time.monotonic()
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 512,
+            "max_tokens": resolved_max_tokens,
             "temperature": 0.4,
         }
         if response_schema is not None:
@@ -163,7 +194,7 @@ class OpenAILLMProvider:
                     "Content-Type": "application/json",
                 },
                 json=payload,
-                timeout=20,
+                timeout=_timeout_for_max_tokens(resolved_max_tokens),
             )
             resp.raise_for_status()
             latency_ms = int((time.monotonic() - start) * 1000)
@@ -199,12 +230,14 @@ class ClaudeLLMProvider:
         prompt: str,
         *,
         response_schema: dict[str, Any] | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         _ = response_schema
         if not self._api_key:
             raise LLMProviderError("ANTHROPIC_API_KEY is not configured.")
         import requests
 
+        resolved_max_tokens = _resolve_max_tokens(max_tokens)
         start = time.monotonic()
         try:
             resp = requests.post(
@@ -216,10 +249,10 @@ class ClaudeLLMProvider:
                 },
                 json={
                     "model": self._model,
-                    "max_tokens": 512,
+                    "max_tokens": resolved_max_tokens,
                     "messages": [{"role": "user", "content": prompt}],
                 },
-                timeout=20,
+                timeout=_timeout_for_max_tokens(resolved_max_tokens),
             )
             resp.raise_for_status()
             latency_ms = int((time.monotonic() - start) * 1000)

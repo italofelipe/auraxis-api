@@ -14,6 +14,7 @@ Utilization aggregates expense transactions in the open cycle window, including
 
 from __future__ import annotations
 
+import calendar
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -68,11 +69,20 @@ class Utilization:
 
 
 def _validate_day(label: str, value: int) -> None:
-    if not 1 <= value <= 28:
-        raise ValueError(
-            f"{label} must be between 1 and 28 (got {value}); "
-            "values 29-31 are blocked to avoid month-overflow ambiguity"
-        )
+    if not 1 <= value <= 31:
+        raise ValueError(f"{label} must be between 1 and 31 (got {value})")
+
+
+def _safe_date(year: int, month: int, day: int) -> date:
+    """Build a date clamping `day` to the month's last valid day.
+
+    A card configured to close/due on day 30 or 31 still has a well-defined
+    cycle boundary in short months: e.g. day 30 in February resolves to the
+    28th (or 29th in a leap year). This avoids `date()` raising for days that
+    do not exist in the target month.
+    """
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, min(day, last_day))
 
 
 def _shift_month(year: int, month: int, offset: int) -> tuple[int, int]:
@@ -107,17 +117,17 @@ def compute_bill_cycle(*, closing_day: int, due_day: int, anchor: date) -> BillC
     else:
         end_year, end_month = _shift_month(anchor.year, anchor.month, 1)
 
-    end_date = date(end_year, end_month, closing_day)
+    end_date = _safe_date(end_year, end_month, closing_day)
 
     prev_year, prev_month = _shift_month(end_year, end_month, -1)
-    prev_close = date(prev_year, prev_month, closing_day)
+    prev_close = _safe_date(prev_year, prev_month, closing_day)
     start_date = prev_close + timedelta(days=1)
 
     if due_day > closing_day:
         due_year, due_month = end_year, end_month
     else:
         due_year, due_month = _shift_month(end_year, end_month, 1)
-    due_date = date(due_year, due_month, due_day)
+    due_date = _safe_date(due_year, due_month, due_day)
 
     if anchor <= end_date:
         status: BillCycleStatus = "open"
@@ -223,7 +233,7 @@ def compute_bill(card: CreditCard, *, month: str, today: date) -> BillSummary:
     except (ValueError, AttributeError) as exc:
         raise ValueError(f"month must be in YYYY-MM format (got {month!r})") from exc
 
-    anchor_for_cycle = date(year, m, card.closing_day)
+    anchor_for_cycle = _safe_date(year, m, card.closing_day)
     cycle = compute_bill_cycle(
         closing_day=card.closing_day,
         due_day=card.due_day,

@@ -176,6 +176,17 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         source_module=QUERY_GOAL_MODULE,
     ),
     GraphQLOperationDoc(
+        name="goalContributions",
+        operation_type="query",
+        domain="goals",
+        access="auth_required",
+        summary=(
+            "Lista o histórico paginado de contribuições (aportes/retiradas) "
+            "de uma meta. Paridade com GET /goals/{id}/contributions."
+        ),
+        source_module=QUERY_GOAL_MODULE,
+    ),
+    GraphQLOperationDoc(
         name="installmentVsCashCalculate",
         operation_type="query",
         domain="simulations",
@@ -408,6 +419,17 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         domain="goals",
         access="auth_required",
         summary="Simula o plano de aporte de uma meta sem persistir dados.",
+        source_module=MUTATION_GOAL_MODULE,
+    ),
+    GraphQLOperationDoc(
+        name="recordGoalContribution",
+        operation_type="mutation",
+        domain="goals",
+        access="auth_required",
+        summary=(
+            "Registra um aporte (+) ou retirada (-) em uma meta, atualizando o "
+            "valor acumulado. Paridade com POST /goals/{id}/contributions."
+        ),
         source_module=MUTATION_GOAL_MODULE,
     ),
     GraphQLOperationDoc(
@@ -852,6 +874,34 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         ),
         source_module=QUERY_AI_INSIGHT_MODULE,
     ),
+    # AI Advisory — change detection sem LLM (#1482)
+    GraphQLOperationDoc(
+        name="aiInsightChangeStatus",
+        operation_type="query",
+        domain="ai_advisory",
+        access="auth_required",
+        summary=(
+            "Indica se o snapshot financeiro mudou desde o último insight do "
+            "período (compara context_hash) SEM chamar o LLM — sem custo de tokens "
+            "e sem consumir cota. Usado para confirmar 'nada mudou, gerar mesmo "
+            "assim?'. Paridade com GET /ai/insights/change-status."
+        ),
+        source_module=QUERY_AI_INSIGHT_MODULE,
+    ),
+    # AI Advisory — cached Radar de Gastos (#1455)
+    GraphQLOperationDoc(
+        name="spendingPatternsLatest",
+        operation_type="query",
+        domain="ai_advisory",
+        access="auth_required",
+        summary=(
+            "Retorna o último radar de gastos compulsivos já gerado pelo cron "
+            "diário (somente leitura, sem consumir cota de IA). 'patternsJson' "
+            "traz os padrões serializados; 'generatedAt' é null quando ainda não "
+            "há análise. Paridade com GET /ai/insights/spending-patterns/latest."
+        ),
+        source_module=QUERY_AI_INSIGHT_MODULE,
+    ),
     # AI Advisory — generate (MVP-3 / #1287 #1288)
     GraphQLOperationDoc(
         name="generateAiInsight",
@@ -877,6 +927,18 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
             "com POST /ai/insights/<id>/feedback."
         ),
         source_module="app.graphql.mutations.ai_insight",
+    ),
+    # Onboarding completion (#1471)
+    GraphQLOperationDoc(
+        name="completeOnboarding",
+        operation_type="mutation",
+        domain="user",
+        access="auth_required",
+        summary=(
+            "Marca o onboarding do usuário autenticado como concluído "
+            "(idempotente). Paridade com POST /user/onboarding/complete."
+        ),
+        source_module="app.graphql.mutations.user",
     ),
 )
 

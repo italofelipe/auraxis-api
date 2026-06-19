@@ -46,28 +46,19 @@ class CreditCardSchema(Schema):
     closing_day = fields.Int(
         required=False,
         allow_none=True,
-        validate=validate.Range(min=1, max=28),
+        validate=validate.Range(min=1, max=31),
         metadata={
-            "description": "Dia de fechamento da fatura (1-28)",
+            "description": "Dia de fechamento da fatura (1-31)",
             "example": 20,
         },
     )
     due_day = fields.Int(
         required=False,
         allow_none=True,
-        validate=validate.Range(min=1, max=28),
+        validate=validate.Range(min=1, max=31),
         metadata={
-            "description": "Dia de vencimento da fatura (1-28)",
+            "description": "Dia de vencimento da fatura (1-31)",
             "example": 5,
-        },
-    )
-    last_four_digits = fields.Str(
-        required=False,
-        allow_none=True,
-        validate=validate.Length(equal=4),
-        metadata={
-            "description": "Últimos 4 dígitos do cartão",
-            "example": "1234",
         },
     )
     bank = fields.Str(
@@ -98,15 +89,6 @@ class CreditCardSchema(Schema):
             "example": ["Cashback 1%", "Sala VIP em aeroportos"],
         },
     )
-    validity_date = fields.Date(
-        required=False,
-        allow_none=True,
-        format="iso",
-        metadata={
-            "description": "Validade do cartão físico (ISO YYYY-MM-DD)",
-            "example": "2028-05-31",
-        },
-    )
 
 
 class CreditCardResponseSchema(Schema):
@@ -123,9 +105,6 @@ class CreditCardResponseSchema(Schema):
         allow_none=True, metadata={"description": "Dia de fechamento"}
     )
     due_day = fields.Int(allow_none=True, metadata={"description": "Dia de vencimento"})
-    last_four_digits = fields.Str(
-        allow_none=True, metadata={"description": "Últimos 4 dígitos"}
-    )
     bank = fields.Str(allow_none=True, metadata={"description": "Banco emissor"})
     description = fields.Str(
         allow_none=True, metadata={"description": "Descrição livre"}
@@ -134,11 +113,6 @@ class CreditCardResponseSchema(Schema):
         fields.Str(),
         allow_none=True,
         metadata={"description": "Lista de benefícios"},
-    )
-    validity_date = fields.Date(
-        allow_none=True,
-        format="iso",
-        metadata={"description": "Validade do cartão físico"},
     )
     created_at = fields.DateTime(
         allow_none=True,

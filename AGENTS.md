@@ -48,6 +48,7 @@ refactor/claude-<desc>
 - ❌ `git add .` ou `git add -A` → sempre stage seletivo por arquivo
 - ❌ commit direto em `master` → sempre branch + PR
 - ❌ `--no-verify` em commits → os hooks existem por razão
+- ❌ prefixar commits, PRs ou títulos de alterações com `[codex]`; use o escopo funcional (`feat:`, `fix:` etc.)
 - ❌ escrever em `.env*` (exceto `.env.example`)
 - ❌ `native_enum=True` em migrations → usar `native_enum=False` (quebra CI PostgreSQL)
 - ❌ `op.get_bind()` em migrations → usar `op.get_context().connection`

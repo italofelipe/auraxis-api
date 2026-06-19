@@ -262,6 +262,76 @@ def _run_batch(
     return 0
 
 
+def _run_spending_patterns_batch(
+    *,
+    user_ids: list[uuid.UUID],
+    anchor_date: date,
+    dry_run: bool,
+) -> int:
+    """Generate + cache spending-patterns for Premium users (no email).
+
+    Unlike :func:`_run_batch`, this calls the v2 detector server-to-server with no
+    AI quota and never sends a notification — the cached radar is read on demand by
+    the dashboard. Idempotent per day via the ``spending_patterns`` insight_type.
+
+    Returns:
+        Exit code: 0 if at least one user succeeded/skipped (or no users);
+        1 if every processed user failed.
+    """
+    label = "spending_patterns"
+    if not user_ids:
+        click.echo(f"{label}: processed=0 failures=0 skipped=0 cost_usd=0.000000")
+        return 0
+
+    if dry_run:
+        click.echo(
+            f"{label} dry-run: {len(user_ids)} eligible Premium users — no calls made."
+        )
+        return 0
+
+    from app.services.ai_spending_patterns_service import (
+        generate_and_persist_spending_patterns,
+    )
+
+    period_label = anchor_date.isoformat()
+    processed = 0
+    failures = 0
+    skipped = 0
+    total_cost = 0.0
+
+    for user_id in user_ids:
+        if _already_has_insight(
+            user_id=user_id,
+            insight_type=InsightType.spending_patterns,
+            period_label=period_label,
+        ):
+            skipped += 1
+            continue
+
+        try:
+            result = generate_and_persist_spending_patterns(
+                user_id, anchor_date=anchor_date
+            )
+            if result.get("persisted"):
+                total_cost += float(result.get("cost_usd", 0))
+                processed += 1
+            else:
+                # v2 returned no actionable patterns; nothing cached.
+                skipped += 1
+        except Exception as exc:  # noqa: BLE001
+            click.echo(f"{label} ERROR user={user_id} error={exc}", err=True)
+            failures += 1
+
+    click.echo(
+        f"{label}: processed={processed} failures={failures} "
+        f"skipped={skipped} cost_usd={total_cost:.6f} period={period_label}"
+    )
+
+    if failures > 0 and processed == 0 and skipped == 0:
+        return 1
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # weekly-insights command
 # ---------------------------------------------------------------------------
@@ -329,6 +399,30 @@ def monthly_insights(month: str | None, dry_run: bool) -> None:
     )
     if not dry_run:
         click.echo(f"monthly_insights month={month_label}")
+    sys.exit(exit_code)
+
+
+@ai_insights_cli.command("spending-patterns")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Print eligible user count without calling v2.",
+)
+def spending_patterns(dry_run: bool) -> None:
+    """Generate + cache the Radar de Gastos for all Premium users.
+
+    Intended to run daily (06:00 UTC). Calls auraxis-api-v2 server-to-server with
+    no AI quota and persists the result so the dashboard can read it quota-free.
+    Idempotent: skips users who already have a cached radar for today. Sends NO
+    email — the radar is read on demand, not pushed.
+    """
+    user_ids = _premium_user_ids()
+    exit_code = _run_spending_patterns_batch(
+        user_ids=user_ids,
+        anchor_date=_brt_today(),
+        dry_run=dry_run,
+    )
     sys.exit(exit_code)
 
 

@@ -76,7 +76,8 @@ def test_build_cors_policy_from_env_respects_defaults(
     assert policy.allow_credentials is True
     assert policy.allow_methods == "GET,POST,PUT,PATCH,DELETE,OPTIONS"
     assert policy.allow_headers == (
-        "Authorization,Content-Type,X-API-Contract,Idempotency-Key,X-CSRF-TOKEN"
+        "Authorization,Content-Type,X-API-Contract,Idempotency-Key,"
+        "X-CSRF-TOKEN,X-Auraxis-Timezone"
     )
     assert policy.max_age_seconds == 600
     assert policy.is_production is True
@@ -99,6 +100,23 @@ def test_default_allowed_headers_include_csrf_token(
     policy = _build_cors_policy_from_env()
 
     assert "X-CSRF-TOKEN" in policy.allow_headers.split(",")
+
+
+def test_default_allowed_headers_include_timezone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """X-Auraxis-Timezone must be in the default CORS allow-list.
+
+    GET /ai/insights/change-status (#1482) sends the user's timezone as the
+    X-Auraxis-Timezone header. If it is absent from Access-Control-Allow-Headers
+    the browser preflight blocks the request. Regression guard for #1485.
+    """
+    monkeypatch.delenv("CORS_ALLOWED_HEADERS", raising=False)
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://app.auraxis.com.br")
+
+    policy = _build_cors_policy_from_env()
+
+    assert "X-Auraxis-Timezone" in policy.allow_headers.split(",")
 
 
 def test_build_cors_policy_marks_non_production_when_testing_enabled(

@@ -27,6 +27,8 @@ class UserType(graphene.ObjectType):
     profile_quiz_score = graphene.Int()
     taxonomy_version = graphene.String()
     avatar_url = graphene.String()
+    # #1471: server-side onboarding completion marker (ISO 8601 or null)
+    onboarding_completed_at = graphene.String()
     # #1325 / #1331: 14-day email verification grace period
     email_verified = graphene.Boolean()
     email_verification_deadline_at = graphene.String()
@@ -212,6 +214,20 @@ class GoalTypeObject(graphene.ObjectType):
 
 class GoalListPayloadType(graphene.ObjectType):
     items = graphene.List(GoalTypeObject, required=True)
+    pagination = graphene.Field(PaginationType, required=True)
+
+
+class GoalContributionType(graphene.ObjectType):
+    id = graphene.ID(required=True)
+    goal_id = graphene.ID(required=True)
+    amount = graphene.String(required=True)
+    note = graphene.String()
+    occurred_at = graphene.String(required=True)
+    created_at = graphene.String()
+
+
+class GoalContributionListPayloadType(graphene.ObjectType):
+    items = graphene.List(GoalContributionType, required=True)
     pagination = graphene.Field(PaginationType, required=True)
 
 

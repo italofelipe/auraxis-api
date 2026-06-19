@@ -1,5 +1,64 @@
 # Changelog
 
+## [1.58.1](https://github.com/italofelipe/auraxis-api/compare/v1.58.0...v1.58.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* **cors:** advertise X-Auraxis-Timezone in allow-headers for change-status preflight ([#1485](https://github.com/italofelipe/auraxis-api/issues/1485)) ([#1486](https://github.com/italofelipe/auraxis-api/issues/1486)) ([5220002](https://github.com/italofelipe/auraxis-api/commit/52200026f8824e8e32b607950447fbf5adb4f8c7))
+
+## [1.58.0](https://github.com/italofelipe/auraxis-api/compare/v1.57.0...v1.58.0) (2026-06-10)
+
+
+### Features
+
+* **ai-insights:** quota 1/dia não-cumulativa + endpoint change-status ([#1482](https://github.com/italofelipe/auraxis-api/issues/1482)) ([#1483](https://github.com/italofelipe/auraxis-api/issues/1483)) ([4acd707](https://github.com/italofelipe/auraxis-api/commit/4acd707c1a3cbba0ef1a0caf6526d33103bf97db))
+* **ai-insights:** relatórios profundos por período (3min/15min) + max_tokens ([#1481](https://github.com/italofelipe/auraxis-api/issues/1481)) ([#1484](https://github.com/italofelipe/auraxis-api/issues/1484)) ([29b0e2a](https://github.com/italofelipe/auraxis-api/commit/29b0e2ab710071dbe78b0771bd6cb94b8fa60234))
+* count committed budget envelope spend ([#1479](https://github.com/italofelipe/auraxis-api/issues/1479)) ([384cde1](https://github.com/italofelipe/auraxis-api/commit/384cde1b773560302e2cce21928435a1161581d5))
+
+## [1.57.0](https://github.com/italofelipe/auraxis-api/compare/v1.56.1...v1.57.0) (2026-06-08)
+
+
+### Features
+
+* **goals:** add contribution endpoints (deposit/withdrawal + history) ([507ae02](https://github.com/italofelipe/auraxis-api/commit/507ae0261c26b1338e3e9c80be110eaac852ea7f)), closes [#1470](https://github.com/italofelipe/auraxis-api/issues/1470)
+* **goals:** registrar aporte/retirada + histórico de contribuições (REST + GraphQL) ([bed4b02](https://github.com/italofelipe/auraxis-api/commit/bed4b02f07fd8d701bf1f4ff17cac5025f3811f9))
+* **onboarding:** persist completion server-side (REST + GraphQL) ([d43f7da](https://github.com/italofelipe/auraxis-api/commit/d43f7da6d75d40be118ba6322879889003efb3b8)), closes [#1471](https://github.com/italofelipe/auraxis-api/issues/1471)
+* **onboarding:** persistir conclusão server-side (flag no usuário, REST + GraphQL) ([eb5d631](https://github.com/italofelipe/auraxis-api/commit/eb5d6314e3b20deb4db70c38aecc04de270dab72))
+
+
+### Bug Fixes
+
+* **credit-card:** aceitar dia de vencimento/fechamento 1–31 com clamp em meses curtos ([6169982](https://github.com/italofelipe/auraxis-api/commit/616998238b65bee519b032e093fe3b23dd5fa1bf))
+* **credit-card:** allow billing days 1-31 with month-end clamp ([374ed4b](https://github.com/italofelipe/auraxis-api/commit/374ed4b5f67bf0a6778085e0e0d1ca61964e887a)), closes [#1469](https://github.com/italofelipe/auraxis-api/issues/1469)
+* **goals:** chain gc1 migration on onb1 + resync postman after master merge ([d3c32a8](https://github.com/italofelipe/auraxis-api/commit/d3c32a8a936995519fcbab9bf137bfb6a17f967f))
+* **goals:** commit regenerated graphql bundle (introspection + operations manifest) ([b63502b](https://github.com/italofelipe/auraxis-api/commit/b63502b268cf679ed0c0d6b955e81a0dc3e4b105))
+* **onboarding:** expose onboarding_completed_at in v2 flat /user/me + commit graphql bundle ([d535229](https://github.com/italofelipe/auraxis-api/commit/d535229e8fb2f72f53fd2855f9eb7d8376164dab))
+
+## [1.56.1](https://github.com/italofelipe/auraxis-api/compare/v1.56.0...v1.56.1) (2026-06-07)
+
+
+### Bug Fixes
+
+* **auth:** grace window in refresh reuse-detection (F5 no longer revokes session) ([#1460](https://github.com/italofelipe/auraxis-api/issues/1460)) ([e5cb72d](https://github.com/italofelipe/auraxis-api/commit/e5cb72dcc3b8d5e71ad41d0c3deafd79172f534d)), closes [#1458](https://github.com/italofelipe/auraxis-api/issues/1458)
+* **credit-card:** deleting a card removes its debts/installments ([#1461](https://github.com/italofelipe/auraxis-api/issues/1461)) ([c86748c](https://github.com/italofelipe/auraxis-api/commit/c86748c2b0307ab49ac3899f2e7c7243e27a3f61)), closes [#1459](https://github.com/italofelipe/auraxis-api/issues/1459)
+
+## [1.56.0](https://github.com/italofelipe/auraxis-api/compare/v1.55.1...v1.56.0) (2026-06-06)
+
+
+### Features
+
+* **ai:** cache spending-patterns via cron + read-only endpoint (no quota) ([#1456](https://github.com/italofelipe/auraxis-api/issues/1456)) ([37a05a0](https://github.com/italofelipe/auraxis-api/commit/37a05a016840a1f8135cef38316173bedb669ed5)), closes [#1455](https://github.com/italofelipe/auraxis-api/issues/1455)
+
+## [1.55.1](https://github.com/italofelipe/auraxis-api/compare/v1.55.0...v1.55.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* **ci:** correct TruffleHog base ref on push to default branch ([d5422f9](https://github.com/italofelipe/auraxis-api/commit/d5422f9ee08975b377fa0d723b493d0f931c1c96))
+* **graphql:** pin graphql-core + regen introspection bundle; fix TruffleHog base on push ([6f69351](https://github.com/italofelipe/auraxis-api/commit/6f693515a6c2da2bfe718edf1113902d75f2c31e))
+* **graphql:** pin graphql-core==3.2.11 and regenerate introspection bundle ([8287b0f](https://github.com/italofelipe/auraxis-api/commit/8287b0f98dea9e7ac49aa994eeb3942c1736a1a1)), closes [#1450](https://github.com/italofelipe/auraxis-api/issues/1450)
+
 ## [1.55.0](https://github.com/italofelipe/auraxis-api/compare/v1.54.2...v1.55.0) (2026-06-04)
 
 

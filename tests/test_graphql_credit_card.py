@@ -98,6 +98,31 @@ class TestCreditCardsQuery:
         assert data["creditCards"][0]["bank"] == "Nubank"
         assert data["creditCards"][0]["benefits"] == ["Cashback 1%"]
 
+    def test_sensitive_card_fields_are_not_exposed_in_schema(self, client) -> None:
+        token = _register_and_login(client, prefix="gql-cards-sensitive")
+        _create_card_rest(client, token, name="Nubank", bank="Nubank")
+
+        response = _gql(
+            client,
+            """
+            query {
+              creditCards {
+                creditCards {
+                  id
+                  lastFourDigits
+                  validityDate
+                }
+              }
+            }
+            """,
+            token,
+        )
+
+        assert response.status_code == 400
+        errors = response.get_json()["errors"]
+        assert any("lastFourDigits" in error["message"] for error in errors)
+        assert any("validityDate" in error["message"] for error in errors)
+
     def test_returns_empty_list_when_user_has_no_cards(self, client) -> None:
         token = _register_and_login(client, prefix="gql-cards-empty")
         response = _gql(

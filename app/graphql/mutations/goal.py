@@ -14,11 +14,12 @@ from app.graphql.decorators import graphql_error_adapter, resolver_with_user_con
 from app.graphql.enums import GoalStatusEnum, coerce_enum_kwargs
 from app.graphql.goal_presenters import (
     raise_goal_graphql_error,
+    to_goal_contribution_type,
     to_goal_plan_type,
     to_goal_type_object,
 )
 from app.graphql.observability import log_graphql_resolver
-from app.graphql.types import GoalPlanType, GoalTypeObject
+from app.graphql.types import GoalContributionType, GoalPlanType, GoalTypeObject
 
 
 class CreateGoalMutation(graphene.Mutation):
@@ -100,6 +101,39 @@ class DeleteGoalMutation(graphene.Mutation):
         return DeleteGoalMutation(
             ok=True,
             message="Meta removida com sucesso",
+        )
+
+
+class RecordGoalContributionMutation(graphene.Mutation):
+    """Register a deposit (+) or withdrawal (-) against a goal.
+
+    REST parity: ``POST /goals/{goal_id}/contributions``.
+    """
+
+    class Arguments:
+        goal_id = graphene.UUID(required=True)
+        amount = graphene.String(required=True)
+        occurred_at = graphene.String()
+        note = graphene.String()
+
+    message = graphene.String(required=True)
+    goal = graphene.Field(GoalTypeObject, required=True)
+    contribution = graphene.Field(GoalContributionType, required=True)
+
+    def mutate(
+        self, info: graphene.ResolveInfo, goal_id: UUID, **kwargs: Any
+    ) -> "RecordGoalContributionMutation":
+        user = get_current_user_required()
+        service = GoalApplicationService.with_defaults(UUID(str(user.id)))
+        payload = {k: v for k, v in kwargs.items() if v is not None}
+        try:
+            result = service.add_contribution(goal_id, payload)
+        except GoalApplicationError as exc:
+            raise_goal_graphql_error(exc)
+        return RecordGoalContributionMutation(
+            message="Contribuição registrada com sucesso",
+            goal=to_goal_type_object(result["goal"]),
+            contribution=to_goal_contribution_type(result["contribution"]),
         )
 
 

@@ -22,13 +22,11 @@ class CreditCard(db.Model):
     limit_amount = db.Column(db.Numeric(12, 2), nullable=True)
     closing_day = db.Column(db.Integer, nullable=True)
     due_day = db.Column(db.Integer, nullable=True)
-    last_four_digits = db.Column(db.String(4), nullable=True)
     bank = db.Column(db.String(80), nullable=True)
     description = db.Column(db.String(300), nullable=True)
     # Stored as JSON-encoded list of strings (cap 12 × 120 chars). Text rather
     # than PG ARRAY to keep SQLite test parity.
     benefits = db.Column(db.Text, nullable=True)
-    validity_date = db.Column(db.Date, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now_naive, nullable=False)
     updated_at = db.Column(
         db.DateTime,
