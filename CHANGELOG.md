@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.59.0](https://github.com/italofelipe/auraxis-api/compare/v1.58.1...v1.59.0) (2026-06-19)
+
+
+### Features
+
+* add credit card impact policy ([#1495](https://github.com/italofelipe/auraxis-api/issues/1495)) ([8d31dc2](https://github.com/italofelipe/auraxis-api/commit/8d31dc2df750633ac779631c86a8f09d1a8a01ec))
+
 ## [1.58.1](https://github.com/italofelipe/auraxis-api/compare/v1.58.0...v1.58.1) (2026-06-10)
 
 
