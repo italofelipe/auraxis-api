@@ -84,6 +84,63 @@ def test_transaction_create_v2_contract(client) -> None:
     assert body["success"] is True
     assert body["message"] == "Transação criada com sucesso"
     assert "transaction" in body["data"]
+    assert body["data"]["transaction"][0]["impact_policy"] == "full"
+
+
+def test_transaction_impact_policy_roundtrip_and_installments_v2_contract(
+    client,
+) -> None:
+    token = _register_and_login(client)
+
+    created = client.post(
+        "/transactions",
+        json=_transaction_payload(
+            title="Compra isolada do cartão",
+            impact_policy="cards_only",
+        ),
+        headers=_auth_headers(token, "v2"),
+    )
+    assert created.status_code == 201
+    transaction = created.get_json()["data"]["transaction"][0]
+    assert transaction["impact_policy"] == "cards_only"
+
+    patched = client.patch(
+        f"/transactions/{transaction['id']}",
+        json={"impact_policy": "planned_until_bill"},
+        headers=_auth_headers(token, "v2"),
+    )
+    assert patched.status_code == 200
+    assert patched.get_json()["data"]["transaction"]["impact_policy"] == (
+        "planned_until_bill"
+    )
+
+    installments = client.post(
+        "/transactions",
+        json=_transaction_payload(
+            title="Compra parcelada isolada",
+            amount="300.00",
+            is_installment=True,
+            installment_count=3,
+            impact_policy="cards_only",
+        ),
+        headers=_auth_headers(token, "v2"),
+    )
+    assert installments.status_code == 201
+    rows = installments.get_json()["data"]["transactions"]
+    assert len(rows) == 3
+    assert {row["impact_policy"] for row in rows} == {"cards_only"}
+
+
+def test_transaction_create_rejects_invalid_impact_policy_v2_contract(client) -> None:
+    token = _register_and_login(client)
+
+    response = client.post(
+        "/transactions",
+        json=_transaction_payload(impact_policy="dashboard_and_cards_but_spicy"),
+        headers=_auth_headers(token, "v2"),
+    )
+
+    assert response.status_code == 400
 
 
 def test_transaction_list_and_summary_v2_contract(client) -> None:
@@ -211,6 +268,14 @@ def test_dashboard_overview_v2_contract(client) -> None:
             status="cancelled",
             amount="50.00",
             due_date=date.today().isoformat(),
+        ),
+        _transaction_payload(
+            title="Compra isolada",
+            type="expense",
+            status="paid",
+            amount="700.00",
+            due_date=date.today().isoformat(),
+            impact_policy="cards_only",
         ),
     ]
     for payload in payloads:

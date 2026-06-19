@@ -142,6 +142,35 @@ class TestBillEndpoint:
         assert Decimal(body["pending_amount"]) == Decimal("50.00")
         assert len(body["transactions"]) == 2
 
+    def test_bill_includes_cards_only_transactions(self, client) -> None:
+        token = _register_and_login(client, prefix="bill-impact-policy")
+        headers = _auth_headers(token)
+        card = _create_card(client, headers, closing_day=10, due_day=15)
+
+        created = client.post(
+            "/transactions",
+            json={
+                "title": "Compra isolada do orçamento",
+                "amount": "88.90",
+                "type": "expense",
+                "status": "pending",
+                "due_date": "2026-05-05",
+                "credit_card_id": card["id"],
+                "impact_policy": "cards_only",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.get_json()
+
+        response = client.get(
+            f"/credit-cards/{card['id']}/bill?month=2026-05", headers=headers
+        )
+        assert response.status_code == 200
+        body = response.get_json()["data"]
+        assert Decimal(body["total_amount"]) == Decimal("88.90")
+        assert Decimal(body["pending_amount"]) == Decimal("88.90")
+        assert body["transactions"][0]["impact_policy"] == "cards_only"
+
     def test_returns_404_when_card_belongs_to_other_user(self, client) -> None:
         owner = _register_and_login(client, prefix="bill-owner")
         owner_headers = _auth_headers(owner)

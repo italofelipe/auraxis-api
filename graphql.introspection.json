@@ -2742,6 +2742,18 @@
                 "name": "String",
                 "ofType": null
               }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "impactPolicy",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
             }
           ],
           "inputFields": null,
@@ -8791,6 +8803,22 @@
               "deprecationReason": null,
               "description": null,
               "isDeprecated": false,
+              "name": "impactPolicy",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
               "name": "status",
               "type": {
                 "kind": "NON_NULL",
@@ -10872,6 +10900,18 @@
                   }
                 },
                 {
+                  "defaultValue": "\"full\"",
+                  "deprecationReason": null,
+                  "description": null,
+                  "isDeprecated": false,
+                  "name": "impactPolicy",
+                  "type": {
+                    "kind": "SCALAR",
+                    "name": "String",
+                    "ofType": null
+                  }
+                },
+                {
                   "defaultValue": null,
                   "deprecationReason": null,
                   "description": null,
@@ -11114,6 +11154,18 @@
                   "description": null,
                   "isDeprecated": false,
                   "name": "endDate",
+                  "type": {
+                    "kind": "SCALAR",
+                    "name": "String",
+                    "ofType": null
+                  }
+                },
+                {
+                  "defaultValue": null,
+                  "deprecationReason": null,
+                  "description": null,
+                  "isDeprecated": false,
+                  "name": "impactPolicy",
                   "type": {
                     "kind": "SCALAR",
                     "name": "String",

@@ -179,6 +179,7 @@ class RecurrenceService:
                     tag_id=template.tag_id,
                     account_id=template.account_id,
                     credit_card_id=template.credit_card_id,
+                    impact_policy=template.impact_policy,
                     installment_group_id=(template.installment_group_id or template.id),
                     recurrence_series_id=(
                         template.recurrence_series_id

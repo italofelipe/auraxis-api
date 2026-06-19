@@ -11,7 +11,11 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.application.services.transaction.errors import TransactionApplicationError
-from app.models.transaction import TransactionStatus, TransactionType
+from app.models.transaction import (
+    TransactionImpactPolicy,
+    TransactionStatus,
+    TransactionType,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -119,6 +123,17 @@ def normalize_transaction_status(raw_value: Any) -> TransactionStatus:
         raise _validation_error(
             "Parâmetro 'status' inválido. "
             "Use paid, pending, cancelled, postponed ou overdue."
+        ) from exc
+
+
+def normalize_impact_policy(raw_value: Any) -> TransactionImpactPolicy:
+    value = str(raw_value or TransactionImpactPolicy.FULL.value).strip().lower()
+    try:
+        return TransactionImpactPolicy(value)
+    except ValueError as exc:
+        raise _validation_error(
+            "Parâmetro 'impact_policy' inválido. "
+            "Use full, cards_only ou planned_until_bill."
         ) from exc
 
 

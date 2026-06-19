@@ -22,10 +22,11 @@ A proposta central e transformar dados financeiros do usuario em visibilidade de
 
 ## Escopo funcional atual (visao consolidada)
 1. Autenticacao e sessao com foco em seguranca de acesso.
-2. Gestao de transacoes com filtros, dashboard e consultas por periodo.
+2. Gestao de transacoes com filtros, dashboard, consultas por periodo e politica de impacto para lancamentos de cartao.
 3. Gestao de carteira e operacoes de investimento com calculos de desempenho.
 4. Modulo de metas com CRUD e simulacao de planejamento em REST e GraphQL.
-5. Arquitetura de dominio centralizada para reduzir duplicacao entre adapters REST/GraphQL.
+5. Cartoes de credito com fatura/utilizacao derivadas de transacoes canonicas.
+6. Arquitetura de dominio centralizada para reduzir duplicacao entre adapters REST/GraphQL.
 
 ## Principios de produto
 1. Clareza: regras financeiras e simulacoes precisam ser compreensiveis para o usuario final.

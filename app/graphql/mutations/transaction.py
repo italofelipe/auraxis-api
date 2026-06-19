@@ -43,6 +43,7 @@ class CreateTransactionMutation(graphene.Mutation):
         tag_id = graphene.UUID()
         account_id = graphene.UUID()
         credit_card_id = graphene.UUID()
+        impact_policy = graphene.String(default_value="full")
 
     items = graphene.List(TransactionTypeObject, required=True)
     message = graphene.String(required=True)
@@ -130,6 +131,7 @@ class UpdateTransactionMutation(graphene.Mutation):
         tag_id = graphene.UUID()
         account_id = graphene.UUID()
         credit_card_id = graphene.UUID()
+        impact_policy = graphene.String()
         paid_at = graphene.String()
 
     transaction = graphene.Field(TransactionTypeObject, required=True)

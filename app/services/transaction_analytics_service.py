@@ -7,7 +7,12 @@ from sqlalchemy import case, func, literal
 
 from app.extensions.database import db
 from app.models.tag import Tag
-from app.models.transaction import Transaction, TransactionStatus, TransactionType
+from app.models.transaction import (
+    Transaction,
+    TransactionImpactPolicy,
+    TransactionStatus,
+    TransactionType,
+)
 from app.services.transaction_trends import (
     classify_survival as classify_survival,  # re-export
 )
@@ -30,6 +35,7 @@ class TransactionAnalyticsService:
     def _month_query(self, *, year: int, month_number: int) -> Any:
         return (
             Transaction.query.filter_by(user_id=self.user_id, deleted=False)
+            .filter(Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY)
             .filter(db.extract("year", Transaction.due_date) == year)
             .filter(db.extract("month", Transaction.due_date) == month_number)
         )
@@ -104,6 +110,7 @@ class TransactionAnalyticsService:
             )
             .filter(Transaction.user_id == self.user_id)
             .filter(Transaction.deleted.is_(False))
+            .filter(Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY)
             .filter(db.extract("year", Transaction.due_date) == year)
             .filter(db.extract("month", Transaction.due_date) == month_number)
             .one()
@@ -132,6 +139,7 @@ class TransactionAnalyticsService:
             db.session.query(Transaction.status, func.count(Transaction.id))
             .filter(Transaction.user_id == self.user_id)
             .filter(Transaction.deleted.is_(False))
+            .filter(Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY)
             .filter(db.extract("year", Transaction.due_date) == year)
             .filter(db.extract("month", Transaction.due_date) == month_number)
             .group_by(Transaction.status)
@@ -158,6 +166,7 @@ class TransactionAnalyticsService:
             .outerjoin(Tag, Tag.id == Transaction.tag_id)
             .filter(Transaction.user_id == self.user_id)
             .filter(Transaction.deleted.is_(False))
+            .filter(Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY)
             .filter(Transaction.type == transaction_type)
             .filter(db.extract("year", Transaction.due_date) == year)
             .filter(db.extract("month", Transaction.due_date) == month_number)
@@ -192,6 +201,7 @@ class TransactionAnalyticsService:
         _base = (
             Transaction.user_id == self.user_id,
             Transaction.deleted.is_(False),
+            Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY,
             db.extract("year", Transaction.due_date) == year,
             db.extract("month", Transaction.due_date) == month_number,
         )
@@ -322,6 +332,7 @@ class TransactionAnalyticsService:
         _common = (
             Transaction.user_id == self.user_id,
             Transaction.deleted.is_(False),
+            Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY,
             db.extract("year", Transaction.due_date) == year,
             db.extract("month", Transaction.due_date) == month_number,
         )

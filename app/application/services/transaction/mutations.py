@@ -25,6 +25,7 @@ from app.application.services.transaction.validators import (
     _validation_error,
     coerce_datetime,
     normalize_currency,
+    normalize_impact_policy,
     normalize_transaction_status,
     normalize_transaction_type,
 )
@@ -128,6 +129,7 @@ def build_transaction_kwargs(
         "tag_id": normalized.get("tag_id"),
         "account_id": normalized.get("account_id"),
         "credit_card_id": normalized.get("credit_card_id"),
+        "impact_policy": normalize_impact_policy(normalized.get("impact_policy")),
         "status": tx_status,
         "currency": normalize_currency(normalized.get("currency")),
     }
@@ -151,6 +153,7 @@ def build_installment_transactions(
     currency = normalize_currency(normalized.get("currency"))
     raw_category = normalized.get("category")
     category = TransactionCategory(raw_category) if raw_category else None
+    impact_policy = normalize_impact_policy(normalized.get("impact_policy"))
     return [
         Transaction(
             user_id=user_id,
@@ -169,6 +172,7 @@ def build_installment_transactions(
             tag_id=normalized.get("tag_id"),
             account_id=normalized.get("account_id"),
             credit_card_id=normalized.get("credit_card_id"),
+            impact_policy=impact_policy,
             status=tx_status,
             currency=currency,
             installment_group_id=group_id,
@@ -209,11 +213,15 @@ def apply_active_transaction_filters(
 
 
 def normalize_update_type_and_status(normalized: dict[str, Any]) -> None:
-    """Coerce ``type`` / ``status`` strings on an update payload (in-place)."""
+    """Coerce enum-backed strings on an update payload (in-place)."""
     if "type" in normalized and normalized["type"] is not None:
         normalized["type"] = normalize_transaction_type(normalized["type"]).value
     if "status" in normalized and normalized["status"] is not None:
         normalized["status"] = normalize_transaction_status(normalized["status"]).value
+    if "impact_policy" in normalized and normalized["impact_policy"] is not None:
+        normalized["impact_policy"] = normalize_impact_policy(
+            normalized["impact_policy"]
+        ).value
 
 
 __all__ = [

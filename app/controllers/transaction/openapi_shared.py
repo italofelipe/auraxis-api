@@ -53,6 +53,7 @@ TRANSACTION_EXAMPLE = {
     "tag_id": "73c3b094-60bf-45d5-8e32-0f673b2ab4a2",
     "account_id": "2d16ea71-b7ae-4da7-adc4-e93e54cd52cb",
     "credit_card_id": None,
+    "impact_policy": "full",
     "installment_group_id": None,
     "paid_at": None,
     "created_at": "2026-03-01T10:00:00+00:00",
@@ -69,6 +70,7 @@ TRANSACTION_CREATE_PAYLOAD_EXAMPLE = {
     "due_date": "2026-03-10",
     "tag_id": "73c3b094-60bf-45d5-8e32-0f673b2ab4a2",
     "account_id": "2d16ea71-b7ae-4da7-adc4-e93e54cd52cb",
+    "impact_policy": "full",
 }
 
 TRANSACTION_LIST_META_EXAMPLE = {

@@ -51,6 +51,7 @@ def _serialize_cycle(cycle: BillCycle) -> dict[str, Any]:
 
 
 def _serialize_transaction(tx: Any) -> dict[str, Any]:
+    impact_policy = getattr(tx, "impact_policy", None)
     return {
         "id": str(tx.id),
         "title": tx.title,
@@ -58,6 +59,11 @@ def _serialize_transaction(tx: Any) -> dict[str, Any]:
         "due_date": tx.due_date.isoformat() if tx.due_date else None,
         "status": tx.status.value if hasattr(tx.status, "value") else str(tx.status),
         "type": tx.type.value if hasattr(tx.type, "value") else str(tx.type),
+        "impact_policy": (
+            impact_policy.value
+            if impact_policy is not None and hasattr(impact_policy, "value")
+            else str(impact_policy or "full")
+        ),
     }
 
 
