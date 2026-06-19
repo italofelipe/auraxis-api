@@ -120,6 +120,7 @@ TRANSACTION_ITEM_FIELDS = {
     "tag_id",
     "account_id",
     "credit_card_id",
+    "impact_policy",
     "currency",
     "created_at",
     "updated_at",
