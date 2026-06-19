@@ -12,7 +12,12 @@ from uuid import UUID
 from sqlalchemy import case, func
 
 from app.extensions.database import db
-from app.models.transaction import Transaction, TransactionStatus, TransactionType
+from app.models.transaction import (
+    Transaction,
+    TransactionImpactPolicy,
+    TransactionStatus,
+    TransactionType,
+)
 
 if TYPE_CHECKING:
     from app.application.services.transaction.query_types import (
@@ -69,6 +74,7 @@ def _aggregate_range(
         .filter(
             Transaction.user_id == user_id,
             Transaction.deleted.is_(False),
+            Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY,
             Transaction.status == TransactionStatus.PAID,
             Transaction.due_date >= start,
             Transaction.due_date <= end,
@@ -121,6 +127,7 @@ def _build_daily_series(
         .filter(
             Transaction.user_id == user_id,
             Transaction.deleted.is_(False),
+            Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY,
             Transaction.status == TransactionStatus.PAID,
             Transaction.due_date >= start,
             Transaction.due_date <= end,

@@ -13,7 +13,12 @@ from uuid import UUID
 from sqlalchemy import case, func
 
 from app.extensions.database import db
-from app.models.transaction import Transaction, TransactionStatus, TransactionType
+from app.models.transaction import (
+    Transaction,
+    TransactionImpactPolicy,
+    TransactionStatus,
+    TransactionType,
+)
 from app.models.wallet import Wallet
 
 if TYPE_CHECKING:
@@ -75,6 +80,7 @@ def compute_dashboard_trends(*, user_id: UUID, months: int) -> TransactionTrends
             .filter(
                 Transaction.user_id == user_id,
                 Transaction.deleted.is_(False),
+                Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY,
                 Transaction.status == TransactionStatus.PAID,
                 Transaction.due_date >= month_start,
                 Transaction.due_date <= month_end,
@@ -135,6 +141,7 @@ def compute_survival_index(
             Transaction.user_id == user_id,
             Transaction.deleted.is_(False),
             Transaction.type == TransactionType.EXPENSE,
+            Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY,
             Transaction.status == TransactionStatus.PAID,
             Transaction.due_date >= period_start,
             Transaction.due_date <= period_end,

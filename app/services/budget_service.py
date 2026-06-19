@@ -13,7 +13,12 @@ from sqlalchemy.orm import joinedload
 from app.extensions.database import db
 from app.models.budget import Budget
 from app.models.tag import Tag
-from app.models.transaction import Transaction, TransactionStatus, TransactionType
+from app.models.transaction import (
+    Transaction,
+    TransactionImpactPolicy,
+    TransactionStatus,
+    TransactionType,
+)
 from app.schemas.budget_schema import BudgetSchema
 
 
@@ -116,6 +121,7 @@ class BudgetService:
             Transaction.user_id == self.user_id,
             Transaction.type == TransactionType.EXPENSE,
             Transaction.status == TransactionStatus.PAID,
+            Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY,
             Transaction.deleted.is_(False),
         )
 

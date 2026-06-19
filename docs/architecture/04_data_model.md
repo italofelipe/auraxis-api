@@ -54,6 +54,7 @@ erDiagram
         uuid account_id FK
         uuid credit_card_id FK
         uuid tag_id FK
+        string impact_policy
         string description
         decimal amount
         string type

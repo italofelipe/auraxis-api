@@ -234,6 +234,11 @@ class UserMeResource(MethodResource):
                 "tag_id": str(t.tag_id) if t.tag_id else None,
                 "account_id": str(t.account_id) if t.account_id else None,
                 "credit_card_id": str(t.credit_card_id) if t.credit_card_id else None,
+                "impact_policy": (
+                    t.impact_policy.value
+                    if hasattr(t.impact_policy, "value")
+                    else str(t.impact_policy or "full")
+                ),
                 "currency": t.currency,
                 "created_at": t.created_at.isoformat() if t.created_at else None,
                 "updated_at": t.updated_at.isoformat() if t.updated_at else None,

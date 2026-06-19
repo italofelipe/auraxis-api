@@ -60,6 +60,7 @@ class BillTransactionType(graphene.ObjectType):
     due_date = graphene.String()
     status = graphene.String()
     type = graphene.String()
+    impact_policy = graphene.String()
 
 
 class CreditCardBillType(graphene.ObjectType):
@@ -114,6 +115,11 @@ def _to_bill_type(bill: BillSummary) -> CreditCardBillType:
             due_date=tx.due_date.isoformat() if tx.due_date else None,
             status=tx.status.value if hasattr(tx.status, "value") else str(tx.status),
             type=tx.type.value if hasattr(tx.type, "value") else str(tx.type),
+            impact_policy=(
+                tx.impact_policy.value
+                if hasattr(tx.impact_policy, "value")
+                else str(tx.impact_policy or "full")
+            ),
         )
         for tx in bill.transactions
     ]

@@ -248,6 +248,10 @@ Suporta:
 - status (`paid|pending|cancelled|postponed|overdue`)
 - recorrência (`is_recurring`, `start_date`, `end_date`)
 - parcelamento com soma exata (diferença de arredondamento ajustada na última parcela)
+- política de impacto (`impact_policy`):
+  - `full`: reflete em cartões, transações, dashboard e orçamentos
+  - `cards_only`: reflete em cartões/fatura, mas é ignorado por dashboard e orçamentos
+  - `planned_until_bill`: reservado para planejamento até a fatura
 - validações de recorrência:
   - `is_recurring=true` exige `start_date` e `end_date`
   - `due_date` deve estar entre `start_date` e `end_date`
@@ -263,6 +267,7 @@ Regra específica implementada:
 - Se `status=paid`, exige `paid_at`.
 - `paid_at` não pode ser no futuro.
 - Recorrência mantém consistência de intervalo (`start_date <= end_date`) e de `due_date` dentro do período quando `is_recurring=true`.
+- `impact_policy` pode ser atualizado com os mesmos valores aceitos na criação.
 - Com `X-API-Contract: v2`, retorna envelope padronizado.
 
 ### `PUT /transactions/{transaction_id}`

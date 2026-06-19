@@ -48,6 +48,7 @@ MUTABLE_TRANSACTION_FIELDS = frozenset(
         "tag_id",
         "account_id",
         "credit_card_id",
+        "impact_policy",
         "paid_at",
     }
 )

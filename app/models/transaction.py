@@ -38,6 +38,12 @@ class TransactionStatus(enum.Enum):
     OVERDUE = "overdue"
 
 
+class TransactionImpactPolicy(enum.Enum):
+    FULL = "full"
+    CARDS_ONLY = "cards_only"
+    PLANNED_UNTIL_BILL = "planned_until_bill"
+
+
 class RecurrenceUnit(enum.Enum):
     """Cadence unit for a recurring transaction (combined with an interval)."""
 
@@ -101,6 +107,17 @@ class Transaction(db.Model):
     credit_card_id = db.Column(
         UUID(as_uuid=True), db.ForeignKey("credit_cards.id"), nullable=True
     )
+    impact_policy = db.Column(
+        db.Enum(
+            TransactionImpactPolicy,
+            name="transaction_impact_policy_enum",
+            native_enum=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+        default=TransactionImpactPolicy.FULL,
+        server_default=TransactionImpactPolicy.FULL.value,
+    )
     installment_group_id = db.Column(UUID(as_uuid=True), nullable=True)
     # Links all occurrences of one recurring series so a user can delete a
     # single occurrence or the whole series. Backfilled from
@@ -158,6 +175,7 @@ class Transaction(db.Model):
         income_total = (
             db.session.query(func.coalesce(func.sum(Transaction.amount), 0))
             .filter_by(user_id=user_id, deleted=False, type=TransactionType.INCOME)
+            .filter(Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY)
             .filter(extract("year", Transaction.due_date) == year)
             .filter(extract("month", Transaction.due_date) == month)
             .scalar()
@@ -166,6 +184,7 @@ class Transaction(db.Model):
         expense_total = (
             db.session.query(func.coalesce(func.sum(Transaction.amount), 0))
             .filter_by(user_id=user_id, deleted=False, type=TransactionType.EXPENSE)
+            .filter(Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY)
             .filter(extract("year", Transaction.due_date) == year)
             .filter(extract("month", Transaction.due_date) == month)
             .scalar()
@@ -173,6 +192,7 @@ class Transaction(db.Model):
 
         transactions = (
             Transaction.query.filter_by(user_id=user_id, deleted=False)
+            .filter(Transaction.impact_policy != TransactionImpactPolicy.CARDS_ONLY)
             .filter(extract("year", Transaction.due_date) == year)
             .filter(extract("month", Transaction.due_date) == month)
             .all()

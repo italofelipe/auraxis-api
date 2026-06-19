@@ -17,6 +17,7 @@ from app.models.credit_card import CreditCard
 from app.models.transaction import (
     Transaction,
     TransactionCategory,
+    TransactionImpactPolicy,
     TransactionStatus,
     TransactionType,
 )
@@ -49,6 +50,7 @@ _MUTABLE_TRANSACTION_FIELDS = frozenset(
         "tag_id",
         "account_id",
         "credit_card_id",
+        "impact_policy",
         "paid_at",
     }
 )
@@ -131,6 +133,9 @@ def _apply_transaction_updates(
                 field,
                 TransactionCategory(str(value).lower()) if value else None,
             )
+            continue
+        if field == "impact_policy" and value is not None:
+            setattr(transaction, field, TransactionImpactPolicy(str(value).lower()))
             continue
         setattr(transaction, field, value)
 

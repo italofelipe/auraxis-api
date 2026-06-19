@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Any  # noqa: UP006
 
 # ---------------------------------------------------------------------------
@@ -57,6 +58,29 @@ def _create_tag(client, token: str, name: str = "Alimentação") -> str:
     if "id" in body:
         return body["id"]
     raise AssertionError(f"Cannot extract tag id from: {body}")
+
+
+def _create_paid_expense(
+    client,
+    token: str,
+    *,
+    amount: str,
+    title: str,
+    impact_policy: str = "full",
+) -> None:
+    resp = client.post(
+        "/transactions",
+        json={
+            "title": title,
+            "amount": amount,
+            "type": "expense",
+            "status": "paid",
+            "due_date": date.today().isoformat(),
+            "impact_policy": impact_policy,
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201, resp.get_json()
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +293,38 @@ def test_budget_summary_endpoint(client) -> None:
     assert "budget_count" in summary
     assert summary["budget_count"] == 2
     assert summary["total_budgeted"] == "800.00"
+
+
+def test_budget_spent_ignores_cards_only_impact_policy(client) -> None:
+    token = _register_and_login(client, prefix="budget-impact-policy")
+
+    create_resp = client.post(
+        "/budgets",
+        json=_budget_payload(name="Geral Mensal", amount="500.00"),
+        headers=_auth(token),
+    )
+    assert create_resp.status_code == 201
+
+    _create_paid_expense(
+        client,
+        token,
+        title="Mercado",
+        amount="120.00",
+        impact_policy="full",
+    )
+    _create_paid_expense(
+        client,
+        token,
+        title="Compra só no cartão",
+        amount="80.00",
+        impact_policy="cards_only",
+    )
+
+    summary_resp = client.get("/budgets/summary", headers=_auth(token))
+    assert summary_resp.status_code == 200
+    summary = summary_resp.get_json()["data"]["summary"]
+    assert summary["total_spent"] == "120.00"
+    assert summary["total_remaining"] == "380.00"
 
 
 # ---------------------------------------------------------------------------

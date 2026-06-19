@@ -24,6 +24,7 @@ class TransactionPayload(TypedDict):
     tag_id: str | None
     account_id: str | None
     credit_card_id: str | None
+    impact_policy: str
     status: str
     currency: str
     source: str
@@ -38,6 +39,7 @@ class TransactionPayload(TypedDict):
 def serialize_transaction_payload(transaction: Transaction) -> TransactionPayload:
     installment_group_id = getattr(transaction, "installment_group_id", None)
     paid_at = getattr(transaction, "paid_at", None)
+    impact_policy = getattr(transaction, "impact_policy", None)
 
     return {
         "id": str(transaction.id),
@@ -69,6 +71,11 @@ def serialize_transaction_payload(transaction: Transaction) -> TransactionPayloa
         "account_id": str(transaction.account_id) if transaction.account_id else None,
         "credit_card_id": (
             str(transaction.credit_card_id) if transaction.credit_card_id else None
+        ),
+        "impact_policy": (
+            impact_policy.value
+            if hasattr(impact_policy, "value")
+            else str(impact_policy or "full")
         ),
         "status": transaction.status.value,
         "currency": transaction.currency,

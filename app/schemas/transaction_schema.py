@@ -149,6 +149,18 @@ class TransactionSchema(Schema):
         allow_none=True,
         metadata={"description": "ID do cartão de crédito associado"},
     )
+    impact_policy = fields.Str(
+        load_default="full",
+        validate=validate.OneOf(["full", "cards_only", "planned_until_bill"]),
+        metadata={
+            "description": (
+                "Política de impacto do lançamento: full reflete em todas as áreas; "
+                "cards_only fica restrito a cartões/fatura; planned_until_bill "
+                "mantém o lançamento para planejamento da fatura."
+            ),
+            "example": "full",
+        },
+    )
     installment_group_id = fields.UUID(
         dump_only=True,
         metadata={"description": "ID do grupo de parcelas (gerado automaticamente)"},
@@ -180,6 +192,7 @@ class TransactionSchema(Schema):
                 "type",
                 "status",
                 "currency",
+                "impact_policy",
             },
         )
         if isinstance(sanitized, dict):
@@ -189,6 +202,8 @@ class TransactionSchema(Schema):
                 sanitized["status"] = str(sanitized["status"]).lower()
             if isinstance(sanitized.get("currency"), str):
                 sanitized["currency"] = str(sanitized["currency"]).upper()
+            if isinstance(sanitized.get("impact_policy"), str):
+                sanitized["impact_policy"] = str(sanitized["impact_policy"]).lower()
         return sanitized
 
 
@@ -240,6 +255,9 @@ class TransactionResponseSchema(Schema):
     credit_card_id = fields.UUID(
         allow_none=True,
         metadata={"description": "ID do cartão de crédito"},
+    )
+    impact_policy = fields.Str(
+        metadata={"description": "Política de impacto do lançamento"}
     )
     installment_group_id = fields.UUID(
         allow_none=True, metadata={"description": "ID do grupo de parcelas"}

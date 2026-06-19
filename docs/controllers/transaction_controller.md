@@ -38,6 +38,7 @@ O que faz:
 - Exige JWT válido e não revogado.
 - Cria transação simples.
 - Quando `is_installment=true`, gera múltiplas transações com `installment_group_id`.
+- Aceita `impact_policy` (`full`, `cards_only`, `planned_until_bill`) para decidir se um lançamento de cartão afeta dashboard/orçamentos.
 - Parcelamento agora garante soma exata:
   - divide com arredondamento controlado
   - aplica diferença residual na última parcela
@@ -64,6 +65,7 @@ O que faz:
   - `paid_at` só pode existir com `status=paid`
   - `paid_at` não pode ser futuro
   - se recorrente, mantém coerência de datas (`start_date`, `end_date`, `due_date`)
+  - `impact_policy` pode ser alterado mantendo a transação como fonte canônica
 - Contrato v2:
   - sucesso em `data.transaction`
   - erros com `error.code` (`VALIDATION_ERROR`, `FORBIDDEN`, `NOT_FOUND`)
