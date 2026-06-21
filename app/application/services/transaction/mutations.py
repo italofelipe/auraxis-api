@@ -36,6 +36,10 @@ from app.models.transaction import (
     TransactionStatus,
     TransactionType,
 )
+from app.services.credit_card_bill_service import (
+    build_competence_month_filter,
+    month_span_if_full_calendar_month,
+)
 from app.services.transaction_reference_authorization_service import (
     TransactionReferenceAuthorizationError,
     enforce_transaction_reference_ownership,
@@ -184,6 +188,7 @@ def build_installment_transactions(
 def apply_active_transaction_filters(
     query: Any,
     *,
+    user_id: UUID,
     transaction_type: str | None,
     status: str | None,
     start_date: date | None,
@@ -192,17 +197,28 @@ def apply_active_transaction_filters(
     account_id: UUID | None,
     credit_card_id: UUID | None,
 ) -> Any:
-    """Apply optional filters to an active-transactions list query."""
+    """Apply optional filters to an active-transactions list query.
+
+    When ``start_date``/``end_date`` span exactly one calendar month, the raw
+    ``due_date`` range is replaced by a competence-month filter so credit-card
+    transactions are grouped by the bill cycle they belong to (matching the
+    Cartões/fatura view) while non-card transactions and incomes stay on the
+    calendar month. Custom or partial ranges keep the raw ``due_date`` filter.
+    """
     if transaction_type:
         query = query.filter(
             Transaction.type == normalize_transaction_type(transaction_type)
         )
     if status:
         query = query.filter(Transaction.status == normalize_transaction_status(status))
-    if start_date:
-        query = query.filter(Transaction.due_date >= start_date)
-    if end_date:
-        query = query.filter(Transaction.due_date <= end_date)
+    competence_month = month_span_if_full_calendar_month(start_date, end_date)
+    if competence_month is not None:
+        query = query.filter(build_competence_month_filter(user_id, competence_month))
+    else:
+        if start_date:
+            query = query.filter(Transaction.due_date >= start_date)
+        if end_date:
+            query = query.filter(Transaction.due_date <= end_date)
     if tag_id:
         query = query.filter(Transaction.tag_id == tag_id)
     if account_id:

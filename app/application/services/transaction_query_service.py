@@ -37,6 +37,10 @@ from app.application.services.transaction_application_service import (
 )
 from app.extensions.database import db
 from app.models.transaction import Transaction, TransactionType
+from app.services.credit_card_bill_service import (
+    build_competence_month_filter,
+    month_span_if_full_calendar_month,
+)
 from app.services.transaction_analytics_service import (
     TransactionAnalyticsService,
 )
@@ -218,6 +222,33 @@ class TransactionQueryService:
             end_date=end_date,
         )
 
+    def _apply_period_date_filter(
+        self,
+        query: Any,
+        *,
+        start_date: date | None,
+        end_date: date | None,
+    ) -> Any:
+        """Apply the period date filter, switching to competence-month grouping.
+
+        When ``[start_date, end_date]`` spans exactly one calendar month, the
+        raw ``due_date`` range is replaced by a competence-month filter so
+        credit-card transactions are grouped by their bill cycle (matching the
+        Cartões/fatura view). Custom/partial ranges keep the raw ``due_date``
+        filter. Applied identically to the items and counts queries so totals
+        and pagination stay consistent.
+        """
+        competence_month = month_span_if_full_calendar_month(start_date, end_date)
+        if competence_month is not None:
+            return query.filter(
+                build_competence_month_filter(self._user_id, competence_month)
+            )
+        if start_date is not None:
+            query = query.filter(Transaction.due_date >= start_date)
+        if end_date is not None:
+            query = query.filter(Transaction.due_date <= end_date)
+        return query
+
     def _build_period_query(
         self,
         *,
@@ -225,11 +256,9 @@ class TransactionQueryService:
         end_date: date | None,
     ) -> Any:
         query = Transaction.query.filter_by(user_id=self._user_id, deleted=False)
-        if start_date is not None:
-            query = query.filter(Transaction.due_date >= start_date)
-        if end_date is not None:
-            query = query.filter(Transaction.due_date <= end_date)
-        return query
+        return self._apply_period_date_filter(
+            query, start_date=start_date, end_date=end_date
+        )
 
     def _build_period_counts(
         self,
@@ -252,10 +281,9 @@ class TransactionQueryService:
                 0,
             ).label("expense_transactions"),
         ).filter(Transaction.user_id == self._user_id, Transaction.deleted.is_(False))
-        if start_date is not None:
-            counts_query = counts_query.filter(Transaction.due_date >= start_date)
-        if end_date is not None:
-            counts_query = counts_query.filter(Transaction.due_date <= end_date)
+        counts_query = self._apply_period_date_filter(
+            counts_query, start_date=start_date, end_date=end_date
+        )
         row = counts_query.one()
         return (
             int(row.total_transactions or 0),
