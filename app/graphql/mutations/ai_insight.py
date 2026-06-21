@@ -43,6 +43,31 @@ class AIInsightItemType(graphene.ObjectType):
     evidence = graphene.List(graphene.String)
 
 
+class AIInsightRetroEntryType(graphene.ObjectType):
+    """One calculated retrospective metric for the Fluida screen (#1501)."""
+
+    key = graphene.String(required=True)
+    label = graphene.String(required=True)
+    value = graphene.Float(required=True)
+    caption = graphene.String(required=True)
+    sign = graphene.String(required=True)
+
+
+class AIInsightSeriesType(graphene.ObjectType):
+    """Calculated outflow series: daily over 7 days, weekly over 6 weeks."""
+
+    daily = graphene.List(graphene.Float, required=True)
+    weekly = graphene.List(graphene.Float, required=True)
+
+
+class AIInsightHighlightType(graphene.ObjectType):
+    """One calculated per-theme highlight for the Fluida screen (#1501)."""
+
+    label = graphene.String(required=True)
+    value = graphene.Float(required=True)
+    sub = graphene.String(required=True)
+
+
 class GenerateAiInsightPayload(graphene.ObjectType):
     ok = graphene.Boolean(required=True)
     id = graphene.String()
@@ -58,6 +83,12 @@ class GenerateAiInsightPayload(graphene.ObjectType):
     tokens_used = graphene.Int()
     cost_usd = graphene.Float()
     forecast = graphene.Boolean()
+    # Structured Fluida fields (#1501) — additive, deterministically computed
+    # by the backend (paragraphs derive from `summary`).
+    paragraphs = graphene.List(graphene.String)
+    retro = graphene.List(AIInsightRetroEntryType)
+    series = graphene.Field(AIInsightSeriesType)
+    highlights = graphene.List(AIInsightHighlightType)
 
 
 def _to_item_type(item: dict[str, Any]) -> AIInsightItemType:
@@ -67,6 +98,33 @@ def _to_item_type(item: dict[str, Any]) -> AIInsightItemType:
         title=item.get("title", ""),
         message=item.get("message", ""),
         evidence=list(item.get("evidence", []) or []),
+    )
+
+
+def _to_retro_entry(entry: dict[str, Any]) -> AIInsightRetroEntryType:
+    return AIInsightRetroEntryType(
+        key=str(entry.get("key", "")),
+        label=str(entry.get("label", "")),
+        value=float(entry.get("value", 0.0) or 0.0),
+        caption=str(entry.get("caption", "")),
+        sign=str(entry.get("sign", "neutral")),
+    )
+
+
+def _to_series_type(series: dict[str, Any] | None) -> AIInsightSeriesType | None:
+    if not isinstance(series, dict):
+        return None
+    return AIInsightSeriesType(
+        daily=[float(v) for v in series.get("daily", []) or []],
+        weekly=[float(v) for v in series.get("weekly", []) or []],
+    )
+
+
+def _to_highlight_type(highlight: dict[str, Any]) -> AIInsightHighlightType:
+    return AIInsightHighlightType(
+        label=str(highlight.get("label", "")),
+        value=float(highlight.get("value", 0.0) or 0.0),
+        sub=str(highlight.get("sub", "")),
     )
 
 
@@ -155,6 +213,12 @@ class GenerateAiInsightMutation(graphene.Mutation):
             tokens_used=int(result.get("tokens_used") or 0),
             cost_usd=float(result.get("cost_usd") or 0),
             forecast=bool(result.get("forecast", False)),
+            paragraphs=list(result.get("paragraphs", []) or []),
+            retro=[_to_retro_entry(e) for e in result.get("retro", []) or []],
+            series=_to_series_type(result.get("series")),
+            highlights=[
+                _to_highlight_type(h) for h in result.get("highlights", []) or []
+            ],
         )
 
 
