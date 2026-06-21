@@ -18,13 +18,17 @@ import calendar
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+from uuid import UUID
 
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 
 from app.extensions.database import db
 from app.models.credit_card import CreditCard
 from app.models.transaction import Transaction, TransactionStatus, TransactionType
+
+if TYPE_CHECKING:
+    from sqlalchemy.sql.elements import ColumnElement
 
 BillCycleStatus = Literal["open", "closed", "paid"]
 
@@ -142,6 +146,108 @@ def compute_bill_cycle(*, closing_day: int, due_day: int, anchor: date) -> BillC
         due_date=due_date,
         status=status,
     )
+
+
+def bill_month_for(*, due_date: date, closing_day: int, due_day: int) -> str:
+    """Return the ``YYYY-MM`` of the bill cycle that contains ``due_date``.
+
+    A credit-card purchase belongs to the cycle that closes on ``closing_day``;
+    the month it is billed in is the month that cycle CLOSES in (its
+    ``end_date``). A purchase after the closing day rolls into the following
+    month's bill; on or before closing it stays in the current month.
+    """
+    cycle = compute_bill_cycle(
+        closing_day=closing_day,
+        due_day=due_day,
+        anchor=due_date,
+    )
+    return f"{cycle.end_date.year:04d}-{cycle.end_date.month:02d}"
+
+
+def month_span_if_full_calendar_month(
+    start_date: date | None, end_date: date | None
+) -> str | None:
+    """Return ``YYYY-MM`` when ``[start_date, end_date]`` is one whole month.
+
+    The range covers exactly one calendar month when it starts on the first
+    day, ends on that month's last day, and both endpoints share the same year
+    and month. Otherwise (partial range, cross-month range, or a missing
+    endpoint) returns ``None``.
+    """
+    if start_date is None or end_date is None:
+        return None
+    if start_date.day != 1:
+        return None
+    if (start_date.year, start_date.month) != (end_date.year, end_date.month):
+        return None
+    last_day = calendar.monthrange(end_date.year, end_date.month)[1]
+    if end_date.day != last_day:
+        return None
+    return f"{start_date.year:04d}-{start_date.month:02d}"
+
+
+def _calendar_month_bounds(month: str) -> tuple[date, date]:
+    """Return the (first_day, last_day) calendar bounds for a ``YYYY-MM``."""
+    try:
+        year_str, month_str = month.split("-", 1)
+        year = int(year_str)
+        m = int(month_str)
+        if not 1 <= m <= 12:
+            raise ValueError
+    except (ValueError, AttributeError) as exc:
+        raise ValueError(f"month must be in YYYY-MM format (got {month!r})") from exc
+    last_day = calendar.monthrange(year, m)[1]
+    return date(year, m, 1), date(year, m, last_day)
+
+
+def build_competence_month_filter(user_id: UUID, month: str) -> ColumnElement[bool]:
+    """Build a SQLAlchemy predicate grouping transactions by competence month.
+
+    For the calendar month ``month`` (``YYYY-MM``):
+
+    - Non-card transactions (``credit_card_id IS NULL``) match when their
+      ``due_date`` falls in the calendar month.
+    - For each credit card owned by ``user_id``, its transactions match when
+      ``due_date`` falls inside the bill cycle that CLOSES in ``month``
+      (anchored on the card's ``closing_day`` for that month). Cards missing
+      ``closing_day``/``due_day`` fall back to the calendar month.
+
+    The returned predicate is meant to replace a raw ``due_date BETWEEN
+    start AND end`` filter on a query already scoped to ``user_id``. It does
+    not itself scope by user, so callers must keep their own ``user_id``
+    filter.
+    """
+    month_start, month_end = _calendar_month_bounds(month)
+
+    non_card = and_(
+        Transaction.credit_card_id.is_(None),
+        Transaction.due_date >= month_start,
+        Transaction.due_date <= month_end,
+    )
+
+    branches: list[ColumnElement[bool]] = [non_card]
+
+    cards = CreditCard.query.filter_by(user_id=user_id).all()
+    for card in cards:
+        if card.closing_day is None or card.due_day is None:
+            cycle_start, cycle_end = month_start, month_end
+        else:
+            anchor = _safe_date(month_start.year, month_start.month, card.closing_day)
+            cycle = compute_bill_cycle(
+                closing_day=card.closing_day,
+                due_day=card.due_day,
+                anchor=anchor,
+            )
+            cycle_start, cycle_end = cycle.start_date, cycle.end_date
+        branches.append(
+            and_(
+                Transaction.credit_card_id == card.id,
+                Transaction.due_date >= cycle_start,
+                Transaction.due_date <= cycle_end,
+            )
+        )
+
+    return or_(*branches)
 
 
 _COMMITTED_STATUSES = (

@@ -44,6 +44,7 @@ def fetch_active_transactions(
     query = Transaction.query.filter_by(user_id=user_id, deleted=False)
     query = apply_active_transaction_filters(
         query,
+        user_id=user_id,
         transaction_type=transaction_type,
         status=status,
         start_date=start_date,
