@@ -34,6 +34,7 @@ from app.services.ai_insight_runs import create_ai_insight_run
 from app.services.ai_lgpd import minimize_prompt_data, minimize_text
 from app.services.email_templates.base import render_monthly_analysis_ready_email
 from app.services.financial_insight_context_builder import truncate_snapshot
+from app.services.insight_fluida_builder import enrich_insight_payload
 from app.services.llm_provider import LLMProvider
 from app.services.outbound_queue import get_default_outbound_queue
 
@@ -495,23 +496,29 @@ def get_ai_insight_by_id(*, user_id: UUID, insight_id: UUID) -> dict[str, Any]:
         raise ValueError("insight_id não encontrado")
     summary, items = _extract_insight_content(insight)
     metadata = insight.metadata_dict
-    return {
-        "id": str(insight.id),
-        "content": insight.content,
-        "summary": summary,
-        "items": items,
-        "insight_type": insight.insight_type.value,
-        "period_type": insight.insight_type.value,
-        "period_label": insight.period_label,
-        "period_start": insight.period_start.isoformat(),
-        "period_end": insight.period_end.isoformat(),
-        "context_schema_version": metadata.get("context_schema_version"),
-        "context_hash": metadata.get("context_hash"),
-        "model": insight.model,
-        "tokens_used": insight.tokens_used,
-        "cost_usd": float(insight.cost_usd),
-        "created_at": insight.created_at.isoformat() if insight.created_at else None,
-    }
+    return enrich_insight_payload(
+        {
+            "id": str(insight.id),
+            "content": insight.content,
+            "summary": summary,
+            "items": items,
+            "insight_type": insight.insight_type.value,
+            "period_type": insight.insight_type.value,
+            "period_label": insight.period_label,
+            "period_start": insight.period_start.isoformat(),
+            "period_end": insight.period_end.isoformat(),
+            "context_schema_version": metadata.get("context_schema_version"),
+            "context_hash": metadata.get("context_hash"),
+            "model": insight.model,
+            "tokens_used": insight.tokens_used,
+            "cost_usd": float(insight.cost_usd),
+            "created_at": (
+                insight.created_at.isoformat() if insight.created_at else None
+            ),
+        },
+        user_id=user_id,
+        anchor=insight.period_start,
+    )
 
 
 __all__ = [

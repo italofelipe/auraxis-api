@@ -55,6 +55,7 @@ from app.services.financial_insight_context_builder import (
 )
 from app.services.goal_projection_service import GoalProjectionService
 from app.services.insight_evidence_validator import filter_valid_items
+from app.services.insight_fluida_builder import enrich_insight_payload
 from app.services.llm_provider import LLMProvider, LLMProviderError, get_llm_provider
 from app.services.weekly_summary import compute_weekly_summary
 from app.utils import timezone_utils
@@ -678,27 +679,31 @@ def _cached_financial_insight_payload(
         )
         return None
 
-    return {
-        "id": str(cached.id),
-        "period_type": normalized_period_type,
-        "period_label": cached.period_label,
-        "period_start": cached.period_start.isoformat(),
-        "period_end": cached.period_end.isoformat(),
-        "summary": cached_summary,
-        "items": cached_items,
-        "context_version": cached_metadata.get(
-            "context_schema_version", context_version
-        ),
-        "context_hash": cached_metadata.get("context_hash"),
-        "tokens_used": cached.tokens_used,
-        "cost_usd": float(cached.cost_usd),
-        "model": cached.model,
-        "cached": True,
-        # Mirror the fresh-generation `forecast` flag so cache hits stay
-        # consistent: an insight whose period still lies in the future is a
-        # forecast regardless of whether it was just generated or replayed.
-        "forecast": cached.period_start > date.today(),
-    }
+    return enrich_insight_payload(
+        {
+            "id": str(cached.id),
+            "period_type": normalized_period_type,
+            "period_label": cached.period_label,
+            "period_start": cached.period_start.isoformat(),
+            "period_end": cached.period_end.isoformat(),
+            "summary": cached_summary,
+            "items": cached_items,
+            "context_version": cached_metadata.get(
+                "context_schema_version", context_version
+            ),
+            "context_hash": cached_metadata.get("context_hash"),
+            "tokens_used": cached.tokens_used,
+            "cost_usd": float(cached.cost_usd),
+            "model": cached.model,
+            "cached": True,
+            # Mirror the fresh-generation `forecast` flag so cache hits stay
+            # consistent: an insight whose period still lies in the future is a
+            # forecast regardless of whether it was just generated or replayed.
+            "forecast": cached.period_start > date.today(),
+        },
+        user_id=user_id,
+        anchor=cached.period_start,
+    )
 
 
 def _log_llm_call(
@@ -1277,22 +1282,26 @@ class AIAdvisoryService:
             except Exception:  # pragma: no cover — metrics are fire-and-forget
                 pass
 
-        return {
-            "id": str(saved_insight.id),
-            "period_type": normalized_period_type,
-            "period_label": period_label,
-            "period_start": period_start.isoformat(),
-            "period_end": period_end.isoformat(),
-            "summary": summary,
-            "items": items,
-            "context_version": context_version,
-            "context_hash": context_hash,
-            "tokens_used": llm_resp.total_tokens,
-            "cost_usd": llm_resp.estimated_cost_usd,
-            "model": llm_resp.model,
-            "cached": False,
-            "forecast": forecast,
-        }
+        return enrich_insight_payload(
+            {
+                "id": str(saved_insight.id),
+                "period_type": normalized_period_type,
+                "period_label": period_label,
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "summary": summary,
+                "items": items,
+                "context_version": context_version,
+                "context_hash": context_hash,
+                "tokens_used": llm_resp.total_tokens,
+                "cost_usd": llm_resp.estimated_cost_usd,
+                "model": llm_resp.model,
+                "cached": False,
+                "forecast": forecast,
+            },
+            user_id=self._user_id,
+            anchor=period_start,
+        )
 
     def financial_insight_change_status(
         self,
