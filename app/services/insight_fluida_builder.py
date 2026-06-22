@@ -31,9 +31,14 @@ from app.models.transaction import (
     TransactionStatus,
     TransactionType,
 )
+from app.services.insight_lead_builder import WeekOverWeek, build_lead
 from app.services.weekly_summary import _aggregate_range
 
 Sign = Literal["pos", "neg", "neutral"]
+
+# The masthead lead is the cross-cutting reading of the whole period.
+_GENERAL_DIMENSION = "general"
+_DEFAULT_CADENCE = "weekly"
 
 _DAILY_WINDOW = 7
 _WEEKLY_WINDOW = 6
@@ -77,6 +82,24 @@ def _sign_for_spend(*, current: float, previous: float) -> Sign:
     return "neg" if current > previous else "pos"
 
 
+def build_week_over_week(*, user_id: UUID, anchor: date) -> tuple[float, float]:
+    """Return ``(current_week_outflow, previous_week_outflow)`` around *anchor*.
+
+    The weekly baseline feeds both the ``vs_week`` retro entry and the lead
+    severity heuristic, so it lives in one place to stay consistent.
+    """
+    cur_week_start = anchor - timedelta(days=anchor.weekday())
+    cur_week_end = cur_week_start + timedelta(days=6)
+    prev_week_start = cur_week_start - timedelta(days=7)
+    prev_week_end = cur_week_start - timedelta(days=1)
+
+    cur_week_total = _outflow(user_id=user_id, start=cur_week_start, end=cur_week_end)
+    prev_week_total = _outflow(
+        user_id=user_id, start=prev_week_start, end=prev_week_end
+    )
+    return cur_week_total, prev_week_total
+
+
 def build_retro(*, user_id: UUID, anchor: date) -> list[dict[str, Any]]:
     """Outflow retrospective: yesterday, day-before and this-week-vs-last.
 
@@ -89,14 +112,8 @@ def build_retro(*, user_id: UUID, anchor: date) -> list[dict[str, Any]]:
     yesterday_total = _outflow(user_id=user_id, start=yesterday, end=yesterday)
     daybefore_total = _outflow(user_id=user_id, start=daybefore, end=daybefore)
 
-    cur_week_start = anchor - timedelta(days=anchor.weekday())
-    cur_week_end = cur_week_start + timedelta(days=6)
-    prev_week_start = cur_week_start - timedelta(days=7)
-    prev_week_end = cur_week_start - timedelta(days=1)
-
-    cur_week_total = _outflow(user_id=user_id, start=cur_week_start, end=cur_week_end)
-    prev_week_total = _outflow(
-        user_id=user_id, start=prev_week_start, end=prev_week_end
+    cur_week_total, prev_week_total = build_week_over_week(
+        user_id=user_id, anchor=anchor
     )
     week_delta = round(cur_week_total - prev_week_total, 2)
 
@@ -153,6 +170,26 @@ def _month_bounds(anchor: date) -> tuple[date, date]:
     else:
         next_month = start.replace(month=start.month + 1)
     return start, next_month - timedelta(days=1)
+
+
+def _dominant_spend_share(*, user_id: UUID, anchor: date) -> float:
+    """Share of the month's outflow taken by its single biggest expense.
+
+    ``0.0`` when there are no expenses. Feeds the lead severity heuristic so a
+    concentrated/dominant expense raises an ``alert`` (see
+    :func:`app.services.insight_lead_builder.derive_severity`).
+    """
+    start, end = _month_bounds(anchor)
+    total = _outflow(user_id=user_id, start=start, end=end)
+    if total <= 0:
+        return 0.0
+    expenses = _paid_rows(
+        user_id=user_id, tx_type=TransactionType.EXPENSE, start=start, end=end
+    )
+    if not expenses:
+        return 0.0
+    biggest = float(expenses[0].amount)
+    return biggest / total
 
 
 def _paid_rows(
@@ -243,6 +280,19 @@ def build_highlights(*, user_id: UUID, anchor: date) -> list[dict[str, Any]]:
     return highlights[:_MAX_HIGHLIGHTS]
 
 
+def _resolve_cadence(payload: dict[str, Any]) -> str:
+    """Cadence for the lead's read_min, from ``period_type``/``insight_type``.
+
+    ``recap`` is an end-of-month deliverable → treated as ``monthly``. Anything
+    unknown falls back to the deepest (weekly) reading time.
+    """
+    raw = payload.get("period_type") or payload.get("insight_type")
+    cadence = str(raw).strip().lower() if raw else _DEFAULT_CADENCE
+    if cadence == "recap":
+        return "monthly"
+    return cadence
+
+
 def _resolve_anchor(payload: dict[str, Any], anchor: date | None) -> date:
     if anchor is not None:
         return anchor
@@ -274,12 +324,27 @@ def enrich_insight_payload(
     resolved_anchor = _resolve_anchor(payload, anchor)
 
     summary = payload.get("summary")
-    payload["paragraphs"] = build_paragraphs(
-        summary if isinstance(summary, str) else None
-    )
-    payload["retro"] = build_retro(user_id=user_id, anchor=resolved_anchor)
+    summary_text = summary if isinstance(summary, str) else None
+    payload["paragraphs"] = build_paragraphs(summary_text)
+    retro = build_retro(user_id=user_id, anchor=resolved_anchor)
+    highlights = build_highlights(user_id=user_id, anchor=resolved_anchor)
+    payload["retro"] = retro
     payload["series"] = build_series(user_id=user_id, anchor=resolved_anchor)
-    payload["highlights"] = build_highlights(user_id=user_id, anchor=resolved_anchor)
+    payload["highlights"] = highlights
+    # Editorial lead for the cross-cutting (general) reading at this cadence.
+    # `period_type`/`insight_type` carries the cadence (daily|weekly|monthly).
+    current_week, previous_week = build_week_over_week(
+        user_id=user_id, anchor=resolved_anchor
+    )
+    payload["lead"] = build_lead(
+        summary=summary_text,
+        cadence=_resolve_cadence(payload),
+        dimension=_GENERAL_DIMENSION,
+        week_over_week=WeekOverWeek(current=current_week, previous=previous_week),
+        dominant_spend_share=_dominant_spend_share(
+            user_id=user_id, anchor=resolved_anchor
+        ),
+    )
     return payload
 
 
