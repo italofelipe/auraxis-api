@@ -1392,6 +1392,7 @@ type GenerateAiInsightPayload {
   retro: [AIInsightRetroEntryType]
   series: AIInsightSeriesType
   highlights: [AIInsightHighlightType]
+  lead: AIInsightLeadType
 }
 
 """A single LLM-produced insight item, tagged by dimension."""
@@ -1423,6 +1424,22 @@ type AIInsightHighlightType {
   label: String!
   value: Float!
   sub: String!
+}
+
+"""
+Editorial lead (masthead) for the Fluida screen (#1503).
+
+``severity`` is a deterministic heuristic over the calculated retro/highlights
+(``ok`` | ``attention`` | ``alert``); ``read_min`` is fixed by cadence;
+``title`` / ``lead`` / ``next_step`` are derived from the AI ``summary`` (no
+extra LLM call).
+"""
+type AIInsightLeadType {
+  severity: String!
+  readMin: Int!
+  title: String!
+  lead: String!
+  nextStep: String!
 }
 
 type AIInsightFeedbackPayload {

@@ -367,6 +367,17 @@
             "readOnly": true,
             "type": "string"
           },
+          "impact_policy": {
+            "default": "full",
+            "description": "Política de impacto do lançamento: full reflete em todas as áreas; cards_only fica restrito a cartões/fatura; planned_until_bill mantém o lançamento para planejamento da fatura.",
+            "enum": [
+              "full",
+              "cards_only",
+              "planned_until_bill"
+            ],
+            "example": "full",
+            "type": "string"
+          },
           "installment_count": {
             "description": "Número de parcelas (apenas se is_installment=True)",
             "example": 12,
@@ -566,6 +577,17 @@
             "description": "ID único da transação (gerado automaticamente)",
             "format": "uuid",
             "readOnly": true,
+            "type": "string"
+          },
+          "impact_policy": {
+            "default": "full",
+            "description": "Política de impacto do lançamento: full reflete em todas as áreas; cards_only fica restrito a cartões/fatura; planned_until_bill mantém o lançamento para planejamento da fatura.",
+            "enum": [
+              "full",
+              "cards_only",
+              "planned_until_bill"
+            ],
+            "example": "full",
             "type": "string"
           },
           "installment_count": {
@@ -1633,6 +1655,13 @@
                         "type": "saude_financeira"
                       }
                     ],
+                    "lead": {
+                      "lead": "Você terminou o período com saldo positivo.",
+                      "next_step": "Continue acompanhando os gastos da semana.",
+                      "read_min": 15,
+                      "severity": "ok",
+                      "title": "Saldo positivo no período."
+                    },
                     "model": "gpt-4o-mini",
                     "period_end": "2026-05-17",
                     "period_label": "2026-05-17",
@@ -7298,6 +7327,7 @@
                         "end_date": null,
                         "external_id": null,
                         "id": "cfef66a6-a148-49db-a72f-cc63b6080cf8",
+                        "impact_policy": "full",
                         "installment_count": null,
                         "installment_group_id": null,
                         "is_installment": false,
@@ -7479,6 +7509,7 @@
                 "amount": "150.00",
                 "description": "Fatura mensal de energia",
                 "due_date": "2026-03-10",
+                "impact_policy": "full",
                 "observation": "Pagar antes do dia 10",
                 "status": "pending",
                 "tag_id": "73c3b094-60bf-45d5-8e32-0f673b2ab4a2",
@@ -7510,6 +7541,7 @@
                       "end_date": null,
                       "external_id": null,
                       "id": "cfef66a6-a148-49db-a72f-cc63b6080cf8",
+                      "impact_policy": "full",
                       "installment_count": null,
                       "installment_group_id": null,
                       "is_installment": false,
@@ -7963,6 +7995,7 @@
                         "end_date": null,
                         "external_id": null,
                         "id": "cfef66a6-a148-49db-a72f-cc63b6080cf8",
+                        "impact_policy": "full",
                         "installment_count": null,
                         "installment_group_id": null,
                         "is_installment": false,
@@ -8145,6 +8178,7 @@
                         "end_date": null,
                         "external_id": null,
                         "id": "cfef66a6-a148-49db-a72f-cc63b6080cf8",
+                        "impact_policy": "full",
                         "installment_count": null,
                         "installment_group_id": null,
                         "is_installment": false,
@@ -8377,6 +8411,7 @@
                         "end_date": null,
                         "external_id": null,
                         "id": "cfef66a6-a148-49db-a72f-cc63b6080cf8",
+                        "impact_policy": "full",
                         "installment_count": null,
                         "installment_group_id": null,
                         "is_installment": false,
@@ -8777,6 +8812,7 @@
                         "end_date": null,
                         "external_id": null,
                         "id": "cfef66a6-a148-49db-a72f-cc63b6080cf8",
+                        "impact_policy": "full",
                         "installment_count": null,
                         "installment_group_id": null,
                         "is_installment": false,
@@ -8997,6 +9033,7 @@
                       "end_date": null,
                       "external_id": null,
                       "id": "cfef66a6-a148-49db-a72f-cc63b6080cf8",
+                      "impact_policy": "full",
                       "installment_count": null,
                       "installment_group_id": null,
                       "is_installment": false,
@@ -9225,6 +9262,7 @@
                         "end_date": null,
                         "external_id": null,
                         "id": "cfef66a6-a148-49db-a72f-cc63b6080cf8",
+                        "impact_policy": "full",
                         "installment_count": null,
                         "installment_group_id": null,
                         "is_installment": false,
@@ -9698,6 +9736,7 @@
                       "end_date": null,
                       "external_id": null,
                       "id": "cfef66a6-a148-49db-a72f-cc63b6080cf8",
+                      "impact_policy": "full",
                       "installment_count": null,
                       "installment_group_id": null,
                       "is_installment": false,
@@ -9986,6 +10025,7 @@
                       "end_date": null,
                       "external_id": null,
                       "id": "cfef66a6-a148-49db-a72f-cc63b6080cf8",
+                      "impact_policy": "full",
                       "installment_count": null,
                       "installment_group_id": null,
                       "is_installment": false,
@@ -10316,6 +10356,7 @@
                       "end_date": null,
                       "external_id": null,
                       "id": "cfef66a6-a148-49db-a72f-cc63b6080cf8",
+                      "impact_policy": "full",
                       "installment_count": null,
                       "installment_group_id": null,
                       "is_installment": false,
