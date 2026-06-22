@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.60.0](https://github.com/italofelipe/auraxis-api/compare/v1.59.0...v1.60.0) (2026-06-22)
+
+
+### Features
+
+* **insights:** add deterministic Fluida payload builder ([0107f6c](https://github.com/italofelipe/auraxis-api/commit/0107f6c6587b1c734bc83822b86ec30021ed573c)), closes [#1501](https://github.com/italofelipe/auraxis-api/issues/1501)
+* **insights:** derive deterministic Fluida editorial lead ([be29dce](https://github.com/italofelipe/auraxis-api/commit/be29dce9200ed1e1fe807602e77e5440a5e4f363)), closes [#1507](https://github.com/italofelipe/auraxis-api/issues/1507)
+* **insights:** enrich REST insight payloads with Fluida fields ([419a013](https://github.com/italofelipe/auraxis-api/commit/419a013fc38b2b5fc2197e5fecaa2f21a539eb22)), closes [#1501](https://github.com/italofelipe/auraxis-api/issues/1501)
+* **insights:** expose Fluida fields on generateAiInsight mutation ([2a78fb5](https://github.com/italofelipe/auraxis-api/commit/2a78fb5d6eeec33a0a1449e8961a5ef947302eac)), closes [#1501](https://github.com/italofelipe/auraxis-api/issues/1501)
+* **insights:** expose Fluida lead on REST and GraphQL contracts ([f4feb48](https://github.com/italofelipe/auraxis-api/commit/f4feb4821ca3ca916b6aba4144bc7b1fc2f08694)), closes [#1507](https://github.com/italofelipe/auraxis-api/issues/1507)
+* **insights:** lead editorial Fluida (severity/title/lead/readMin/next_step) ([79a3d76](https://github.com/italofelipe/auraxis-api/commit/79a3d763fa0ceda2f60f4f3ce5998218f500c598))
+* **insights:** structured Fluida payload (retro/series/highlights/paragraphs) ([c4ede37](https://github.com/italofelipe/auraxis-api/commit/c4ede37652287335fd7b21b9afeeed7336ff68db))
+
+
+### Bug Fixes
+
+* **transactions:** lançamentos de cartão seguem o mês da fatura ([#1499](https://github.com/italofelipe/auraxis-api/issues/1499)) ([8df6577](https://github.com/italofelipe/auraxis-api/commit/8df657729efb1c33a70e272a6b61335dc10ad981))
+
 ## [1.59.0](https://github.com/italofelipe/auraxis-api/compare/v1.58.1...v1.59.0) (2026-06-19)
 
 
