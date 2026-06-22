@@ -152,3 +152,32 @@ class TestGenerateEndpointFluidaContract:
         assert len(data["series"]["weekly"]) == 6
         retro = {e["key"]: e for e in data["retro"]}
         assert retro["yesterday"]["value"] == 42.0
+
+    def test_response_carries_editorial_lead(self, app, client) -> None:
+        token = _register_and_login(client, "fluida-lead-rest")
+        user_id = _grant_premium(app, token)
+        _seed_expense(app, user_id, amount="42.00", due_date=date(2026, 6, 14))
+
+        provider = MagicMock()
+        provider.generate_with_usage.return_value = _financial_llm_response()
+
+        with patch(
+            "app.services.ai_advisory_service.get_llm_provider",
+            return_value=provider,
+        ):
+            resp = client.post(
+                "/ai/insights/generate",
+                json={"period_type": "daily", "anchor_date": "2026-06-15"},
+                headers=_auth(token),
+            )
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        data = body.get("data", body)
+        assert "lead" in data
+        lead = data["lead"]
+        assert set(lead) == {"severity", "read_min", "title", "lead", "next_step"}
+        # Daily general reading time, derived title from the stubbed summary.
+        assert lead["read_min"] == 15
+        assert lead["severity"] in {"ok", "attention", "alert"}
+        assert lead["title"] == "Resumo do dia."

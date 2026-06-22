@@ -317,6 +317,13 @@ class AIInsightGenerateResource(MethodResource):
                     "model": "gpt-4o-mini",
                     "tokens_used": 420,
                     "cost_usd": 0.000063,
+                    "lead": {
+                        "severity": "ok",
+                        "read_min": 15,
+                        "title": "Saldo positivo no período.",
+                        "lead": "Você terminou o período com saldo positivo.",
+                        "next_step": "Continue acompanhando os gastos da semana.",
+                    },
                 },
             ),
             400: json_error_response(

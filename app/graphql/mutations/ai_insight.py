@@ -68,6 +68,22 @@ class AIInsightHighlightType(graphene.ObjectType):
     sub = graphene.String(required=True)
 
 
+class AIInsightLeadType(graphene.ObjectType):
+    """Editorial lead (masthead) for the Fluida screen (#1503).
+
+    ``severity`` is a deterministic heuristic over the calculated retro/highlights
+    (``ok`` | ``attention`` | ``alert``); ``read_min`` is fixed by cadence;
+    ``title`` / ``lead`` / ``next_step`` are derived from the AI ``summary`` (no
+    extra LLM call).
+    """
+
+    severity = graphene.String(required=True)
+    read_min = graphene.Int(required=True)
+    title = graphene.String(required=True)
+    lead = graphene.String(required=True)
+    next_step = graphene.String(required=True)
+
+
 class GenerateAiInsightPayload(graphene.ObjectType):
     ok = graphene.Boolean(required=True)
     id = graphene.String()
@@ -89,6 +105,8 @@ class GenerateAiInsightPayload(graphene.ObjectType):
     retro = graphene.List(AIInsightRetroEntryType)
     series = graphene.Field(AIInsightSeriesType)
     highlights = graphene.List(AIInsightHighlightType)
+    # Editorial lead (#1503) — additive, deterministic (no extra LLM call).
+    lead = graphene.Field(AIInsightLeadType)
 
 
 def _to_item_type(item: dict[str, Any]) -> AIInsightItemType:
@@ -125,6 +143,18 @@ def _to_highlight_type(highlight: dict[str, Any]) -> AIInsightHighlightType:
         label=str(highlight.get("label", "")),
         value=float(highlight.get("value", 0.0) or 0.0),
         sub=str(highlight.get("sub", "")),
+    )
+
+
+def _to_lead_type(lead: dict[str, Any] | None) -> AIInsightLeadType | None:
+    if not isinstance(lead, dict):
+        return None
+    return AIInsightLeadType(
+        severity=str(lead.get("severity", "ok")),
+        read_min=int(lead.get("read_min", 0) or 0),
+        title=str(lead.get("title", "")),
+        lead=str(lead.get("lead", "")),
+        next_step=str(lead.get("next_step", "")),
     )
 
 
@@ -219,6 +249,7 @@ class GenerateAiInsightMutation(graphene.Mutation):
             highlights=[
                 _to_highlight_type(h) for h in result.get("highlights", []) or []
             ],
+            lead=_to_lead_type(result.get("lead")),
         )
 
 

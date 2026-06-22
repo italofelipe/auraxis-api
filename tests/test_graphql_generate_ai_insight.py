@@ -370,3 +370,122 @@ class TestGenerateAiInsightFluidaFields:
         assert data["highlights"][0]["label"] == "Maior gasto do mês"
         assert data["highlights"][0]["value"] == 1800.0
         assert data["highlights"][0]["sub"] == "Aluguel"
+
+
+_LEAD_MUTATION = """
+mutation Gen($periodType: String!, $anchorDate: String) {
+  generateAiInsight(periodType: $periodType, anchorDate: $anchorDate) {
+    ok
+    lead { severity readMin title lead nextStep }
+  }
+}
+"""
+
+
+class TestGenerateAiInsightLead:
+    def test_exposes_editorial_lead(self, app, client):
+        token = _register_and_login(client, prefix="gql-gen-lead")
+        from flask_jwt_extended import decode_token
+
+        from app.services.entitlement_service import grant_entitlement
+
+        with app.app_context():
+            user_id = UUID(decode_token(token)["sub"])
+            grant_entitlement(
+                user_id=user_id,
+                feature_key="advanced_simulations",
+                source="trial",
+            )
+            from app.extensions.database import db
+
+            db.session.commit()
+
+        fake_result = {
+            "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+            "period_type": "daily",
+            "period_label": "2026-06-15",
+            "period_start": "2026-06-15",
+            "period_end": "2026-06-15",
+            "summary": "Dia leve. Continue acompanhando.",
+            "items": [],
+            "context_version": "financial_insight_snapshot.v1",
+            "cached": False,
+            "model": "gpt-4o-mini",
+            "tokens_used": 50,
+            "cost_usd": 0.0001,
+            "forecast": False,
+            "paragraphs": ["Dia leve.", "Continue acompanhando."],
+            "retro": [],
+            "series": {"daily": [0.0] * 7, "weekly": [0.0] * 6},
+            "highlights": [],
+            "lead": {
+                "severity": "ok",
+                "read_min": 15,
+                "title": "Dia leve.",
+                "lead": "Dia leve. Continue acompanhando.",
+                "next_step": "Continue acompanhando.",
+            },
+        }
+        with patch("app.graphql.mutations.ai_insight.AIAdvisoryService") as MockSvc:
+            instance = MockSvc.return_value
+            instance.generate_financial_insights.return_value = fake_result
+            response = _gql(
+                client,
+                _LEAD_MUTATION,
+                token,
+                variables={"periodType": "daily", "anchorDate": "2026-06-15"},
+            )
+
+        body = response.get_json()
+        assert "errors" not in body or not body["errors"], body
+        lead = body["data"]["generateAiInsight"]["lead"]
+        assert lead["severity"] == "ok"
+        assert lead["readMin"] == 15
+        assert lead["title"] == "Dia leve."
+        assert lead["lead"] == "Dia leve. Continue acompanhando."
+        assert lead["nextStep"] == "Continue acompanhando."
+
+    def test_lead_is_null_when_absent_from_result(self, app, client):
+        """A result without a lead key resolves to null (defensive)."""
+        token = _register_and_login(client, prefix="gql-gen-nolead")
+        from flask_jwt_extended import decode_token
+
+        from app.services.entitlement_service import grant_entitlement
+
+        with app.app_context():
+            user_id = UUID(decode_token(token)["sub"])
+            grant_entitlement(
+                user_id=user_id,
+                feature_key="advanced_simulations",
+                source="trial",
+            )
+            from app.extensions.database import db
+
+            db.session.commit()
+
+        fake_result = {
+            "period_type": "daily",
+            "period_label": "2026-06-15",
+            "period_start": "2026-06-15",
+            "period_end": "2026-06-15",
+            "summary": "Sem lead.",
+            "items": [],
+            "context_version": "financial_insight_snapshot.v1",
+            "cached": False,
+            "model": "gpt-4o-mini",
+            "tokens_used": 50,
+            "cost_usd": 0.0001,
+        }
+        with patch("app.graphql.mutations.ai_insight.AIAdvisoryService") as MockSvc:
+            instance = MockSvc.return_value
+            instance.generate_financial_insights.return_value = fake_result
+            response = _gql(
+                client,
+                _LEAD_MUTATION,
+                token,
+                variables={"periodType": "daily", "anchorDate": "2026-06-15"},
+            )
+
+        body = response.get_json()
+        assert "errors" not in body or not body["errors"], body
+        assert body["data"]["generateAiInsight"]["lead"] is None
