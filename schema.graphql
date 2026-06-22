@@ -1388,6 +1388,10 @@ type GenerateAiInsightPayload {
   tokensUsed: Int
   costUsd: Float
   forecast: Boolean
+  paragraphs: [String]
+  retro: [AIInsightRetroEntryType]
+  series: AIInsightSeriesType
+  highlights: [AIInsightHighlightType]
 }
 
 """A single LLM-produced insight item, tagged by dimension."""
@@ -1397,6 +1401,28 @@ type AIInsightItemType {
   title: String!
   message: String!
   evidence: [String]
+}
+
+"""One calculated retrospective metric for the Fluida screen (#1501)."""
+type AIInsightRetroEntryType {
+  key: String!
+  label: String!
+  value: Float!
+  caption: String!
+  sign: String!
+}
+
+"""Calculated outflow series: daily over 7 days, weekly over 6 weeks."""
+type AIInsightSeriesType {
+  daily: [Float]!
+  weekly: [Float]!
+}
+
+"""One calculated per-theme highlight for the Fluida screen (#1501)."""
+type AIInsightHighlightType {
+  label: String!
+  value: Float!
+  sub: String!
 }
 
 type AIInsightFeedbackPayload {

@@ -284,3 +284,89 @@ class TestGenerateAiInsightMutation:
             timezone_name="Pacific/Kiritimati",
             timezone_fallback=False,
         )
+
+
+_FLUIDA_MUTATION = """
+mutation Gen($periodType: String!, $anchorDate: String) {
+  generateAiInsight(periodType: $periodType, anchorDate: $anchorDate) {
+    ok
+    summary
+    paragraphs
+    retro { key label value caption sign }
+    series { daily weekly }
+    highlights { label value sub }
+  }
+}
+"""
+
+
+class TestGenerateAiInsightFluidaFields:
+    def test_exposes_structured_fluida_fields(self, app, client):
+        token = _register_and_login(client, prefix="gql-gen-fluida")
+        from flask_jwt_extended import decode_token
+
+        from app.services.entitlement_service import grant_entitlement
+
+        with app.app_context():
+            user_id = UUID(decode_token(token)["sub"])
+            grant_entitlement(
+                user_id=user_id,
+                feature_key="advanced_simulations",
+                source="trial",
+            )
+            from app.extensions.database import db
+
+            db.session.commit()
+
+        fake_result = {
+            "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+            "period_type": "daily",
+            "period_label": "2026-06-15",
+            "period_start": "2026-06-15",
+            "period_end": "2026-06-15",
+            "summary": "Resumo do dia.",
+            "items": [],
+            "context_version": "financial_insight_snapshot.v1",
+            "context_hash": "abc",
+            "cached": False,
+            "model": "gpt-4o-mini",
+            "tokens_used": 50,
+            "cost_usd": 0.0001,
+            "forecast": False,
+            "paragraphs": ["Resumo do dia."],
+            "retro": [
+                {
+                    "key": "yesterday",
+                    "label": "Ontem",
+                    "value": 42.0,
+                    "caption": "Saídas de ontem",
+                    "sign": "neg",
+                }
+            ],
+            "series": {"daily": [0.0] * 7, "weekly": [0.0] * 6},
+            "highlights": [
+                {"label": "Maior gasto do mês", "value": 1800.0, "sub": "Aluguel"}
+            ],
+        }
+        with patch("app.graphql.mutations.ai_insight.AIAdvisoryService") as MockSvc:
+            instance = MockSvc.return_value
+            instance.generate_financial_insights.return_value = fake_result
+            response = _gql(
+                client,
+                _FLUIDA_MUTATION,
+                token,
+                variables={"periodType": "daily", "anchorDate": "2026-06-15"},
+            )
+
+        body = response.get_json()
+        assert "errors" not in body or not body["errors"], body
+        data = body["data"]["generateAiInsight"]
+        assert data["paragraphs"] == ["Resumo do dia."]
+        assert data["retro"][0]["key"] == "yesterday"
+        assert data["retro"][0]["value"] == 42.0
+        assert data["retro"][0]["sign"] == "neg"
+        assert data["series"]["daily"] == [0.0] * 7
+        assert data["series"]["weekly"] == [0.0] * 6
+        assert data["highlights"][0]["label"] == "Maior gasto do mês"
+        assert data["highlights"][0]["value"] == 1800.0
+        assert data["highlights"][0]["sub"] == "Aluguel"
