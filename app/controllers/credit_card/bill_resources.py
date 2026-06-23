@@ -5,7 +5,6 @@ from __future__ import annotations
 # mypy: disable-error-code=untyped-decorator
 import re
 from datetime import date
-from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -21,6 +20,7 @@ from app.services.credit_card_bill_service import (
     compute_bill,
     compute_utilization,
 )
+from app.services.transaction_serialization import serialize_transaction_payload
 from app.utils.typed_decorators import typed_jwt_required as jwt_required
 
 from .blueprint import credit_card_bp
@@ -50,27 +50,13 @@ def _serialize_cycle(cycle: BillCycle) -> dict[str, Any]:
     }
 
 
-def _serialize_transaction(tx: Any) -> dict[str, Any]:
-    impact_policy = getattr(tx, "impact_policy", None)
-    return {
-        "id": str(tx.id),
-        "title": tx.title,
-        "amount": str(Decimal(tx.amount)),
-        "due_date": tx.due_date.isoformat() if tx.due_date else None,
-        "status": tx.status.value if hasattr(tx.status, "value") else str(tx.status),
-        "type": tx.type.value if hasattr(tx.type, "value") else str(tx.type),
-        "impact_policy": (
-            impact_policy.value
-            if impact_policy is not None and hasattr(impact_policy, "value")
-            else str(impact_policy or "full")
-        ),
-    }
-
-
 def _serialize_bill(bill: BillSummary) -> dict[str, Any]:
+    # Serialize each bill transaction with the canonical full payload (same shape
+    # as GET /transactions) so the web bill view can render category/notes and
+    # edit/duplicate/remove from /bill alone — without a separate paginated fetch.
     return {
         "cycle": _serialize_cycle(bill.cycle),
-        "transactions": [_serialize_transaction(tx) for tx in bill.transactions],
+        "transactions": [serialize_transaction_payload(tx) for tx in bill.transactions],
         "total_amount": str(bill.total_amount),
         "paid_amount": str(bill.paid_amount),
         "pending_amount": str(bill.pending_amount),

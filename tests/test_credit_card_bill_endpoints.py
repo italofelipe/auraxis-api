@@ -171,6 +171,66 @@ class TestBillEndpoint:
         assert Decimal(body["pending_amount"]) == Decimal("88.90")
         assert body["transactions"][0]["impact_policy"] == "cards_only"
 
+    def test_bill_transactions_expose_full_payload(self, client) -> None:
+        """Each bill transaction must carry the full transaction payload so the
+        client can render category/notes and edit/duplicate/remove without a
+        separate (paginated) /transactions fetch."""
+        token = _register_and_login(client, prefix="bill-full-payload")
+        headers = _auth_headers(token)
+        card = _create_card(client, headers, closing_day=10, due_day=15)
+
+        created = client.post(
+            "/transactions",
+            json={
+                "title": "Notebook",
+                "amount": "1234.56",
+                "type": "expense",
+                "status": "pending",
+                "due_date": "2026-05-05",
+                "credit_card_id": card["id"],
+                "description": "compra parcelada do trabalho",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.get_json()
+
+        response = client.get(
+            f"/credit-cards/{card['id']}/bill?month=2026-05", headers=headers
+        )
+        assert response.status_code == 200
+        item = response.get_json()["data"]["transactions"][0]
+
+        # Existing magras fields preserved (no contract regression).
+        for legacy_field in (
+            "id",
+            "title",
+            "amount",
+            "due_date",
+            "status",
+            "type",
+            "impact_policy",
+        ):
+            assert legacy_field in item, f"missing legacy field {legacy_field}"
+
+        # Newly exposed fields the web bill view needs.
+        assert item["description"] == "compra parcelada do trabalho"
+        assert item["credit_card_id"] == card["id"]
+        for new_field in (
+            "tag_id",
+            "observation",
+            "account_id",
+            "is_recurring",
+            "is_installment",
+            "installment_count",
+            "installment_group_id",
+            "paid_at",
+            "currency",
+            "category",
+            "created_at",
+            "updated_at",
+        ):
+            assert new_field in item, f"missing enriched field {new_field}"
+
     def test_returns_404_when_card_belongs_to_other_user(self, client) -> None:
         owner = _register_and_login(client, prefix="bill-owner")
         owner_headers = _auth_headers(owner)
