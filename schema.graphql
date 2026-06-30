@@ -703,6 +703,7 @@ type TransactionTypeObject {
   accountId: String
   creditCardId: String
   impactPolicy: String!
+  autoSettle: Boolean
   status: String!
   currency: String!
   source: String!
@@ -846,8 +847,8 @@ type Mutation {
   resetPassword(newPassword: String!, token: String!): AuthPayloadType
   confirmEmail(token: String!): AuthPayloadType
   updateUserProfile(birthDate: String, financialObjectives: String, gender: String, initialInvestment: DecimalScalar, investmentGoalDate: String, investorProfile: String, investorProfileSuggested: String, monthlyExpenses: DecimalScalar, monthlyIncome: DecimalScalar, monthlyIncomeNet: DecimalScalar, monthlyInvestment: DecimalScalar, netWorth: DecimalScalar, occupation: String, profileQuizScore: Int, stateUf: String, taxonomyVersion: String): UpdateUserProfileMutation
-  createTransaction(accountId: UUID, amount: String!, category: String, creditCardId: UUID, currency: String = "BRL", description: String, dueDate: String!, endDate: String, impactPolicy: String = "full", installmentCount: Int, isInstallment: Boolean = false, isRecurring: Boolean = false, observation: String, recurrenceInterval: Int, recurrenceUnit: String, startDate: String, status: TransactionStatus, tagId: UUID, title: String!, type: TransactionType!): CreateTransactionMutation @deprecated(reason: "ADR-0002: use POST /transactions")
-  updateTransaction(accountId: UUID, amount: String, category: String, creditCardId: UUID, currency: String, description: String, dueDate: String, endDate: String, impactPolicy: String, installmentCount: Int, isInstallment: Boolean, isRecurring: Boolean, observation: String, paidAt: String, startDate: String, status: TransactionStatus, tagId: UUID, title: String, transactionId: UUID!, type: TransactionType): UpdateTransactionMutation @deprecated(reason: "ADR-0002: use PATCH /transactions/{id}")
+  createTransaction(accountId: UUID, amount: String!, autoSettle: Boolean = false, category: String, creditCardId: UUID, currency: String = "BRL", description: String, dueDate: String!, endDate: String, impactPolicy: String = "full", installmentCount: Int, isInstallment: Boolean = false, isRecurring: Boolean = false, observation: String, recurrenceInterval: Int, recurrenceUnit: String, startDate: String, status: TransactionStatus, tagId: UUID, title: String!, type: TransactionType!): CreateTransactionMutation @deprecated(reason: "ADR-0002: use POST /transactions")
+  updateTransaction(accountId: UUID, amount: String, autoSettle: Boolean, category: String, creditCardId: UUID, currency: String, description: String, dueDate: String, endDate: String, impactPolicy: String, installmentCount: Int, isInstallment: Boolean, isRecurring: Boolean, observation: String, paidAt: String, startDate: String, status: TransactionStatus, tagId: UUID, title: String, transactionId: UUID!, type: TransactionType): UpdateTransactionMutation @deprecated(reason: "ADR-0002: use PATCH /transactions/{id}")
   deleteTransaction(scope: String, transactionId: UUID!): DeleteTransactionMutation @deprecated(reason: "ADR-0002: use DELETE /transactions/{id}")
   createGoal(category: String, currentAmount: String, description: String, priority: Int, status: GoalStatus, targetAmount: String!, targetDate: String, title: String!): CreateGoalMutation @deprecated(reason: "ADR-0002: use POST /goals")
   updateGoal(category: String, currentAmount: String, description: String, goalId: UUID!, priority: Int, status: GoalStatus, targetAmount: String, targetDate: String, title: String): UpdateGoalMutation @deprecated(reason: "ADR-0002: use PATCH /goals/{id}")
