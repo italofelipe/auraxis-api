@@ -947,6 +947,17 @@ ENRICHMENT: dict[str, dict[str, Any]] = {
             "});",
         ],
     },
+    "POST /ai/chat": {
+        "body_override": json.dumps(
+            {"question": "Quanto gastei até agora?"},
+            indent=2,
+        ),
+        "test_lines": [
+            "pm.test('AI chat — expected 200, 400, 403 or 429', function () {",
+            "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 429]);",
+            "});",
+        ],
+    },
     "POST /ai/goals/{goal_id}/projection": {
         "test_lines": [
             "pm.test('AI goal projection — expected 200 or 400 or 403 or 404', function () {",

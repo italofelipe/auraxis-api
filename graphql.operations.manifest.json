@@ -761,6 +761,14 @@
   {
     "access": "auth_required",
     "domain": "ai_advisory",
+    "name": "askFinancialQuestion",
+    "operation_type": "mutation",
+    "source_module": "app.graphql.mutations.ai_insight",
+    "summary": "Responde uma pergunta em linguagem natural sobre as finanças do próprio usuário, ancorada exclusivamente no snapshot financeiro. Paridade com POST /ai/chat."
+  },
+  {
+    "access": "auth_required",
+    "domain": "ai_advisory",
     "name": "submitAiInsightFeedback",
     "operation_type": "mutation",
     "source_module": "app.graphql.mutations.ai_insight",

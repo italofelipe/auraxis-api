@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .blueprint import ai_bp
 from .resources import (
+    AIChatAskAnythingResource,
     AIGoalProjectionResource,
     AIInsightChangeStatusResource,
     AIInsightDetailResource,
@@ -27,6 +28,11 @@ def register_ai_routes() -> None:
     ai_bp.add_url_rule(
         "/insights/generate",
         view_func=AIInsightGenerateResource.as_view("ai_insight_generate"),
+        methods=["POST"],
+    )
+    ai_bp.add_url_rule(
+        "/chat",
+        view_func=AIChatAskAnythingResource.as_view("ai_chat_ask_anything"),
         methods=["POST"],
     )
     ai_bp.add_url_rule(

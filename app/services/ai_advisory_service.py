@@ -162,6 +162,7 @@ _AI_INSIGHT_COST_ENDPOINTS = (
     "financial_insights_daily",
     "financial_insights_weekly",
     "financial_insights_monthly",
+    "chat_ask_anything",
 )
 
 
@@ -1060,6 +1061,80 @@ class AIAdvisoryService:
     ) -> None:
         self._user_id = user_id
         self._provider = llm_provider or get_llm_provider()
+
+    # ------------------------------------------------------------------
+    # 0. Ask anything (snapshot-grounded chat)
+    # ------------------------------------------------------------------
+
+    def answer_financial_question(
+        self,
+        question: str,
+        *,
+        anchor_date: date | None = None,
+        timezone_name: str | None = None,
+        timezone_fallback: bool = False,
+    ) -> dict[str, Any]:
+        """Answer a free-form finance question grounded ONLY in the user snapshot.
+
+        Reuses the insights pipeline (consent, snapshot, LGPD minimisation,
+        per-user cost budget, audit log). The model is instructed to stay on
+        finance, use only snapshot numbers, and admit when data is missing.
+
+        :param question: The user's natural-language question.
+        :returns: ``{answer, model, tokens_used, cost_usd}``.
+        :raises ValueError: when the question is empty.
+        """
+        normalized_question = (question or "").strip()
+        if not normalized_question:
+            raise ValueError("question is required")
+
+        consent_version = ensure_ai_consent_granted(self._user_id)
+        timezone_resolution = timezone_utils.resolve_user_timezone(timezone_name)
+        fallback_used = timezone_fallback or (
+            timezone_resolution.fallback_used and timezone_name is not None
+        )
+        anchor = anchor_date or timezone_utils.local_today(timezone_resolution)
+
+        snapshot = _build_period_snapshot(
+            insight_type=InsightType.daily,
+            user_id=self._user_id,
+            anchor=anchor,
+            timezone_name=timezone_resolution.name,
+            timezone_fallback=fallback_used,
+        )
+        prompt_snapshot = minimize_prompt_data(snapshot)
+        prompt_snapshot, _ = truncate_snapshot(prompt_snapshot)
+
+        _enforce_ai_insight_user_cost_budget(user_id=self._user_id)
+
+        prompt = _build_chat_prompt(prompt_snapshot, normalized_question)
+        try:
+            llm_resp = self._provider.generate_with_usage(
+                prompt,
+                max_tokens=_chat_max_tokens(),
+            )
+        except LLMProviderError as exc:
+            log.warning(
+                "ai_advisory.chat.llm_error user=%s error=%s",
+                self._user_id,
+                exc,
+            )
+            raise
+
+        _log_llm_call(
+            user_id=self._user_id,
+            endpoint="chat_ask_anything",
+            prompt=prompt,
+            llm_response=llm_resp,
+            consent_version=consent_version,
+        )
+
+        return {
+            "answer": llm_resp.content.strip(),
+            "model": llm_resp.model,
+            "tokens_used": llm_resp.total_tokens,
+            "cost_usd": float(llm_resp.estimated_cost_usd),
+        }
 
     # ------------------------------------------------------------------
     # 1. Spending insights
@@ -2355,6 +2430,41 @@ def _insight_reading_word_count(summary: str, items: list[dict[str, Any]]) -> in
         parts.append(str(item.get("title", "")))
         parts.append(str(item.get("message", "")))
     return sum(len(part.split()) for part in parts)
+
+
+def _chat_max_tokens() -> int:
+    """Output token cap for the Ask-anything chat (bounded to control cost)."""
+    return max(1, int(os.getenv("AI_CHAT_MAX_TOKENS", "600")))
+
+
+def _build_chat_prompt(snapshot: dict[str, Any], question: str) -> str:
+    """Build the snapshot-grounded prompt for the Ask-anything chat.
+
+    The model must answer ONLY from the user's own financial snapshot, stay on
+    finance, refuse off-topic questions, and admit when data is outside the
+    snapshot — never inventing values.
+    """
+    context = json.dumps(snapshot, ensure_ascii=False, default=str)
+    return (
+        "Você é o assistente financeiro do Auraxis. Responda à pergunta do usuário "
+        "EXCLUSIVAMENTE com base nos dados financeiros (snapshot do próprio usuário) "
+        "fornecidos abaixo.\n\n"
+        "Regras invioláveis:\n"
+        "- Responda apenas perguntas sobre finanças pessoais e sobre os dados "
+        "do usuário.\n"
+        "- Se a pergunta não for sobre finanças, recuse com gentileza e explique "
+        "que você só ajuda com as finanças do usuário no Auraxis.\n"
+        "- Use SOMENTE números presentes no snapshot. Nunca invente valores, "
+        "transações, categorias ou datas.\n"
+        "- Se o dado necessário não estiver no snapshot (ex.: um período fora da "
+        "janela atual), diga claramente que não tem essa informação disponível "
+        "e sugira onde o usuário pode encontrá-la no app.\n"
+        "- Responda em português do Brasil, de forma direta e objetiva, em no "
+        "máximo 180 palavras.\n\n"
+        f"Snapshot financeiro (JSON):\n{context}\n\n"
+        f"Pergunta do usuário: {question}\n\n"
+        "Resposta:"
+    )
 
 
 def _build_financial_insight_prompt(
