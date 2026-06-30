@@ -204,7 +204,7 @@ def _wait(ctx: AwsCtx, *, command_id: str, instance_id: str) -> dict[str, Any]:
     )
 
 
-def _build_script(*, env_name: str) -> str:
+def _build_script(*, env_name: str, flask_command: str = "recurrence reconcile") -> str:
     env_file = ".env.prod" if env_name == "prod" else ".env.dev"
     compose_file = (
         "docker-compose.prod.yml" if env_name == "prod" else "docker-compose.dev.yml"
@@ -290,7 +290,7 @@ done
 # the correct DATABASE_URL and exits cleanly when reconciliation finishes.
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T \\
   -e FLASK_APP=run.py \\
-  web flask recurrence reconcile
+  web flask {flask_command}
 """
 
 
@@ -300,12 +300,13 @@ def run_once(
     env_name: str,
     instance_id: str,
     diagnostics_json_path: str | None = None,
+    flask_command: str = "recurrence reconcile",
 ) -> dict[str, Any]:
     command_id = _ssm_send_shell(
         ctx,
         instance_id,
-        _build_script(env_name=env_name),
-        f"auraxis: recurrence job ({env_name})",
+        _build_script(env_name=env_name, flask_command=flask_command),
+        f"auraxis: {flask_command} job ({env_name})",
     )
     try:
         invocation = _wait(ctx, command_id=command_id, instance_id=instance_id)
@@ -358,6 +359,12 @@ def main() -> int:
         default="",
         help="Optional path for diagnostics JSON.",
     )
+    parser.add_argument(
+        "--flask-command",
+        default="recurrence reconcile",
+        help="Flask CLI command to exec in the web container "
+        "(e.g. 'recurrence reconcile' or 'transactions auto-settle').",
+    )
     args = parser.parse_args()
 
     instance_id = args.instance_id or (
@@ -369,6 +376,7 @@ def main() -> int:
         env_name=args.env,
         instance_id=instance_id,
         diagnostics_json_path=args.diagnostics_json_path or None,
+        flask_command=args.flask_command,
     )
     return 0
 

@@ -134,6 +134,7 @@ def build_transaction_kwargs(
         "account_id": normalized.get("account_id"),
         "credit_card_id": normalized.get("credit_card_id"),
         "impact_policy": normalize_impact_policy(normalized.get("impact_policy")),
+        "auto_settle": bool(normalized.get("auto_settle", False)),
         "status": tx_status,
         "currency": normalize_currency(normalized.get("currency")),
     }
@@ -177,6 +178,7 @@ def build_installment_transactions(
             account_id=normalized.get("account_id"),
             credit_card_id=normalized.get("credit_card_id"),
             impact_policy=impact_policy,
+            auto_settle=bool(normalized.get("auto_settle", False)),
             status=tx_status,
             currency=currency,
             installment_group_id=group_id,

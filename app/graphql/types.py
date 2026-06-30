@@ -62,6 +62,7 @@ class TransactionTypeObject(graphene.ObjectType):
     account_id = graphene.String()
     credit_card_id = graphene.String()
     impact_policy = graphene.String(required=True)
+    auto_settle = graphene.Boolean()
     status = graphene.String(required=True)
     currency = graphene.String(required=True)
     source = graphene.String(required=True)

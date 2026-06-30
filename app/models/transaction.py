@@ -120,6 +120,12 @@ class Transaction(db.Model):
         default=TransactionImpactPolicy.FULL,
         server_default=TransactionImpactPolicy.FULL.value,
     )
+    # Opt-in "auto-settle" (F4): when true, the daily auto-settle job marks this
+    # transaction as paid once it comes due. Default false — never mutates the
+    # ledger for transactions the user did not opt in.
+    auto_settle = db.Column(
+        db.Boolean, default=False, nullable=False, server_default=db.text("false")
+    )
     installment_group_id = db.Column(UUID(as_uuid=True), nullable=True)
     # Links all occurrences of one recurring series so a user can delete a
     # single occurrence or the whole series. Backfilled from

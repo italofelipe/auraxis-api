@@ -302,6 +302,12 @@
             "minimum": 0.01,
             "type": "number"
           },
+          "auto_settle": {
+            "default": false,
+            "description": "Quando true, a transação é marcada automaticamente como paga/recebida no vencimento pelo job diário de auto-settle (opt-in, padrão false).",
+            "example": false,
+            "type": "boolean"
+          },
           "category": {
             "default": null,
             "description": "Categoria estruturada para controle de orçamento",
@@ -513,6 +519,12 @@
             "example": "150.50",
             "minimum": 0.01,
             "type": "number"
+          },
+          "auto_settle": {
+            "default": false,
+            "description": "Quando true, a transação é marcada automaticamente como paga/recebida no vencimento pelo job diário de auto-settle (opt-in, padrão false).",
+            "example": false,
+            "type": "boolean"
           },
           "category": {
             "default": null,
