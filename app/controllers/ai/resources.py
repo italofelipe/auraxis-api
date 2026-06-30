@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -38,6 +39,7 @@ from app.docs.openapi_helpers import (
     json_success_response,
 )
 from app.middleware.ai_rate_limit import ai_daily_limit
+from app.schemas.ai_chat_schema import AIChatRequestSchema
 from app.schemas.ai_insight_feedback_schema import AIInsightFeedbackSchema
 from app.schemas.ai_insight_schema import (
     AIInsightGenerateRequestSchema,
@@ -415,6 +417,130 @@ class AIInsightGenerateResource(MethodResource):
             legacy_payload=result,
             status_code=200,
             message="Insight financeiro gerado com sucesso",
+            data=result,
+        )
+
+
+def _ai_chat_daily_limit() -> int:
+    """Per-user daily cap for the Ask-anything chat (shared AI-call counter)."""
+    return max(1, int(os.getenv("AI_CHAT_DAILY_LIMIT", "20")))
+
+
+class AIChatAskAnythingResource(MethodResource):
+    """POST /ai/chat — snapshot-grounded finance chat (Ask anything)."""
+
+    @doc(
+        summary="Perguntar sobre as próprias finanças com IA (Premium)",
+        description=(
+            "Responde perguntas do usuário usando exclusivamente o snapshot "
+            "financeiro do próprio usuário. Recusa perguntas fora de finanças e "
+            "informa quando o dado não está disponível no período atual."
+        ),
+        tags=["AI Advisory"],
+        security=[{"BearerAuth": []}],
+        requestBody=json_request_body(
+            schema=AIChatRequestSchema,
+            description="Pergunta em linguagem natural sobre as finanças do usuário.",
+            example={"question": "Quanto gastei com alimentação até agora?"},
+        ),
+        responses={
+            200: json_success_response(
+                description="Resposta gerada com sucesso",
+                message="Resposta gerada com sucesso",
+                data_example={
+                    "answer": "Até agora você gastou R$320,00 com alimentação.",
+                    "model": "gpt-4o-mini",
+                    "tokens_used": 380,
+                    "cost_usd": 0.000057,
+                },
+            ),
+            400: json_error_response(
+                description="Pergunta inválida",
+                message="Pergunta inválida.",
+                error_code="VALIDATION_ERROR",
+                status_code=400,
+            ),
+            403: json_error_response(
+                description="Entitlement insuficiente",
+                message="Recurso exclusivo para assinantes Premium.",
+                error_code="ENTITLEMENT_REQUIRED",
+                status_code=403,
+            ),
+            429: json_error_response(
+                description="Limite diário ou orçamento de IA atingido",
+                message="Orçamento de IA atingido.",
+                error_code="AI_INSIGHT_BUDGET_EXCEEDED",
+                status_code=429,
+            ),
+            500: json_error_response(
+                description="Erro interno ou falha do provider LLM",
+                message="Erro ao processar a pergunta",
+                error_code="INTERNAL_ERROR",
+                status_code=500,
+            ),
+        },
+    )
+    @jwt_required()
+    @ai_daily_limit(max_calls=_ai_chat_daily_limit())
+    def post(self) -> Response:
+        token_error = _guard_revoked_token()
+        if token_error is not None:
+            return token_error
+
+        user_id = current_user_id()
+
+        entitlement_error = _check_entitlement(user_id)
+        if entitlement_error is not None:
+            return entitlement_error
+
+        body = request.get_json(silent=True) or {}
+        try:
+            parsed = AIChatRequestSchema().load(body)
+        except ValidationError as exc:
+            return compat_error_response(
+                legacy_payload={"error": exc.messages},
+                status_code=400,
+                message="Pergunta inválida.",
+                error_code="VALIDATION_ERROR",
+            )
+
+        question = str(parsed["question"])
+        timezone_resolution = _resolve_ai_insight_request_timezone(body)
+        service = AIAdvisoryService(user_id=user_id)
+        try:
+            result = service.answer_financial_question(
+                question,
+                timezone_name=timezone_resolution.name,
+                timezone_fallback=timezone_resolution.fallback_used,
+            )
+        except AIConsentRequiredError as exc:
+            return _ai_consent_required_response(exc)
+        except AIInsightCostBudgetExceededError as exc:
+            return compat_error_response(
+                legacy_payload={"error": str(exc)},
+                status_code=429,
+                message=str(exc),
+                error_code="AI_INSIGHT_BUDGET_EXCEEDED",
+            )
+        except LLMProviderError as exc:
+            return compat_error_response(
+                legacy_payload={"error": str(exc)},
+                status_code=500,
+                message="Erro ao processar a pergunta",
+                error_code="INTERNAL_ERROR",
+            )
+        except Exception:
+            return compat_error_response(
+                legacy_payload={"error": "Erro interno ao processar a pergunta"},
+                status_code=500,
+                message="Erro interno ao processar a pergunta",
+                error_code="INTERNAL_ERROR",
+            )
+
+        return compat_success_response(
+            legacy_payload=result,
+            status_code=200,
+            message="Resposta gerada com sucesso",
             data=result,
         )
 
