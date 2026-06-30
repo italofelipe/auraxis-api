@@ -8,9 +8,39 @@ Covers:
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from unittest.mock import patch
 
-from app.services.llm_provider import StubLLMProvider
+from app.services.llm_provider import LLMProviderError, StubLLMProvider
+
+_SERVICE_TARGET = (
+    "app.services.ai_advisory_service.AIAdvisoryService.answer_financial_question"
+)
+
+
+def _gql(client, query: str, token: str, variables: dict | None = None):
+    return client.post(
+        "/graphql",
+        json={"query": query, "variables": variables or {}},
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Contract": "v2",
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+
+_ASK_MUTATION = """
+mutation Ask($question: String!) {
+  askFinancialQuestion(question: $question) {
+    ok
+    answer
+    model
+    tokensUsed
+    costUsd
+  }
+}
+"""
 
 
 def _register_and_login(client, prefix: str) -> str:
@@ -129,3 +159,105 @@ class TestAIChatEndpoint:
         data = body.get("data") or body
         assert "Você gastou" in data["answer"]
         mocked.assert_called_once()
+
+    def test_budget_exceeded_returns_429(self, app, client) -> None:
+        from app.services.ai_advisory_service import AIInsightCostBudgetExceededError
+
+        token = _register_and_login(client, prefix="ai-chat-budget")
+        _grant_premium(app, _current_user_id(app, token))
+        with patch(
+            _SERVICE_TARGET,
+            side_effect=AIInsightCostBudgetExceededError(
+                "Orçamento mensal atingido.",
+                scope="user_monthly",
+                limit_usd=Decimal("2.72"),
+                spent_usd=Decimal("3.00"),
+            ),
+        ):
+            resp = client.post(
+                "/ai/chat", json={"question": "E aí?"}, headers=_auth(token)
+            )
+        assert resp.status_code == 429
+
+    def test_consent_required_returns_403(self, app, client) -> None:
+        from app.services.ai_lgpd import AIConsentRequiredError
+
+        token = _register_and_login(client, prefix="ai-chat-consent")
+        _grant_premium(app, _current_user_id(app, token))
+        with patch(_SERVICE_TARGET, side_effect=AIConsentRequiredError()):
+            resp = client.post(
+                "/ai/chat", json={"question": "E aí?"}, headers=_auth(token)
+            )
+        assert resp.status_code == 403
+
+    def test_llm_error_returns_500(self, app, client) -> None:
+        token = _register_and_login(client, prefix="ai-chat-llm")
+        _grant_premium(app, _current_user_id(app, token))
+        with patch(_SERVICE_TARGET, side_effect=LLMProviderError("boom")):
+            resp = client.post(
+                "/ai/chat", json={"question": "E aí?"}, headers=_auth(token)
+            )
+        assert resp.status_code == 500
+
+    def test_unexpected_error_returns_500(self, app, client) -> None:
+        token = _register_and_login(client, prefix="ai-chat-boom")
+        _grant_premium(app, _current_user_id(app, token))
+        with patch(_SERVICE_TARGET, side_effect=RuntimeError("unexpected")):
+            resp = client.post(
+                "/ai/chat", json={"question": "E aí?"}, headers=_auth(token)
+            )
+        assert resp.status_code == 500
+
+
+class TestAskFinancialQuestionGraphQL:
+    def test_happy_path(self, app, client) -> None:
+        token = _register_and_login(client, prefix="gql-chat-ok")
+        _grant_premium(app, _current_user_id(app, token))
+        with patch(
+            _SERVICE_TARGET,
+            return_value={
+                "answer": "Saldo positivo.",
+                "model": "stub",
+                "tokens_used": 10,
+                "cost_usd": 0.0,
+            },
+        ):
+            resp = _gql(client, _ASK_MUTATION, token, {"question": "Como estou?"})
+        body = resp.get_json()
+        assert not body.get("errors")
+        payload = body["data"]["askFinancialQuestion"]
+        assert payload["ok"] is True
+        assert payload["answer"] == "Saldo positivo."
+
+    def test_rejects_empty_question(self, app, client) -> None:
+        token = _register_and_login(client, prefix="gql-chat-empty")
+        resp = _gql(client, _ASK_MUTATION, token, {"question": "   "})
+        body = resp.get_json()
+        assert body.get("errors")
+
+    def test_maps_llm_provider_error(self, app, client) -> None:
+        token = _register_and_login(client, prefix="gql-chat-llm")
+        _grant_premium(app, _current_user_id(app, token))
+        with patch(_SERVICE_TARGET, side_effect=LLMProviderError("boom")):
+            resp = _gql(client, _ASK_MUTATION, token, {"question": "Como estou?"})
+        body = resp.get_json()
+        assert body.get("errors")
+
+
+class TestAnswerFinancialQuestionProviderError:
+    def test_propagates_llm_provider_error(self, app) -> None:
+        with app.app_context():
+            from app.services.ai_advisory_service import AIAdvisoryService
+
+            class _RaisingProvider:
+                def generate_with_usage(self, prompt, **_kwargs):
+                    raise LLMProviderError("boom")
+
+            service = AIAdvisoryService(
+                user_id=uuid.uuid4(), llm_provider=_RaisingProvider()
+            )
+            try:
+                service.answer_financial_question("Quanto tenho?")
+            except LLMProviderError:
+                return
+            raise AssertionError("expected LLMProviderError to propagate")
