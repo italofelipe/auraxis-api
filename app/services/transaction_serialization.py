@@ -25,6 +25,7 @@ class TransactionPayload(TypedDict):
     account_id: str | None
     credit_card_id: str | None
     impact_policy: str
+    auto_settle: bool
     status: str
     currency: str
     source: str
@@ -81,6 +82,7 @@ def serialize_transaction_payload(transaction: Transaction) -> TransactionPayloa
         "account_id": _str_or_none(transaction.account_id),
         "credit_card_id": _str_or_none(transaction.credit_card_id),
         "impact_policy": _enum_value_or_default(impact_policy, "full"),
+        "auto_settle": bool(getattr(transaction, "auto_settle", False)),
         "status": transaction.status.value,
         "currency": transaction.currency,
         "source": transaction.source or "manual",

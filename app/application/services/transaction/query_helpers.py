@@ -51,6 +51,7 @@ _MUTABLE_TRANSACTION_FIELDS = frozenset(
         "account_id",
         "credit_card_id",
         "impact_policy",
+        "auto_settle",
         "paid_at",
     }
 )
