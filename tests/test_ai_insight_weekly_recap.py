@@ -16,7 +16,7 @@ Coverage (#1242 — recap):
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 import pytest
@@ -132,7 +132,13 @@ def _make_goal_with_contribution(
                 goal_id=goal.id,
                 user_id=user_id,
                 amount=Decimal(str(contribution_amount)),
-                created_at=datetime.utcnow() - timedelta(days=days_ago),
+                # Anchor to local midday so the timestamp stays inside the
+                # `date.today()`-based windows the tests build, regardless of the
+                # local-vs-UTC offset (utcnow() drifts to the next day in the
+                # evening in UTC-3, falling outside week_end on Mondays).
+                created_at=datetime.combine(
+                    date.today() - timedelta(days=days_ago), time(hour=12)
+                ),
             )
         )
         db.session.commit()
