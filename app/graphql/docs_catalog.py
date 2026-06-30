@@ -915,6 +915,19 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         ),
         source_module="app.graphql.mutations.ai_insight",
     ),
+    # AI Advisory — Ask anything chat (#1521)
+    GraphQLOperationDoc(
+        name="askFinancialQuestion",
+        operation_type="mutation",
+        domain="ai_advisory",
+        access="auth_required",
+        summary=(
+            "Responde uma pergunta em linguagem natural sobre as finanças do "
+            "próprio usuário, ancorada exclusivamente no snapshot financeiro. "
+            "Paridade com POST /ai/chat."
+        ),
+        source_module="app.graphql.mutations.ai_insight",
+    ),
     # AI Advisory — feedback (#1387)
     GraphQLOperationDoc(
         name="submitAiInsightFeedback",

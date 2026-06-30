@@ -253,6 +253,65 @@ class GenerateAiInsightMutation(graphene.Mutation):
         )
 
 
+class AskFinancialQuestionPayload(graphene.ObjectType):
+    ok = graphene.Boolean(required=True)
+    answer = graphene.String()
+    model = graphene.String()
+    tokens_used = graphene.Int()
+    cost_usd = graphene.Float()
+
+
+class AskFinancialQuestionMutation(graphene.Mutation):
+    """GraphQL parity for POST /ai/chat (Ask anything).
+
+    Snapshot-grounded finance chat. Entitlement, LGPD consent, per-user cost
+    budget and audit are enforced inside AIAdvisoryService.
+    """
+
+    class Arguments:
+        question = graphene.String(required=True)
+
+    Output = AskFinancialQuestionPayload
+
+    @log_graphql_resolver("askFinancialQuestion")
+    def mutate(
+        self,
+        _info: graphene.ResolveInfo,
+        question: str,
+    ) -> AskFinancialQuestionPayload:
+        user = get_current_user_required()
+
+        normalized = (question or "").strip()
+        if not normalized:
+            raise build_public_graphql_error(
+                "question is required",
+                code="VALIDATION_ERROR",
+            )
+
+        service = AIAdvisoryService(user_id=user.id)
+        raw_timezone = request.headers.get(timezone_utils.USER_TIMEZONE_HEADER)
+        timezone_resolution = timezone_utils.resolve_user_timezone(raw_timezone)
+        try:
+            result = service.answer_financial_question(
+                normalized,
+                timezone_name=timezone_resolution.name,
+                timezone_fallback=timezone_resolution.fallback_used,
+            )
+        except LLMProviderError as exc:
+            raise build_public_graphql_error(
+                "Erro ao processar a pergunta",
+                code="LLM_PROVIDER_ERROR",
+            ) from exc
+
+        return AskFinancialQuestionPayload(
+            ok=True,
+            answer=result.get("answer"),
+            model=result.get("model"),
+            tokens_used=int(result.get("tokens_used") or 0),
+            cost_usd=float(result.get("cost_usd") or 0),
+        )
+
+
 class AIInsightFeedbackPayload(graphene.ObjectType):
     ok = graphene.Boolean(required=True)
     id = graphene.String()
