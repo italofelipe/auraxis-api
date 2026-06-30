@@ -161,6 +161,16 @@ class TransactionSchema(Schema):
             "example": "full",
         },
     )
+    auto_settle = fields.Bool(
+        load_default=False,
+        metadata={
+            "description": (
+                "Quando true, a transação é marcada automaticamente como paga/recebida "
+                "no vencimento pelo job diário de auto-settle (opt-in, padrão false)."
+            ),
+            "example": False,
+        },
+    )
     installment_group_id = fields.UUID(
         dump_only=True,
         metadata={"description": "ID do grupo de parcelas (gerado automaticamente)"},
@@ -258,6 +268,9 @@ class TransactionResponseSchema(Schema):
     )
     impact_policy = fields.Str(
         metadata={"description": "Política de impacto do lançamento"}
+    )
+    auto_settle = fields.Bool(
+        metadata={"description": "Se marca automaticamente como paga no vencimento"}
     )
     installment_group_id = fields.UUID(
         allow_none=True, metadata={"description": "ID do grupo de parcelas"}
