@@ -973,6 +973,14 @@ type Mutation {
   submitAiInsightFeedback(comment: String, depth: Int!, insightId: String!, relevance: Int!, truthfulness: Int!, usefulness: Int!): AIInsightFeedbackPayload
 
   """
+  GraphQL parity for POST /ai/chat (Ask anything).
+  
+  Snapshot-grounded finance chat. Entitlement, LGPD consent, per-user cost
+  budget and audit are enforced inside AIAdvisoryService.
+  """
+  askFinancialQuestion(question: String!): AskFinancialQuestionPayload
+
+  """
   Mark the authenticated user's onboarding as completed (idempotent).
   
   REST parity: ``POST /user/onboarding/complete``.
@@ -1452,6 +1460,14 @@ type AIInsightFeedbackPayload {
   depth: Int
   usefulness: Int
   comment: String
+}
+
+type AskFinancialQuestionPayload {
+  ok: Boolean!
+  answer: String
+  model: String
+  tokensUsed: Int
+  costUsd: Float
 }
 
 """Canonical payload for completeOnboarding mutation."""

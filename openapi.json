@@ -1,6 +1,22 @@
 {
   "components": {
     "schemas": {
+      "AIChatRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "description": "Pergunta do usuário sobre as próprias finanças.",
+            "example": "Quanto gastei com alimentação até agora?",
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "type": "object"
+      },
       "InstallmentVsCashCalculation": {
         "additionalProperties": false,
         "properties": {
@@ -1207,6 +1223,248 @@
   },
   "openapi": "3.0.2",
   "paths": {
+    "/ai/chat": {
+      "post": {
+        "description": "Responde perguntas do usuário usando exclusivamente o snapshot financeiro do próprio usuário. Recusa perguntas fora de finanças e informa quando o dado não está disponível no período atual.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "description": "Pergunta em linguagem natural sobre as finanças do usuário.",
+              "example": {
+                "question": "Quanto gastei com alimentação até agora?"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/AIChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": {
+                    "answer": "Até agora você gastou R$320,00 com alimentação.",
+                    "cost_usd": 5.7e-05,
+                    "model": "gpt-4o-mini",
+                    "tokens_used": 380
+                  },
+                  "message": "Resposta gerada com sucesso"
+                },
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "meta": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Resposta gerada com sucesso",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador único da requisição gerado pela API.",
+                "example": "9fcd2e4f4d8747b4a7d8a2b1b930f52a",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "VALIDATION_ERROR",
+                  "message": "Pergunta inválida.",
+                  "status_code": 400
+                },
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Pergunta inválida",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador único da requisição gerado pela API.",
+                "example": "9fcd2e4f4d8747b4a7d8a2b1b930f52a",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "ENTITLEMENT_REQUIRED",
+                  "message": "Recurso exclusivo para assinantes Premium.",
+                  "status_code": 403
+                },
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Entitlement insuficiente",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador único da requisição gerado pela API.",
+                "example": "9fcd2e4f4d8747b4a7d8a2b1b930f52a",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "AI_INSIGHT_BUDGET_EXCEEDED",
+                  "message": "Orçamento de IA atingido.",
+                  "status_code": 429
+                },
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Limite diário ou orçamento de IA atingido",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador único da requisição gerado pela API.",
+                "example": "9fcd2e4f4d8747b4a7d8a2b1b930f52a",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "Erro ao processar a pergunta",
+                  "status_code": 500
+                },
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "object"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "status_code": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Erro interno ou falha do provider LLM",
+            "headers": {
+              "X-Request-ID": {
+                "description": "Identificador único da requisição gerado pela API.",
+                "example": "9fcd2e4f4d8747b4a7d8a2b1b930f52a",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Perguntar sobre as próprias finanças com IA (Premium)",
+        "tags": [
+          "AI Advisory"
+        ]
+      }
+    },
     "/ai/goals/{goal_id}/projection": {
       "post": {
         "description": "Gera uma narrativa motivacional e prática para uma meta financeira específica, combinando projeção matemática com contexto do usuário. Requer entitlement 'advanced_simulations' (plano Premium).",
