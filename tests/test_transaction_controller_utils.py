@@ -26,6 +26,7 @@ def _build_transaction() -> Transaction:
         currency="BRL",
         is_recurring=False,
         is_installment=False,
+        auto_settle=False,
         created_at=now,
         updated_at=now,
     )
@@ -211,6 +212,7 @@ def test_enforce_reference_ownership_and_updates(monkeypatch) -> None:
             "status": "paid",
             "type": "income",
             "currency": "USD",
+            "auto_settle": True,
             "unknown_field": "ignored",
         },
     )
@@ -218,6 +220,8 @@ def test_enforce_reference_ownership_and_updates(monkeypatch) -> None:
     assert transaction.status == TransactionStatus.PAID
     assert transaction.type == TransactionType.INCOME
     assert transaction.currency == "USD"
+    # Regression: auto_settle must be PATCH-mutable (was silently dropped).
+    assert transaction.auto_settle is True
     assert not hasattr(transaction, "unknown_field")
 
 
