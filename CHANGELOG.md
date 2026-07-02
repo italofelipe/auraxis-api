@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.61.0](https://github.com/italofelipe/auraxis-api/compare/v1.60.0...v1.61.0) (2026-07-02)
+
+
+### Features
+
+* **ai:** Ask Anything — chat financeiro IA snapshot-grounded (/ai/chat) ([#1522](https://github.com/italofelipe/auraxis-api/issues/1522)) ([aff08ab](https://github.com/italofelipe/auraxis-api/commit/aff08ab1b6e41f716c40cbab88bc9ccf02ad4df5))
+* **credit-card:** expõe payload completo nas transações da fatura ([#1510](https://github.com/italofelipe/auraxis-api/issues/1510)) ([b495023](https://github.com/italofelipe/auraxis-api/commit/b495023c77aaa5545f8a221e6513ccde35b6a32b))
+* **transactions:** auto-settle (agendador) — marca opt-in como paga no vencimento ([#1519](https://github.com/italofelipe/auraxis-api/issues/1519)) ([4c215a2](https://github.com/italofelipe/auraxis-api/commit/4c215a29bb021dc3ec18837949931cf6c8cf00c2))
+
+
+### Bug Fixes
+
+* **transactions:** allow auto_settle in PATCH (was silently dropped) ([d2d0bb5](https://github.com/italofelipe/auraxis-api/commit/d2d0bb5ba3caee14739a0b992ab4257d117cc8cd))
+* **transactions:** allow auto_settle in PATCH (was silently dropped) ([0d8dfbe](https://github.com/italofelipe/auraxis-api/commit/0d8dfbe57d9f73661d2f64f13a3f31ca747f0003)), closes [#1524](https://github.com/italofelipe/auraxis-api/issues/1524)
+
 ## [1.60.0](https://github.com/italofelipe/auraxis-api/compare/v1.59.0...v1.60.0) (2026-06-22)
 
 
