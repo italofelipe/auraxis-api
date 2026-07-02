@@ -30,6 +30,12 @@ from app.utils.response_builder import json_response
 
 INVALID_TOKEN_MESSAGE = "Token inválido."
 DEFAULT_DEPRECATION_SUNSET = "Tue, 30 Jun 2026 23:59:59 GMT"
+# PATCH updates are filtered through this set (see _apply_transaction_updates),
+# so a field missing here is silently dropped even when the schema accepts it.
+# Keep it in sync with app.application.services.transaction.query_helpers
+# ._MUTABLE_TRANSACTION_FIELDS. NOTE: `category` is intentionally still absent —
+# it is an enum needing coercion (like type/status) that this setattr path does
+# not yet do; adding it safely is a separate follow-up.
 MUTABLE_TRANSACTION_FIELDS = frozenset(
     {
         "title",
@@ -49,6 +55,7 @@ MUTABLE_TRANSACTION_FIELDS = frozenset(
         "account_id",
         "credit_card_id",
         "impact_policy",
+        "auto_settle",
         "paid_at",
     }
 )
