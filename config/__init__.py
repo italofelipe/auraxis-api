@@ -1,3 +1,4 @@
+import logging
 import os
 
 
@@ -61,6 +62,35 @@ def validate_security_configuration() -> None:
             "Weak/invalid secrets for production runtime: "
             + ", ".join(weak)
             + ". Configure strong values in environment variables."
+        )
+
+    _warn_if_csrf_cookie_domain_missing()
+
+
+def _warn_if_csrf_cookie_domain_missing() -> None:
+    """Surface the CSRF-cookie/domain coupling that silently breaks reload/F5.
+
+    When ``AURAXIS_CSRF_ENFORCE=true`` the backend sets a non-httpOnly
+    ``auraxis_csrf_refresh`` cookie that the SPA must read from JavaScript and
+    echo back as ``X-CSRF-TOKEN`` on ``POST /auth/refresh`` (double-submit). If
+    ``JWT_COOKIE_DOMAIN`` is unset the cookie is host-only on the API host
+    (e.g. ``api.auraxis.com.br``) and is invisible to JS running on a different
+    subdomain (e.g. ``app.auraxis.com.br``) — so the header is never sent, the
+    refresh 401s, and every reload logs the user out.
+
+    This is a boot-time **warning**, not a hard failure: refusing to boot would
+    turn a UX regression into a full outage on the next env drift/recreate. The
+    warning makes the drift loud in ``docker logs`` instead of silent.
+    """
+    csrf_enforced = _read_bool_env("AURAXIS_CSRF_ENFORCE", False)
+    cookie_domain = os.getenv("JWT_COOKIE_DOMAIN")
+    if csrf_enforced and not (cookie_domain and cookie_domain.strip()):
+        logging.getLogger(__name__).warning(
+            "AURAXIS_CSRF_ENFORCE=true but JWT_COOKIE_DOMAIN is unset: the CSRF "
+            "refresh cookie will be host-only and unreadable by JavaScript on a "
+            "different subdomain (e.g. app.auraxis.com.br), so POST /auth/refresh "
+            "will 401 and users get logged out on reload/F5. Set "
+            "JWT_COOKIE_DOMAIN=.<base-domain> (e.g. .auraxis.com.br)."
         )
 
 

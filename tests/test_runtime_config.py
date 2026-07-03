@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 
 import config as config_module
 
@@ -93,3 +94,48 @@ def test_validate_security_configuration_can_be_disabled_in_debug_runtime(
     module = _reload_config_module()
 
     module.validate_security_configuration()
+
+
+def _secure_runtime_with_strong_secrets(monkeypatch) -> None:
+    monkeypatch.setenv("SECURITY_ENFORCE_STRONG_SECRETS", "true")
+    monkeypatch.setenv("AURAXIS_ENV", "production")
+    monkeypatch.setenv("FLASK_DEBUG", "false")
+    monkeypatch.setenv("FLASK_TESTING", "false")
+    monkeypatch.setenv("SECRET_KEY", "s" * 40)
+    monkeypatch.setenv("JWT_SECRET_KEY", "j" * 40)
+
+
+def test_warns_when_csrf_enforced_without_cookie_domain(monkeypatch, caplog) -> None:
+    _secure_runtime_with_strong_secrets(monkeypatch)
+    monkeypatch.setenv("AURAXIS_CSRF_ENFORCE", "true")
+    monkeypatch.delenv("JWT_COOKIE_DOMAIN", raising=False)
+    module = _reload_config_module()
+
+    with caplog.at_level(logging.WARNING):
+        module.validate_security_configuration()
+
+    assert any("JWT_COOKIE_DOMAIN" in record.message for record in caplog.records)
+
+
+def test_no_cookie_domain_warning_when_domain_is_set(monkeypatch, caplog) -> None:
+    _secure_runtime_with_strong_secrets(monkeypatch)
+    monkeypatch.setenv("AURAXIS_CSRF_ENFORCE", "true")
+    monkeypatch.setenv("JWT_COOKIE_DOMAIN", ".auraxis.com.br")
+    module = _reload_config_module()
+
+    with caplog.at_level(logging.WARNING):
+        module.validate_security_configuration()
+
+    assert not any("JWT_COOKIE_DOMAIN" in record.message for record in caplog.records)
+
+
+def test_no_cookie_domain_warning_when_csrf_disabled(monkeypatch, caplog) -> None:
+    _secure_runtime_with_strong_secrets(monkeypatch)
+    monkeypatch.setenv("AURAXIS_CSRF_ENFORCE", "false")
+    monkeypatch.delenv("JWT_COOKIE_DOMAIN", raising=False)
+    module = _reload_config_module()
+
+    with caplog.at_level(logging.WARNING):
+        module.validate_security_configuration()
+
+    assert not any("JWT_COOKIE_DOMAIN" in record.message for record in caplog.records)
