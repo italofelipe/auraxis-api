@@ -17,7 +17,7 @@ from app.controllers.response_contract import (
     is_v2_contract,
 )
 from app.extensions.jwt_callbacks import is_token_revoked
-from app.models.transaction import Transaction, TransactionStatus, TransactionType
+from app.models.transaction import Transaction
 from app.services.transaction_reference_authorization_service import (
     TransactionReferenceAuthorizationError,
     enforce_transaction_reference_ownership,
@@ -30,35 +30,6 @@ from app.utils.response_builder import json_response
 
 INVALID_TOKEN_MESSAGE = "Token inválido."
 DEFAULT_DEPRECATION_SUNSET = "Tue, 30 Jun 2026 23:59:59 GMT"
-# PATCH updates are filtered through this set (see _apply_transaction_updates),
-# so a field missing here is silently dropped even when the schema accepts it.
-# Keep it in sync with app.application.services.transaction.query_helpers
-# ._MUTABLE_TRANSACTION_FIELDS. NOTE: `category` is intentionally still absent —
-# it is an enum needing coercion (like type/status) that this setattr path does
-# not yet do; adding it safely is a separate follow-up.
-MUTABLE_TRANSACTION_FIELDS = frozenset(
-    {
-        "title",
-        "description",
-        "observation",
-        "is_recurring",
-        "is_installment",
-        "installment_count",
-        "amount",
-        "currency",
-        "status",
-        "type",
-        "due_date",
-        "start_date",
-        "end_date",
-        "tag_id",
-        "account_id",
-        "credit_card_id",
-        "impact_policy",
-        "auto_settle",
-        "paid_at",
-    }
-)
 
 
 def _is_v2_contract() -> bool:
@@ -296,21 +267,6 @@ def _enforce_transaction_reference_ownership_or_error(
     return None
 
 
-def _apply_transaction_updates(
-    transaction: Transaction, updates: dict[str, Any]
-) -> None:
-    for field, value in updates.items():
-        if field not in MUTABLE_TRANSACTION_FIELDS:
-            continue
-        if field == "type" and value is not None:
-            setattr(transaction, field, TransactionType(str(value).lower()))
-            continue
-        if field == "status" and value is not None:
-            setattr(transaction, field, TransactionStatus(str(value).lower()))
-            continue
-        setattr(transaction, field, value)
-
-
 def serialize_transaction(transaction: Transaction) -> TransactionPayload:
     return serialize_transaction_payload(transaction)
 
@@ -319,7 +275,6 @@ __all__ = [
     "INVALID_TOKEN_MESSAGE",
     "CONTRACT_HEADER",
     "CONTRACT_V2",
-    "MUTABLE_TRANSACTION_FIELDS",
     "_is_v2_contract",
     "_json_response",
     "_compat_success",
@@ -334,7 +289,6 @@ __all__ = [
     "_invalid_token_response",
     "_internal_error_response",
     "_enforce_transaction_reference_ownership_or_error",
-    "_apply_transaction_updates",
     "serialize_transaction",
     "enforce_transaction_reference_ownership",
     "TransactionReferenceAuthorizationError",

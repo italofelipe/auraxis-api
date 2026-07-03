@@ -167,7 +167,7 @@ def test_compat_responses_and_internal_error(app, monkeypatch) -> None:
     assert logged == ["transaction.test"]
 
 
-def test_enforce_reference_ownership_and_updates(monkeypatch) -> None:
+def test_enforce_reference_ownership(monkeypatch) -> None:
     user_id = uuid4()
     tag_id = uuid4()
     account_id = uuid4()
@@ -203,26 +203,6 @@ def test_enforce_reference_ownership_and_updates(monkeypatch) -> None:
         )
         == "Sem permissão para referência"
     )
-
-    transaction = _build_transaction()
-    utils._apply_transaction_updates(
-        transaction,
-        {
-            "title": "Conta atualizada",
-            "status": "paid",
-            "type": "income",
-            "currency": "USD",
-            "auto_settle": True,
-            "unknown_field": "ignored",
-        },
-    )
-    assert transaction.title == "Conta atualizada"
-    assert transaction.status == TransactionStatus.PAID
-    assert transaction.type == TransactionType.INCOME
-    assert transaction.currency == "USD"
-    # Regression: auto_settle must be PATCH-mutable (was silently dropped).
-    assert transaction.auto_settle is True
-    assert not hasattr(transaction, "unknown_field")
 
 
 def test_serialize_transaction_output() -> None:
