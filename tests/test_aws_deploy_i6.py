@@ -174,6 +174,40 @@ def test_build_script_deploy_runs_flask_db_upgrade_before_healthz_validation() -
     )
 
 
+def test_build_script_requires_auth_critical_env_keys_in_prod() -> None:
+    """Regressão do incidente 2026-07-03: o deploy de prod deve BLOQUEAR quando
+    as chaves auth-críticas de cookie/CSRF/CORS estão ausentes."""
+    script = aws_deploy_i6._build_script(
+        env_name="prod",
+        aws_region="us-east-1",
+        git_ref="origin/master",
+        mode="deploy",
+    )
+    for key in ("JWT_COOKIE_DOMAIN", "CORS_ALLOWED_ORIGINS", "AURAXIS_CSRF_ENFORCE"):
+        assert f"require_env_key {key}" in script, (
+            f"{key} deve ser obrigatória no deploy de prod"
+        )
+    # Recomendadas: apenas avisam (não bloqueiam).
+    assert "WARN: env recomendada ausente em prod" in script
+
+
+def test_build_script_cookie_keys_guarded_by_prod_block() -> None:
+    """As chaves auth-críticas ficam dentro do bloco `if [ ... = "prod" ]` (guard
+    runtime), então dev/localhost sem CSRF/domain não são bloqueados."""
+    script = aws_deploy_i6._build_script(
+        env_name="prod",
+        aws_region="us-east-1",
+        git_ref="origin/master",
+        mode="deploy",
+    )
+    prod_guard_idx = script.find('= "prod" ]; then')
+    domain_req_idx = script.find("require_env_key JWT_COOKIE_DOMAIN")
+    assert prod_guard_idx != -1
+    assert domain_req_idx > prod_guard_idx, (
+        "require_env_key JWT_COOKIE_DOMAIN deve estar dentro do bloco prod-only"
+    )
+
+
 def test_build_script_aborts_when_alembic_upgrade_fails() -> None:
     script = aws_deploy_i6._build_script(
         env_name="prod",
