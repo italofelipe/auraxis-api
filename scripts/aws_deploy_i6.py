@@ -552,6 +552,17 @@ done
 
 if [ "{env_name}" = "prod" ]; then
   require_env_key CERTBOT_EMAIL
+  # Auth-crítico em prod. O drift de JWT_COOKIE_DOMAIN (ausente no .env.prod)
+  # quebrou o F5 silenciosamente em 2026-07-03 — sem esta validação o deploy
+  # passava "healthy" com auth quebrada. Ver docs/wiki/INF-incident-env-drift.md.
+  require_env_key JWT_COOKIE_DOMAIN
+  require_env_key CORS_ALLOWED_ORIGINS
+  require_env_key AURAXIS_CSRF_ENFORCE
+  # Recomendadas: avisa (não bloqueia) para não travar o deploy, mas torna o
+  # drift visível. Ver docs/env_manifest_prod.md.
+  for rkey in SENTRY_DSN EMAIL_PROVIDER EMAIL_FROM BILLING_PROVIDER JWT_COOKIE_SAMESITE; do
+    grep -qE "^${{rkey}}=" "$ENV_FILE" || echo "[i6] WARN: env recomendada ausente em prod: $rkey"
+  done
 fi
 
 echo "[i6] mode=$MODE git_ref=$GIT_REF image=$WEB_IMAGE"
