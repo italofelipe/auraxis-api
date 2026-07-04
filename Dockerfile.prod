@@ -27,6 +27,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:${PATH}"
 
+# Commit SHA gravado no build (passado via --build-arg pelo deploy.yml) e exposto
+# em GET /healthz para detecção de drift/rollback de imagem sem SSH. Default
+# "unknown" quando não informado, então builds locais/dev não quebram.
+ARG AURAXIS_COMMIT_SHA=unknown
+ENV AURAXIS_COMMIT_SHA=${AURAXIS_COMMIT_SHA}
+
 WORKDIR /app
 
 RUN apt-get update \

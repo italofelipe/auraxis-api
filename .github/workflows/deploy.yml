@@ -63,6 +63,8 @@ jobs:
           context: .
           file: Dockerfile.prod
           push: true
+          build-args: |
+            AURAXIS_COMMIT_SHA=${{ github.sha }}
           tags: |
             ${{ steps.image.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/auraxis-api:latest
