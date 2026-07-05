@@ -25,8 +25,34 @@ jobs:
           fi
 
       - name: Run Release Please
+        id: release
         uses: googleapis/release-please-action@c3fc4de07084f75a2b61a5b933069bda6edf3d5c # v4
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # Habilita auto-merge no PR "chore(master): release ..." para ele não ficar
+      # parado esperando merge manual (o fix P0 do crash de transações ficou ~1 mês
+      # sem lançar — issue platform #854). O auto-merge só efetiva quando os checks
+      # obrigatórios ficam verdes. Mergear a tag dispara build+push da imagem, mas
+      # NÃO faz deploy (deploy-prod é workflow_dispatch manual).
+      - name: Enable auto-merge on the release PR
+        if: ${{ steps.release.outputs.prs_created == 'true' || steps.release.outputs.pr }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          RELEASE_PR_JSON: ${{ steps.release.outputs.pr }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pr_number="$(printf '%s' "${RELEASE_PR_JSON:-}" | jq -r '.number // empty' 2>/dev/null || true)"
+          if [ -z "${pr_number}" ]; then
+            pr_number="$(gh pr list --repo "${REPO}" --state open \
+              --label 'autorelease: pending' --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+          fi
+          if [ -z "${pr_number}" ] || [ "${pr_number}" = "null" ]; then
+            echo "Nenhum PR de release aberto — nada a habilitar."
+            exit 0
+          fi
+          echo "Habilitando auto-merge (squash) no PR de release #${pr_number}"
+          gh pr merge "${pr_number}" --repo "${REPO}" --auto --squash
