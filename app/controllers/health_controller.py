@@ -105,9 +105,18 @@ def _secure_compare(a: str, b: str) -> bool:
     responses={200: {"description": "Serviço saudável"}},
 )
 def healthz() -> tuple[dict[str, str], int]:
-    """Liveness probe endpoint (public)."""
+    """Liveness probe endpoint (public).
 
-    return {"status": "ok"}, 200
+    Expõe o ``commit`` (SHA gravado no build via AURAXIS_COMMIT_SHA) para
+    detecção externa de drift/rollback de imagem sem SSH — o gate de deploy e o
+    ``verify-prod-state`` comparam com o SHA esperado. "unknown" em builds sem o
+    build-arg (dev/local).
+    """
+
+    return {
+        "status": "ok",
+        "commit": os.getenv("AURAXIS_COMMIT_SHA", "unknown"),
+    }, 200
 
 
 @health_bp.get("/readiness")
