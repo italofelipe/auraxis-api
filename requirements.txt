@@ -40,7 +40,7 @@ python-dotenv==1.2.2
 requests==2.34.2
 redis==5.3.1
 rq==2.10.0
-croniter==6.2.2
+croniter==6.2.3
 tenacity==9.1.4
 sentry-sdk[flask]==2.63.0
 SQLAlchemy==2.0.51
@@ -50,7 +50,7 @@ Werkzeug==3.1.8
 types-python-dateutil==2.9.0.20260518
 types-requests==2.33.0.20260518
 reportlab==4.5.1
-boto3==1.43.36
+boto3==1.43.40
 pywebpush==2.3.0
 py-vapid==1.9.4
 http-ece==1.2.1
