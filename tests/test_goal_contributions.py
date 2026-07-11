@@ -11,7 +11,7 @@ Covers REST POST/GET /goals/{id}/contributions and GraphQL parity
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 from app.extensions.database import db
@@ -69,7 +69,12 @@ class TestRecordContributionRest:
         assert data["goal"]["current_amount"] == "350.00"
         assert data["contribution"]["amount"] == "250.00"
         assert data["contribution"]["note"] == "salário"
-        assert data["contribution"]["occurred_at"] == date.today().isoformat()
+        # Default occurred_at is the UTC date (utc_now_naive) — after ~21:00 BRT
+        # it is already "tomorrow" locally, so accept either date.
+        assert data["contribution"]["occurred_at"] in {
+            date.today().isoformat(),
+            datetime.now(timezone.utc).date().isoformat(),
+        }
 
     def test_withdrawal_subtracts(self, client) -> None:
         token = _register_and_login(client)
@@ -161,7 +166,10 @@ class TestListContributionsRest:
         items = body["data"]["items"]
         assert len(items) == 2
         # newest first → today's entry (n0) leads.
-        assert items[0]["occurred_at"] == date.today().isoformat()
+        assert items[0]["occurred_at"] in {
+            date.today().isoformat(),
+            datetime.now(timezone.utc).date().isoformat(),
+        }
         assert body["meta"]["pagination"]["total"] == 3
 
     def test_other_user_cannot_list(self, client) -> None:
