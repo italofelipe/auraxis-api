@@ -93,8 +93,14 @@ class LLMProvider(Protocol):
         *,
         response_schema: dict[str, Any] | None = None,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> LLMResponse:
-        """Generate a response and return structured usage data."""
+        """Generate a response and return structured usage data.
+
+        ``model`` optionally overrides the provider's default for this single
+        call (#1547 — per-period model mix); providers without multi-model
+        support may ignore it.
+        """
         ...
 
 
@@ -119,8 +125,9 @@ class StubLLMProvider:
         *,
         response_schema: dict[str, Any] | None = None,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> LLMResponse:
-        del prompt, max_tokens
+        del prompt, max_tokens, model
         content = self._STUB_CONTENT
         if (
             response_schema
@@ -167,6 +174,7 @@ class OpenAILLMProvider:
         *,
         response_schema: dict[str, Any] | None = None,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> LLMResponse:
         if not self._api_key:
             raise LLMProviderError("OPENAI_API_KEY is not configured.")
@@ -175,7 +183,7 @@ class OpenAILLMProvider:
         resolved_max_tokens = _resolve_max_tokens(max_tokens)
         start = time.monotonic()
         payload: dict[str, Any] = {
-            "model": self._model,
+            "model": model or self._model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": resolved_max_tokens,
             "temperature": 0.4,
@@ -206,7 +214,7 @@ class OpenAILLMProvider:
                 prompt_tokens=int(usage.get("prompt_tokens", 0)),
                 completion_tokens=int(usage.get("completion_tokens", 0)),
                 total_tokens=int(usage.get("total_tokens", 0)),
-                model=str(data.get("model", self._model)),
+                model=str(data.get("model", model or self._model)),
                 latency_ms=latency_ms,
             )
         except Exception as exc:
@@ -231,8 +239,9 @@ class ClaudeLLMProvider:
         *,
         response_schema: dict[str, Any] | None = None,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> LLMResponse:
-        _ = response_schema
+        _ = response_schema, model
         if not self._api_key:
             raise LLMProviderError("ANTHROPIC_API_KEY is not configured.")
         import requests
