@@ -14051,6 +14051,18 @@
                 {
                   "defaultValue": null,
                   "deprecationReason": null,
+                  "description": "Regenera mesmo que já exista insight para o período (confirmação explícita). Sujeito à quota diária.",
+                  "isDeprecated": false,
+                  "name": "forceRegenerate",
+                  "type": {
+                    "kind": "SCALAR",
+                    "name": "Boolean",
+                    "ofType": null
+                  }
+                },
+                {
+                  "defaultValue": null,
+                  "deprecationReason": null,
                   "description": null,
                   "isDeprecated": false,
                   "name": "periodType",
@@ -14066,7 +14078,7 @@
                 }
               ],
               "deprecationReason": null,
-              "description": "GraphQL parity for POST /ai/insights/generate.\n\nReuses AIAdvisoryService — quota (2x/day Premium), entitlement gate and\nLGPD consent are enforced inside the service. GraphQL surface exposes the\nsame payload shape so the frontend hub can render either path identically.",
+              "description": "GraphQL parity for POST /ai/insights/generate.\n\nReuses AIAdvisoryService — the daily quota (1/day, scoped), Premium\nentitlement gate and LGPD consent are enforced INSIDE the service (#1546),\nso REST and GraphQL share one enforcement point. GraphQL surface exposes\nthe same payload shape so the frontend hub can render either path\nidentically.",
               "isDeprecated": false,
               "name": "generateAiInsight",
               "type": {

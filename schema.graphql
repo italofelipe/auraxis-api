@@ -963,11 +963,21 @@ type Mutation {
   """
   GraphQL parity for POST /ai/insights/generate.
   
-  Reuses AIAdvisoryService — quota (2x/day Premium), entitlement gate and
-  LGPD consent are enforced inside the service. GraphQL surface exposes the
-  same payload shape so the frontend hub can render either path identically.
+  Reuses AIAdvisoryService — the daily quota (1/day, scoped), Premium
+  entitlement gate and LGPD consent are enforced INSIDE the service (#1546),
+  so REST and GraphQL share one enforcement point. GraphQL surface exposes
+  the same payload shape so the frontend hub can render either path
+  identically.
   """
-  generateAiInsight(anchorDate: String, periodType: String!): GenerateAiInsightPayload
+  generateAiInsight(
+    anchorDate: String
+
+    """
+    Regenera mesmo que já exista insight para o período (confirmação explícita). Sujeito à quota diária.
+    """
+    forceRegenerate: Boolean
+    periodType: String!
+  ): GenerateAiInsightPayload
 
   """GraphQL parity for POST /ai/insights/<id>/feedback (#1387)."""
   submitAiInsightFeedback(comment: String, depth: Int!, insightId: String!, relevance: Int!, truthfulness: Int!, usefulness: Int!): AIInsightFeedbackPayload
