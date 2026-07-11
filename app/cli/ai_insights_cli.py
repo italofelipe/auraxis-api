@@ -225,6 +225,7 @@ def _run_batch(
             result = service.generate_financial_insights(
                 period_type=insight_type.value,
                 anchor_date=anchor_date,
+                trigger="scheduled",
             )
             if result.get("cached") is True:
                 skipped += 1

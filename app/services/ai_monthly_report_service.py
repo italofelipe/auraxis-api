@@ -315,7 +315,9 @@ def generate_monthly_recaps_for_all(
         try:
             run = create_monthly_report_run(user_id=user_id, anchor_date=anchor)
             process_monthly_report_run(
-                run_id=UUID(str(run["run_id"])), llm_provider=llm_provider
+                run_id=UUID(str(run["run_id"])),
+                llm_provider=llm_provider,
+                trigger="scheduled",
             )
             generated += 1
         except Exception:
@@ -374,8 +376,13 @@ def process_monthly_report_run(
     *,
     run_id: UUID,
     llm_provider: LLMProvider | None = None,
+    trigger: str = "user",
 ) -> dict[str, Any]:
-    """Generate a monthly report from an existing run and notify the user."""
+    """Generate a monthly report from an existing run and notify the user.
+
+    ``trigger="scheduled"`` (recap batch/cron) skips the user-facing
+    entitlement/quota gates inside the service (#1546).
+    """
 
     run = db.session.get(AIInsightRun, run_id)
     if run is None or run.period_type != InsightType.monthly:
@@ -392,6 +399,7 @@ def process_monthly_report_run(
             period_type=InsightType.monthly.value,
             anchor_date=run.period_start,
             preview_run_id=run.id,
+            trigger=trigger,
         )
         db.session.refresh(run)
         user = db.session.get(User, run.user_id)
