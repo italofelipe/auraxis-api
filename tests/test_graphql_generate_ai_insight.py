@@ -281,6 +281,7 @@ class TestGenerateAiInsightMutation:
         instance.generate_financial_insights.assert_called_once_with(
             period_type="daily",
             anchor_date=None,
+            force_regenerate=False,
             timezone_name="Pacific/Kiritimati",
             timezone_fallback=False,
         )

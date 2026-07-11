@@ -346,6 +346,7 @@ class TestMonthlyInsightsCLI:
         assert mock_gen.call_args.kwargs == {
             "period_type": "monthly",
             "anchor_date": date(2026, 5, 1),
+            "trigger": "scheduled",
         }
         assert "processed=1" in result.output
         assert "month=2026-05" in result.output

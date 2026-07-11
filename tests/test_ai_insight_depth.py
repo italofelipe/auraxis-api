@@ -11,11 +11,20 @@ import uuid
 from datetime import date
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.services.llm_provider import (
     LLMResponse,
     _resolve_max_tokens,
     _timeout_for_max_tokens,
 )
+
+
+@pytest.fixture(autouse=True)
+def _bypass_premium_gate():
+    """Raw uuid users here; the Premium gate (#1546) has its own coverage."""
+    with patch("app.services.ai_advisory_service._ensure_premium_entitlement"):
+        yield
 
 
 def _financial_llm_response(*, summary: str = "Resumo.") -> LLMResponse:

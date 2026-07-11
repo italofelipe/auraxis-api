@@ -8,6 +8,8 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from app.extensions.database import db
 from app.models.ai_insight import AIInsight, InsightType
 from app.models.ai_insight_run import AIInsightRun, AIInsightRunStatus
@@ -21,6 +23,14 @@ from app.services.ai_monthly_report_service import (
 )
 from app.services.email_provider import get_email_outbox
 from app.services.llm_provider import LLMResponse
+
+
+@pytest.fixture(autouse=True)
+def _bypass_premium_gate():
+    """Users here have no entitlement rows; the Premium gate (#1546) has its
+    own coverage in test_ai_insight_generation_governance.py."""
+    with patch("app.services.ai_advisory_service._ensure_premium_entitlement"):
+        yield
 
 
 def _create_user() -> uuid.UUID:
