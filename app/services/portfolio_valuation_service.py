@@ -170,6 +170,15 @@ class PortfolioValuationService:
                 "fallback_estimated_on_create_date",
                 None,
             )
+        # Last resort: the user-entered value. A priced holding must never
+        # collapse to R$0 just because the live quote is unavailable (#1546).
+        if wallet.value is not None:
+            return (
+                Decimal(str(wallet.value)),
+                invested_amount,
+                "manual_value",
+                None,
+            )
         return Decimal("0"), invested_amount, "manual_value", None
 
     def _build_fixed_income_valuation(
