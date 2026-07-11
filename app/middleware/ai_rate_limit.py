@@ -1,8 +1,17 @@
-"""Per-user daily rate limit for AI insights endpoints (#1214).
+"""Per-user daily rate limit for AI insights endpoints (#1214, #1546).
 
 Enforces a maximum of AI_DAILY_LIMIT calls per user per calendar day (BRT timezone).
 The counter is backed by Redis when available; falls back to an in-process
 dictionary for test environments where Redis is not configured.
+
+Counters are **scoped** (#1546): manual insight generations and chat messages
+consume independent allowances (``AI_INSIGHTS_QUOTA_SCOPE`` vs
+``AI_CHAT_QUOTA_SCOPE``), so chatting never burns the 1/day insight quota.
+
+Enforcement and counting live in ``AIAdvisoryService`` (single point shared by
+REST and GraphQL). The ``@ai_daily_limit`` decorator only decorates successful
+responses with the ``X-AI-Calls-Remaining`` header; the 429 comes from the
+service raising :class:`AIDailyLimitExceededError`.
 
 Only successful, non-cached insight generations consume the daily allowance.
 Provider/configuration errors and cached responses do not count because no new
@@ -26,8 +35,6 @@ from uuid import UUID
 
 from flask import Response
 
-from app.controllers.response_contract import compat_error_response
-
 _F = TypeVar("_F", bound=Callable[..., Any])
 
 AI_DAILY_LIMIT = 1
@@ -37,6 +44,27 @@ AI_DAILY_LIMIT_MESSAGE = (
     "Você pode gerar 1 insight por dia. "
     "Tente novamente amanhã."
 )
+
+# Independent daily-quota scopes (#1546): chat usage must not consume the
+# manual-insight allowance and vice versa.
+AI_INSIGHTS_QUOTA_SCOPE = "insights"
+AI_CHAT_QUOTA_SCOPE = "chat"
+
+
+class AIDailyLimitExceededError(Exception):
+    """Raised by the service layer when the scoped daily AI quota is exhausted."""
+
+    error_code = AI_DAILY_LIMIT_ERROR_CODE
+
+    def __init__(
+        self,
+        message: str = AI_DAILY_LIMIT_MESSAGE,
+        *,
+        retry_after_seconds: int = 0,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = int(retry_after_seconds)
+
 
 _BRT = timezone(timedelta(hours=-3))
 
@@ -112,13 +140,17 @@ class _InMemoryAICounter:
             cls._counts.clear()
 
 
-def _counter_key(user_id: UUID) -> str:
-    return f"auraxis:ai-daily:{user_id}:{_brt_date_str()}"
+def _counter_key(user_id: UUID, scope: str = AI_INSIGHTS_QUOTA_SCOPE) -> str:
+    return f"auraxis:ai-daily:{scope}:{user_id}:{_brt_date_str()}"
 
 
-def get_ai_daily_usage(user_id: UUID) -> tuple[int, int]:
+def get_ai_daily_usage(
+    user_id: UUID,
+    *,
+    scope: str = AI_INSIGHTS_QUOTA_SCOPE,
+) -> tuple[int, int]:
     """Return current daily successful insight count without incrementing it."""
-    key = _counter_key(user_id)
+    key = _counter_key(user_id, scope)
     ttl = _seconds_until_midnight_brt()
 
     client = _get_redis()
@@ -129,9 +161,13 @@ def get_ai_daily_usage(user_id: UUID) -> tuple[int, int]:
     return _InMemoryAICounter.get(key), ttl
 
 
-def record_ai_daily_success(user_id: UUID) -> tuple[int, int]:
+def record_ai_daily_success(
+    user_id: UUID,
+    *,
+    scope: str = AI_INSIGHTS_QUOTA_SCOPE,
+) -> tuple[int, int]:
     """Increment the daily counter after a successful, non-cached AI insight."""
-    key = _counter_key(user_id)
+    key = _counter_key(user_id, scope)
     ttl = _seconds_until_midnight_brt()
 
     client = _get_redis()
@@ -148,6 +184,7 @@ def check_ai_daily_limit(
     user_id: UUID,
     *,
     max_calls: int = AI_DAILY_LIMIT,
+    scope: str = AI_INSIGHTS_QUOTA_SCOPE,
 ) -> tuple[int, int]:
     """Increment and return the legacy daily AI call counter for *user_id*.
 
@@ -157,7 +194,7 @@ def check_ai_daily_limit(
     A caller that receives current_count > max_calls MUST reject the request.
     """
     _ = max_calls
-    return record_ai_daily_success(user_id)
+    return record_ai_daily_success(user_id, scope=scope)
 
 
 def request_is_admin() -> bool:
@@ -174,25 +211,17 @@ def request_is_admin() -> bool:
         return False
 
 
-def _is_countable_ai_success(response: Response) -> bool:
-    """Return True when this response represents a new AI generation."""
-    if not 200 <= response.status_code < 300:
-        return False
-
-    payload = response.get_json(silent=True)
-    if isinstance(payload, dict):
-        data = payload.get("data")
-        result_payload = data if isinstance(data, dict) else payload
-        if result_payload.get("cached") is True:
-            return False
-
-    return True
-
-
 def ai_daily_limit(
     max_calls: int = AI_DAILY_LIMIT,
+    *,
+    scope: str = AI_INSIGHTS_QUOTA_SCOPE,
 ) -> Callable[[_F], _F]:
-    """Decorator that enforces a per-user daily cap on AI insights endpoints.
+    """Decorate AI endpoints with the ``X-AI-Calls-Remaining`` header.
+
+    Quota enforcement and counting moved into ``AIAdvisoryService`` (#1546) so
+    REST and GraphQL share a single point of truth. This decorator only reads
+    the scoped counter after the handler runs and reports the remaining
+    allowance to the client.
 
     Must be applied AFTER @jwt_required() so that current_user_id() is available.
 
@@ -214,29 +243,13 @@ def ai_daily_limit(
             if request_is_admin():
                 return cast(Response, fn(*args, **kwargs))
 
-            # Only Premium users (advanced_simulations) can make manual AI insights
-            # calls. Skip the rate-limit counter for Free users — the handler will
-            # return 403 via its own entitlement gate.
+            # Free users get 403 from the handler's entitlement gate — the
+            # remaining-allowance header would be misleading noise.
             if not has_entitlement(user_id, "advanced_simulations"):
                 return cast(Response, fn(*args, **kwargs))
 
-            count, retry_after = get_ai_daily_usage(user_id)
-
-            if count >= max_calls:
-                resp = compat_error_response(
-                    legacy_payload={"error": AI_DAILY_LIMIT_MESSAGE},
-                    status_code=429,
-                    message=AI_DAILY_LIMIT_MESSAGE,
-                    error_code=AI_DAILY_LIMIT_ERROR_CODE,
-                )
-                resp.headers["Retry-After"] = str(retry_after)
-                resp.headers["X-AI-Calls-Remaining"] = "0"
-                return resp
-
             response = cast(Response, fn(*args, **kwargs))
-            if _is_countable_ai_success(response):
-                count, retry_after = record_ai_daily_success(user_id)
-
+            count, _ = get_ai_daily_usage(user_id, scope=scope)
             remaining = max(0, max_calls - count)
             response.headers["X-AI-Calls-Remaining"] = str(remaining)
             return response
@@ -247,9 +260,12 @@ def ai_daily_limit(
 
 
 __all__ = [
+    "AI_CHAT_QUOTA_SCOPE",
     "AI_DAILY_LIMIT",
     "AI_DAILY_LIMIT_ERROR_CODE",
     "AI_DAILY_LIMIT_MESSAGE",
+    "AI_INSIGHTS_QUOTA_SCOPE",
+    "AIDailyLimitExceededError",
     "ai_daily_limit",
     "request_is_admin",
     "check_ai_daily_limit",

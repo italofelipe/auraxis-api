@@ -1,15 +1,17 @@
-"""Tests for AI daily rate limit middleware (#1214).
+"""Tests for AI daily rate limit middleware (#1214, reworked in #1546).
 
 Coverage areas:
 - _seconds_until_midnight_brt() returns positive int <= 86400
 - _brt_date_str() returns YYYY-MM-DD format
 - check_ai_daily_limit(): 1st call → count 1, 2nd → count 2, 3rd → count 3
 - InMemoryAICounter.reset() clears state
-- HTTP GET /ai/insights/spending:
-    - 1st call → 200 + X-AI-Calls-Remaining: 1
-    - 2nd call → 200 + X-AI-Calls-Remaining: 0
-    - 3rd call → 429 + error_code AI_DAILY_LIMIT_EXCEEDED + Retry-After header
+- HTTP POST /ai/insights/generate (quota now enforced inside the service):
+    - 1st call → 200 + X-AI-Calls-Remaining: 0 (1/day consumed)
+    - repeat same period → 200 cached (semantic dedupe wins over quota)
+    - force_regenerate with quota exhausted → 429 AI_DAILY_LIMIT_EXCEEDED
     - provider failures and cached responses do not consume the daily allowance
+- HTTP GET /ai/insights/spending is read-only (#1546): never generates,
+  never consumes quota, always 200 for Premium.
 - Free user still gets 403 from entitlement gate (never reaches rate limit)
 - Goal projection endpoint NOT rate-limited (not /ai/insights/*)
 """
@@ -202,64 +204,57 @@ class TestAIDailyRateLimitHTTP:
         yield
         _reset_ai_counter()
 
-    def test_first_call_returns_200_with_remaining_header(self, app, client) -> None:
+    def test_first_generate_returns_200_with_remaining_header(
+        self, app, client
+    ) -> None:
         token = _register_and_login(client, "ai-rl-1st")
         _grant_premium(app, token)
 
-        with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
-            return_value={
-                "insights": "ok",
-                "tokens_used": 10,
-                "cost_usd": 0.0,
-                "month": "2026-05",
-                "model": "stub",
-            },
-        ):
-            resp = client.get("/ai/insights/spending", headers=_auth(token))
+        resp = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily"},
+            headers=_auth(token),
+        )
 
         assert resp.status_code == 200
         assert resp.headers.get("X-AI-Calls-Remaining") == "0"
 
-    def test_second_call_returns_429_at_daily_limit(self, app, client) -> None:
+    def test_repeat_generate_same_period_returns_cached(self, app, client) -> None:
         token = _register_and_login(client, "ai-rl-2nd")
         _grant_premium(app, token)
 
-        with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
-            return_value={
-                "insights": "ok",
-                "tokens_used": 10,
-                "cost_usd": 0.0,
-                "month": "2026-05",
-                "model": "stub",
-            },
-        ):
-            client.get("/ai/insights/spending", headers=_auth(token))
-            resp = client.get("/ai/insights/spending", headers=_auth(token, v2=True))
+        client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily"},
+            headers=_auth(token),
+        )
+        resp = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily"},
+            headers=_auth(token, v2=True),
+        )
 
-        # Daily limit is 1/day → the second call is blocked.
-        assert resp.status_code == 429
-        assert resp.get_json()["error"]["code"] == "AI_DAILY_LIMIT_EXCEEDED"
+        # Semantic dedupe (#1546): the repeat serves the existing insight.
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        data = payload.get("data") or payload
+        assert data["cached"] is True
         assert resp.headers.get("X-AI-Calls-Remaining") == "0"
 
-    def test_third_call_returns_429(self, app, client) -> None:
+    def test_force_regenerate_at_daily_limit_returns_429(self, app, client) -> None:
         token = _register_and_login(client, "ai-rl-3rd")
         _grant_premium(app, token)
 
-        with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
-            return_value={
-                "insights": "ok",
-                "tokens_used": 10,
-                "cost_usd": 0.0,
-                "month": "2026-05",
-                "model": "stub",
-            },
-        ):
-            client.get("/ai/insights/spending", headers=_auth(token))
-            client.get("/ai/insights/spending", headers=_auth(token))
-            resp = client.get("/ai/insights/spending", headers=_auth(token, v2=True))
+        client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily"},
+            headers=_auth(token),
+        )
+        resp = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily", "force_regenerate": True},
+            headers=_auth(token, v2=True),
+        )
 
         assert resp.status_code == 429
         data = resp.get_json()
@@ -271,48 +266,63 @@ class TestAIDailyRateLimitHTTP:
         token = _register_and_login(client, "ai-rl-provider-fail")
         _grant_premium(app, token)
 
+        from app.services.llm_provider import StubLLMProvider
+
+        class _FlakyProvider(StubLLMProvider):
+            _failed = False
+
+            def generate_with_usage(
+                self, prompt, *, response_schema=None, max_tokens=None
+            ):
+                if not _FlakyProvider._failed:
+                    _FlakyProvider._failed = True
+                    raise LLMProviderError("provider down")
+                return super().generate_with_usage(
+                    prompt,
+                    response_schema=response_schema,
+                    max_tokens=max_tokens,
+                )
+
         with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
-            side_effect=[
-                LLMProviderError("provider down"),
-                {
-                    "insights": "ok",
-                    "tokens_used": 10,
-                    "cost_usd": 0.0,
-                    "month": "2026-05",
-                    "model": "stub",
-                    "cached": False,
-                },
-            ],
+            "app.services.ai_advisory_service.get_llm_provider",
+            return_value=_FlakyProvider(),
         ):
-            failed = client.get("/ai/insights/spending", headers=_auth(token, v2=True))
-            recovered = client.get("/ai/insights/spending", headers=_auth(token))
+            failed = client.post(
+                "/ai/insights/generate",
+                json={"period_type": "daily"},
+                headers=_auth(token, v2=True),
+            )
+            recovered = client.post(
+                "/ai/insights/generate",
+                json={"period_type": "daily"},
+                headers=_auth(token),
+            )
 
         assert failed.status_code == 500
         assert recovered.status_code == 200
         assert recovered.headers.get("X-AI-Calls-Remaining") == "0"
 
-    def test_cached_spending_insight_does_not_consume_daily_limit(
-        self, app, client
-    ) -> None:
+    def test_spending_read_is_free_and_never_blocks(self, app, client) -> None:
+        """GET /ai/insights/spending is read-only (#1546): repeated reads never
+        generate, never consume quota and never 429."""
         token = _register_and_login(client, "ai-rl-cached")
         _grant_premium(app, token)
 
-        with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
-            return_value={
-                "insights": "cached insight",
-                "tokens_used": 10,
-                "cost_usd": 0.0,
-                "month": "2026-05",
-                "model": "stub",
-                "cached": True,
-            },
-        ):
+        for _ in range(3):
             resp = client.get("/ai/insights/spending", headers=_auth(token))
+            assert resp.status_code == 200
+        assert resp.headers.get("Deprecation") == "true"
 
-        assert resp.status_code == 200
-        assert resp.headers.get("X-AI-Calls-Remaining") == "1"
+        # Quota untouched: a real generation still goes through.
+        generate = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily"},
+            headers=_auth(token),
+        )
+        assert generate.status_code == 200
+        payload = generate.get_json()
+        data = payload.get("data") or payload
+        assert data["cached"] is False
 
     def test_cached_period_generate_does_not_consume_daily_limit(
         self, app, client
@@ -349,20 +359,16 @@ class TestAIDailyRateLimitHTTP:
         token = _register_and_login(client, "ai-rl-ptbr")
         _grant_premium(app, token)
 
-        with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
-            return_value={
-                "insights": "ok",
-                "tokens_used": 10,
-                "cost_usd": 0.0,
-                "month": "2026-05",
-                "model": "stub",
-            },
-        ):
-            for _ in range(3):
-                resp = client.get(
-                    "/ai/insights/spending", headers=_auth(token, v2=True)
-                )
+        client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily"},
+            headers=_auth(token),
+        )
+        resp = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily", "force_regenerate": True},
+            headers=_auth(token, v2=True),
+        )
 
         assert resp.status_code == 429
         data = resp.get_json()
@@ -384,32 +390,28 @@ class TestAIDailyRateLimitHTTP:
 
         assert resp.status_code == 200
 
-    def test_weekly_read_does_not_consume_spending_counter(self, app, client) -> None:
-        """The weekly-summary read is free; only spending consumes the daily
-        counter, so a weekly read between two spending calls does not shift the
+    def test_weekly_read_does_not_consume_generate_counter(self, app, client) -> None:
+        """The weekly-summary read is free; only generation consumes the daily
+        counter, so a weekly read between two generate calls does not shift the
         limit."""
         token = _register_and_login(client, "ai-rl-shared")
         _grant_premium(app, token)
 
-        with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
-            return_value={
-                "insights": "ok",
-                "tokens_used": 10,
-                "cost_usd": 0.0,
-                "month": "2026-05",
-                "model": "stub",
-            },
-        ):
-            r1 = client.get("/ai/insights/spending", headers=_auth(token))
-            r2 = client.get(
-                "/ai/insights/weekly-summary", headers=_auth(token, v2=True)
-            )
-            r3 = client.get("/ai/insights/spending", headers=_auth(token, v2=True))
+        r1 = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily"},
+            headers=_auth(token),
+        )
+        r2 = client.get("/ai/insights/weekly-summary", headers=_auth(token, v2=True))
+        r3 = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily", "force_regenerate": True},
+            headers=_auth(token, v2=True),
+        )
 
         assert r1.status_code == 200
         assert r2.status_code == 200  # read-only, not rate limited
-        assert r3.status_code == 429  # second spending call hits the daily cap
+        assert r3.status_code == 429  # forced second generation hits the daily cap
 
     def test_free_user_gets_403_not_429(self, app, client) -> None:
         """Free users are blocked by entitlement gate before reaching rate limit."""
@@ -427,24 +429,24 @@ class TestAIDailyRateLimitHTTP:
         _grant_premium(app, token_a)
         _grant_premium(app, token_b)
 
-        with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
-            return_value={
-                "insights": "ok",
-                "tokens_used": 10,
-                "cost_usd": 0.0,
-                "month": "2026-05",
-                "model": "stub",
-            },
-        ):
-            # Exhaust user_a (1/day → second call blocked)
-            client.get("/ai/insights/spending", headers=_auth(token_a))
-            blocked = client.get(
-                "/ai/insights/spending", headers=_auth(token_a, v2=True)
-            )
-            assert blocked.status_code == 429
+        # Exhaust user_a (1/day → forced second generation blocked)
+        client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily"},
+            headers=_auth(token_a),
+        )
+        blocked = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily", "force_regenerate": True},
+            headers=_auth(token_a, v2=True),
+        )
+        assert blocked.status_code == 429
 
-            # user_b still has full quota
-            resp_b = client.get("/ai/insights/spending", headers=_auth(token_b))
-            assert resp_b.status_code == 200
-            assert resp_b.headers.get("X-AI-Calls-Remaining") == "0"
+        # user_b still has full quota
+        resp_b = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily"},
+            headers=_auth(token_b),
+        )
+        assert resp_b.status_code == 200
+        assert resp_b.headers.get("X-AI-Calls-Remaining") == "0"

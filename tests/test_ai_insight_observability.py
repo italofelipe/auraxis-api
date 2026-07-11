@@ -12,6 +12,8 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.extensions.database import db
 from app.models.ai_insight import AIInsight
 from app.services.financial_insight_context_builder import (
@@ -19,6 +21,14 @@ from app.services.financial_insight_context_builder import (
     truncate_snapshot,
 )
 from app.services.llm_provider import LLMResponse
+
+
+@pytest.fixture(autouse=True)
+def _bypass_premium_gate():
+    """Raw uuid users here; the Premium gate (#1546) has its own coverage."""
+    with patch("app.services.ai_advisory_service._ensure_premium_entitlement"):
+        yield
+
 
 _ALL_FINANCIAL_DIMENSIONS = [
     "general",

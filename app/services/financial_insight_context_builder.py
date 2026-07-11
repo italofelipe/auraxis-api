@@ -1020,25 +1020,76 @@ class FinancialInsightContextBuilder:
     ) -> tuple[dict[str, Any], list[str]]:
         """Return (wallet_section, missing_external_rates).
 
-        Sanitized list of holdings + asset-class distribution + investor
-        profile diagnosis + benchmark CDI/IPCA for the anchor's month.
+        Valuation comes from ``PortfolioValuationService`` — the same source
+        the Carteira page uses (market prices via brapi, fixed-income
+        projection, operations cost basis). Summing the raw nullable
+        ``Wallet.value`` column used to feed the LLM ``total_value = 0.00``
+        for ticker holdings and produce "carteira vale R$0,00" hallucinations
+        (#1546).
         """
-        wallets = Wallet.query.filter_by(user_id=user_id).order_by(Wallet.name).all()
+        from app.services.portfolio_valuation_service import (
+            PortfolioValuationService,
+        )
+
         user = User.query.filter_by(id=user_id).first()
-        items = [self._serialize_wallet_item(w) for w in wallets]
+        valuation = PortfolioValuationService(user_id).get_portfolio_current_valuation()
+        summary = valuation["summary"]
+        valuation_items = sorted(
+            valuation["items"], key=lambda item: str(item.get("name") or "")
+        )
+
+        values_by_wallet_id: dict[UUID, Decimal] = {}
+        for item in valuation_items:
+            try:
+                values_by_wallet_id[UUID(str(item["investment_id"]))] = Decimal(
+                    str(item["current_value"])
+                )
+            except (ValueError, KeyError, ArithmeticError):  # pragma: no cover
+                continue
+
+        wallets = Wallet.query.filter_by(user_id=user_id).order_by(Wallet.name).all()
         diagnosis = evaluate_allocation(
             investor_profile=getattr(user, "investor_profile", None) if user else None,
             wallets=wallets,
+            value_resolver=lambda w: values_by_wallet_id.get(w.id, Decimal("0")),
         )
+
+        items = [
+            self._serialize_wallet_valuation_item(item) for item in valuation_items
+        ]
+        # A ticker holding priced by anything other than brapi means the live
+        # quote was unavailable and its value is a fallback (cost basis /
+        # estimate / zero) — the prompt must not assert profitability then.
+        market_data_unavailable = any(
+            item.get("ticker") and item.get("valuation_source") != "brapi_market_price"
+            for item in valuation_items
+        )
+
         benchmark, missing = self._fetch_wallet_benchmark(
             market_rates=market_rates,
             year=anchor.year,
             month=anchor.month,
         )
+        if market_data_unavailable:
+            missing = [*missing, "wallet_market_prices"]
+
+        total_current_value = Decimal(str(summary["total_current_value"]))
         return (
             {
                 "items": items,
-                "total_value": _money_str(diagnosis.distribution.total_value),
+                # ``total_value`` kept as an alias of the real current value —
+                # prompt instructions and projections read it.
+                "total_value": _money_str(total_current_value),
+                "total_current_value": _money_str(total_current_value),
+                "total_invested_amount": _money_str(
+                    Decimal(str(summary["total_invested_amount"]))
+                ),
+                "total_profit_loss": _money_str(
+                    Decimal(str(summary["total_profit_loss"]))
+                ),
+                "total_profit_loss_percent": _percent_str(
+                    Decimal(str(summary["total_profit_loss_percent"]))
+                ),
                 "distribution": {
                     "fixed_income_pct": _percent_str(
                         diagnosis.distribution.fixed_income_pct
@@ -1048,22 +1099,36 @@ class FinancialInsightContextBuilder:
                 },
                 "profile_alignment": self._serialize_diagnosis(diagnosis),
                 "benchmark": benchmark,
+                "data_quality": {
+                    "total_items": len(valuation_items),
+                    "with_market_data": int(summary["with_market_data"]),
+                    "without_market_data": int(summary["without_market_data"]),
+                    "market_data_unavailable": market_data_unavailable,
+                },
             },
             missing,
         )
 
-    def _serialize_wallet_item(self, wallet: Wallet) -> dict[str, Any]:
+    def _serialize_wallet_valuation_item(self, item: dict[str, Any]) -> dict[str, Any]:
+        annual_rate = item.get("annual_rate")
         return {
-            "name": _sanitize_text(wallet.name, max_length=80) or "Investimento",
-            "asset_class": (wallet.asset_class or "custom").lower(),
-            "current_value": _money_str(wallet.value or 0),
-            "annual_rate": _percent_str(wallet.annual_rate or 0)
-            if wallet.annual_rate is not None
+            "name": _sanitize_text(str(item.get("name") or ""), max_length=80)
+            or "Investimento",
+            "asset_class": str(item.get("asset_class") or "custom").lower(),
+            "current_value": _money_str(Decimal(str(item["current_value"]))),
+            "invested_amount": _money_str(Decimal(str(item["invested_amount"]))),
+            "profit_loss_amount": _money_str(Decimal(str(item["profit_loss_amount"]))),
+            "profit_loss_percent": _percent_str(
+                Decimal(str(item["profit_loss_percent"]))
+            ),
+            "annual_rate": _percent_str(Decimal(str(annual_rate)))
+            if annual_rate is not None
             else None,
-            "ticker": _sanitize_text(wallet.ticker, max_length=16)
-            if wallet.ticker
+            "ticker": _sanitize_text(str(item["ticker"]), max_length=16)
+            if item.get("ticker")
             else None,
-            "should_be_on_wallet": bool(wallet.should_be_on_wallet),
+            "valuation_source": str(item.get("valuation_source") or "manual_value"),
+            "should_be_on_wallet": bool(item.get("should_be_on_wallet")),
         }
 
     def _serialize_diagnosis(self, diagnosis: AllocationDiagnosis) -> dict[str, Any]:

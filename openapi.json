@@ -743,6 +743,12 @@
             "nullable": true,
             "type": "string"
           },
+          "force_regenerate": {
+            "default": false,
+            "description": "Quando true, regenera o insight mesmo que já exista um para o mesmo período (confirmação explícita do usuário). Sujeito à quota diária.",
+            "example": false,
+            "type": "boolean"
+          },
           "period_type": {
             "description": "Granularidade do insight financeiro.",
             "enum": [
@@ -2523,7 +2529,7 @@
     },
     "/ai/insights/spending": {
       "get": {
-        "description": "Analisa os gastos do mês informado e retorna insights gerados por LLM em PT-BR. Requer entitlement 'advanced_simulations' (plano Premium).",
+        "description": "Retorna o insight de gastos já persistido para o dia atual, sem nunca chamar o LLM (`generated: false` quando ainda não existe). DEPRECATED: use POST /ai/insights/generate para gerar. Requer entitlement 'advanced_simulations' (plano Premium).",
         "parameters": [
           {
             "description": "Mês no formato YYYY-MM. Padrão: mês atual.",
@@ -2540,8 +2546,9 @@
               "application/json": {
                 "example": {
                   "data": {
-                    "cached": false,
+                    "cached": true,
                     "cost_usd": 4.8e-05,
+                    "generated": true,
                     "insights": "[{\"type\":\"saude_financeira\",\"title\":\"Resumo\",\"message\":\"Mensagem acionável.\"}]",
                     "items": [
                       {
@@ -2719,7 +2726,7 @@
             "BearerAuth": []
           }
         ],
-        "summary": "Insights de gastos com IA (Premium)",
+        "summary": "Insight de gastos do dia (leitura, Premium) — DEPRECATED",
         "tags": [
           "AI Advisory"
         ]

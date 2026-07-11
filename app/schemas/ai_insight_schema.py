@@ -42,6 +42,18 @@ class AIInsightGenerateRequestSchema(Schema):
             "example": "550e8400-e29b-41d4-a716-446655440000",
         },
     )
+    force_regenerate = fields.Boolean(
+        required=False,
+        load_default=False,
+        metadata={
+            "description": (
+                "Quando true, regenera o insight mesmo que já exista um para o "
+                "mesmo período (confirmação explícita do usuário). Sujeito à "
+                "quota diária."
+            ),
+            "example": False,
+        },
+    )
 
 
 class AIMonthlyReportRequestSchema(Schema):

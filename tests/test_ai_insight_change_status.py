@@ -75,7 +75,11 @@ def _generate_daily(app, user_id: uuid.UUID, anchor: date) -> None:
     provider = MagicMock()
     provider.generate_with_usage.return_value = _financial_llm_response()
     service = AIAdvisoryService(user_id=user_id, llm_provider=provider)
-    service.generate_financial_insights(period_type="daily", anchor_date=anchor)
+    # trigger="scheduled" skips the user-facing entitlement/quota gates (#1546)
+    # — these tests exercise snapshot/hash logic with a raw uuid user.
+    service.generate_financial_insights(
+        period_type="daily", anchor_date=anchor, trigger="scheduled"
+    )
 
 
 class TestChangeStatusService:

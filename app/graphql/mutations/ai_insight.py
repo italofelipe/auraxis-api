@@ -13,6 +13,7 @@ from uuid import UUID
 
 import graphene
 from flask import request
+from graphql import GraphQLError
 
 from app.application.services.ai_insight_feedback_service import (
     AIInsightFeedbackError,
@@ -20,17 +21,66 @@ from app.application.services.ai_insight_feedback_service import (
 )
 from app.graphql.auth import get_current_user_required
 from app.graphql.errors import (
+    GRAPHQL_ERROR_CODE_AI_BUDGET,
+    GRAPHQL_ERROR_CODE_AI_CONSENT_REQUIRED,
+    GRAPHQL_ERROR_CODE_AI_DAILY_LIMIT,
+    GRAPHQL_ERROR_CODE_ENTITLEMENT_REQUIRED,
     GRAPHQL_ERROR_CODE_NOT_FOUND,
     GRAPHQL_ERROR_CODE_VALIDATION,
     build_public_graphql_error,
 )
 from app.graphql.observability import log_graphql_resolver
-from app.services.ai_advisory_service import AIAdvisoryService
+from app.middleware.ai_rate_limit import AIDailyLimitExceededError
+from app.services.ai_advisory_service import (
+    AIAdvisoryService,
+    AIEntitlementRequiredError,
+    AIInsightCostBudgetExceededError,
+)
+from app.services.ai_lgpd import AIConsentRequiredError
 from app.services.financial_insight_context_builder import INSIGHT_DIMENSIONS
 from app.services.llm_provider import LLMProviderError
 from app.utils import timezone_utils
 
 _VALID_PERIOD_TYPES = ("daily", "weekly", "monthly")
+
+# Exceptions raised by the service-level AI governance gates (#1546).
+_AI_GOVERNANCE_ERRORS = (
+    AIDailyLimitExceededError,
+    AIEntitlementRequiredError,
+    AIConsentRequiredError,
+    LLMProviderError,  # includes AIInsightCostBudgetExceededError
+)
+
+
+def _to_public_ai_graphql_error(
+    exc: Exception, *, llm_error_message: str
+) -> GraphQLError:
+    """Map service-level AI exceptions to public GraphQL error codes (#1546)."""
+    if isinstance(exc, AIDailyLimitExceededError):
+        return build_public_graphql_error(
+            str(exc),
+            code=GRAPHQL_ERROR_CODE_AI_DAILY_LIMIT,
+            retry_after_seconds=exc.retry_after_seconds,
+        )
+    if isinstance(exc, AIEntitlementRequiredError):
+        return build_public_graphql_error(
+            exc.message,
+            code=GRAPHQL_ERROR_CODE_ENTITLEMENT_REQUIRED,
+        )
+    if isinstance(exc, AIConsentRequiredError):
+        return build_public_graphql_error(
+            exc.message,
+            code=GRAPHQL_ERROR_CODE_AI_CONSENT_REQUIRED,
+        )
+    if isinstance(exc, AIInsightCostBudgetExceededError):
+        return build_public_graphql_error(
+            str(exc),
+            code=GRAPHQL_ERROR_CODE_AI_BUDGET,
+        )
+    return build_public_graphql_error(
+        llm_error_message,
+        code="LLM_PROVIDER_ERROR",
+    )
 
 
 class AIInsightItemType(graphene.ObjectType):
@@ -161,14 +211,22 @@ def _to_lead_type(lead: dict[str, Any] | None) -> AIInsightLeadType | None:
 class GenerateAiInsightMutation(graphene.Mutation):
     """GraphQL parity for POST /ai/insights/generate.
 
-    Reuses AIAdvisoryService — quota (2x/day Premium), entitlement gate and
-    LGPD consent are enforced inside the service. GraphQL surface exposes the
-    same payload shape so the frontend hub can render either path identically.
+    Reuses AIAdvisoryService — the daily quota (1/day, scoped), Premium
+    entitlement gate and LGPD consent are enforced INSIDE the service (#1546),
+    so REST and GraphQL share one enforcement point. GraphQL surface exposes
+    the same payload shape so the frontend hub can render either path
+    identically.
     """
 
     class Arguments:
         period_type = graphene.String(required=True)
         anchor_date = graphene.String()
+        force_regenerate = graphene.Boolean(
+            description=(
+                "Regenera mesmo que já exista insight para o período "
+                "(confirmação explícita). Sujeito à quota diária."
+            )
+        )
 
     Output = GenerateAiInsightPayload
 
@@ -178,6 +236,7 @@ class GenerateAiInsightMutation(graphene.Mutation):
         _info: graphene.ResolveInfo,
         period_type: str,
         anchor_date: str | None = None,
+        force_regenerate: bool = False,
     ) -> GenerateAiInsightPayload:
         user = get_current_user_required()
 
@@ -211,12 +270,13 @@ class GenerateAiInsightMutation(graphene.Mutation):
             result = service.generate_financial_insights(
                 period_type=normalized,
                 anchor_date=parsed_anchor,
+                force_regenerate=bool(force_regenerate),
                 **timezone_kwargs,
             )
-        except LLMProviderError as exc:
-            raise build_public_graphql_error(
-                "Erro ao gerar insight financeiro",
-                code="LLM_PROVIDER_ERROR",
+        except _AI_GOVERNANCE_ERRORS as exc:
+            raise _to_public_ai_graphql_error(
+                exc,
+                llm_error_message="Erro ao gerar insight financeiro",
             ) from exc
 
         items = [_to_item_type(item) for item in result.get("items", [])]
@@ -297,10 +357,10 @@ class AskFinancialQuestionMutation(graphene.Mutation):
                 timezone_name=timezone_resolution.name,
                 timezone_fallback=timezone_resolution.fallback_used,
             )
-        except LLMProviderError as exc:
-            raise build_public_graphql_error(
-                "Erro ao processar a pergunta",
-                code="LLM_PROVIDER_ERROR",
+        except _AI_GOVERNANCE_ERRORS as exc:
+            raise _to_public_ai_graphql_error(
+                exc,
+                llm_error_message="Erro ao processar a pergunta",
             ) from exc
 
         return AskFinancialQuestionPayload(

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TYPE_CHECKING, Iterable, Literal
+from typing import TYPE_CHECKING, Callable, Iterable, Literal
 
 from app.schemas.wallet_schema import (
     FIXED_INCOME_ASSET_CLASSES,
@@ -87,14 +87,24 @@ class AllocationDiagnosis:
     notes: tuple[str, ...]
 
 
-def compute_distribution(wallets: Iterable["Wallet"]) -> AllocationDistribution:
-    """Return percent split of a wallet collection by asset-class bucket."""
+def compute_distribution(
+    wallets: Iterable["Wallet"],
+    *,
+    value_resolver: Callable[["Wallet"], Decimal] | None = None,
+) -> AllocationDistribution:
+    """Return percent split of a wallet collection by asset-class bucket.
+
+    ``value_resolver`` lets callers supply real (market) valuations per
+    holding — e.g. from ``PortfolioValuationService`` — instead of the raw
+    nullable ``Wallet.value`` column, which is NULL for ticker holdings and
+    used to collapse the distribution to zero (#1546).
+    """
     total = Decimal("0")
     fixed = Decimal("0")
     market = Decimal("0")
     custom = Decimal("0")
     for w in wallets:
-        value = _wallet_value(w)
+        value = value_resolver(w) if value_resolver is not None else _wallet_value(w)
         if value <= 0:
             continue
         total += value
@@ -125,6 +135,7 @@ def evaluate_allocation(
     *,
     investor_profile: str | None,
     wallets: Iterable["Wallet"],
+    value_resolver: Callable[["Wallet"], Decimal] | None = None,
 ) -> AllocationDiagnosis:
     """Diagnose whether the actual allocation matches the declared profile.
 
@@ -132,7 +143,7 @@ def evaluate_allocation(
     produced (with ``profile=None``) so the LLM can surface the current
     distribution without an alignment claim.
     """
-    distribution = compute_distribution(wallets)
+    distribution = compute_distribution(wallets, value_resolver=value_resolver)
     notes: list[str] = []
     profile_key = _normalize_profile(investor_profile)
 

@@ -27,6 +27,18 @@ import pytest
 
 from app.services.llm_provider import LLMProviderError, LLMResponse, StubLLMProvider
 
+
+@pytest.fixture(autouse=True)
+def _bypass_premium_gate():
+    """Service-level tests here use raw uuid users (no entitlement rows).
+
+    The Premium gate moved into the service (#1546) and has dedicated coverage
+    in test_ai_insight_generation_governance.py — bypass it for these units.
+    """
+    with patch("app.services.ai_advisory_service._ensure_premium_entitlement"):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -631,9 +643,13 @@ class TestAIAdvisoryServiceFinancialInsights:
                     period_type="daily",
                     anchor_date=date(2026, 5, 17),
                 )
+                # Same period regenerates only on explicit confirmation
+                # (#1546 semantic dedupe) — force_regenerate models the
+                # user confirming after the change-status "changed" signal.
                 second = service.generate_financial_insights(
                     period_type="daily",
                     anchor_date=date(2026, 5, 17),
+                    force_regenerate=True,
                 )
 
             assert first["cached"] is False
@@ -1106,17 +1122,34 @@ class TestAISpendingInsightsEndpoint:
         data = body.get("data") or body
         assert data["month"] == "2026-01"
 
-    def test_llm_error_returns_500(self, app, client) -> None:
+    def test_read_error_returns_500(self, app, client) -> None:
         token = _register_and_login(client, prefix="ai-err")
         user_id = _get_current_user_id(app, token)
         _grant_entitlement(app, user_id, "advanced_simulations")
 
         with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
-            side_effect=LLMProviderError("provider down"),
+            "app.services.ai_advisory_service.AIAdvisoryService.read_spending_insights",
+            side_effect=RuntimeError("db down"),
         ):
             resp = client.get("/ai/insights/spending", headers=_auth(token))
             assert resp.status_code == 500
+
+    def test_get_never_calls_llm_generation(self, app, client) -> None:
+        """#1546: the GET endpoint is read-only — generation must not happen."""
+        token = _register_and_login(client, prefix="ai-ro")
+        user_id = _get_current_user_id(app, token)
+        _grant_entitlement(app, user_id, "advanced_simulations")
+
+        with patch(
+            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights"
+        ) as mocked_generate:
+            resp = client.get("/ai/insights/spending", headers=_auth(token))
+
+        assert resp.status_code == 200
+        mocked_generate.assert_not_called()
+        body = resp.get_json()
+        data = body.get("data") or body
+        assert data["generated"] is False
 
 
 class TestAIInsightGenerateEndpoint:
@@ -1199,6 +1232,7 @@ class TestAIInsightGenerateEndpoint:
             "period_type": "daily",
             "anchor_date": date(2026, 5, 17),
             "preview_run_id": None,
+            "force_regenerate": False,
         }
 
     def test_post_generation_uses_user_timezone_when_anchor_is_omitted(
@@ -1248,6 +1282,7 @@ class TestAIInsightGenerateEndpoint:
             "period_type": "daily",
             "anchor_date": date(2026, 5, 21),
             "preview_run_id": None,
+            "force_regenerate": False,
             "timezone_name": "America/Sao_Paulo",
             "timezone_fallback": False,
         }
@@ -1299,6 +1334,7 @@ class TestAIInsightGenerateEndpoint:
             "period_type": "daily",
             "anchor_date": date(2026, 5, 21),
             "preview_run_id": None,
+            "force_regenerate": False,
             "timezone_name": "America/Sao_Paulo",
             "timezone_fallback": True,
         }
@@ -1347,6 +1383,7 @@ class TestAIInsightGenerateEndpoint:
             "period_type": "daily",
             "anchor_date": date(2026, 5, 22),
             "preview_run_id": None,
+            "force_regenerate": False,
             "timezone_name": "Pacific/Kiritimati",
             "timezone_fallback": False,
         }
@@ -1392,6 +1429,7 @@ class TestAIInsightGenerateEndpoint:
             "period_type": "daily",
             "anchor_date": date(2026, 5, 17),
             "preview_run_id": preview_run_id,
+            "force_regenerate": False,
         }
 
     def test_post_generation_budget_exceeded_returns_429(self, app, client) -> None:

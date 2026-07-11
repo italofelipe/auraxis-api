@@ -8,6 +8,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from inspect import getsource
 from typing import Any
+from unittest.mock import patch
 
 from app.extensions.database import db
 from app.models.budget import Budget
@@ -992,3 +993,98 @@ class TestFinancialInsightContextBuilderMonthly:
         assert snapshot["data_quality"]["insufficient_goal_pace_data"] is True
         assert snapshot["goals"][0]["pace_assessment"] == "insufficient_data"
         assert snapshot["goals"][0]["pace_basis"] == "missing_target_date"
+
+
+class TestWalletValuationSnapshot:
+    """Wallet section sourced from PortfolioValuationService (#1546).
+
+    The AI snapshot used to sum the raw nullable ``Wallet.value`` column,
+    collapsing ticker holdings (value=NULL) to R$0,00 and hallucinating
+    "carteira sem rentabilidade".
+    """
+
+    @staticmethod
+    def _make_ticker_wallet(user_id: uuid.UUID, *, quantity: str = "5") -> Wallet:
+        wallet = Wallet(
+            user_id=user_id,
+            name="PETR4",
+            value=None,
+            ticker="PETR4",
+            quantity=int(quantity),
+            asset_class="stock",
+            register_date=date(2026, 1, 1),
+            should_be_on_wallet=True,
+        )
+        db.session.add(wallet)
+        db.session.commit()
+        return wallet
+
+    def test_ticker_holdings_use_market_valuation(self, app) -> None:
+        with app.app_context():
+            user_id = _make_user()
+            self._make_ticker_wallet(user_id, quantity="5")
+
+            with patch(
+                "app.services.portfolio_valuation_service."
+                "InvestmentService.get_market_price",
+                return_value=10.0,
+            ):
+                snapshot = FinancialInsightContextBuilder().build_daily(
+                    user_id=user_id,
+                    anchor_date=date(2026, 7, 10),
+                )
+
+        wallet = snapshot["wallet"]
+        assert wallet["total_current_value"] == "50.00"
+        assert wallet["total_value"] == "50.00"  # compat alias
+        assert wallet["data_quality"]["market_data_unavailable"] is False
+        item = wallet["items"][0]
+        assert item["current_value"] == "50.00"
+        assert item["valuation_source"] == "brapi_market_price"
+        assert "profit_loss_percent" in item
+
+    def test_market_unavailable_sets_data_quality_flag(self, app) -> None:
+        with app.app_context():
+            user_id = _make_user()
+            self._make_ticker_wallet(user_id)
+
+            with patch(
+                "app.services.portfolio_valuation_service."
+                "InvestmentService.get_market_price",
+                return_value=None,
+            ):
+                snapshot = FinancialInsightContextBuilder().build_daily(
+                    user_id=user_id,
+                    anchor_date=date(2026, 7, 10),
+                )
+
+        wallet = snapshot["wallet"]
+        assert wallet["data_quality"]["market_data_unavailable"] is True
+        assert (
+            "wallet_market_prices"
+            in (snapshot["data_quality"]["missing_external_rates"])
+        )
+
+    def test_distribution_uses_real_values(self, app) -> None:
+        with app.app_context():
+            user_id = _make_user()
+            # Manual fixed-income style holding worth 50.00 (value column)…
+            _make_wallet(user_id, name="CDB Banco", value="50.00", asset_class="cdb")
+            # …plus a ticker holding worth 50.00 only at market price.
+            self._make_ticker_wallet(user_id, quantity="5")
+
+            with patch(
+                "app.services.portfolio_valuation_service."
+                "InvestmentService.get_market_price",
+                return_value=10.0,
+            ):
+                snapshot = FinancialInsightContextBuilder().build_daily(
+                    user_id=user_id,
+                    anchor_date=date(2026, 7, 10),
+                )
+
+        distribution = snapshot["wallet"]["distribution"]
+        # Before #1546 the ticker leg valued 0 → 100% fixed income.
+        assert Decimal(distribution["market_pct"]) > Decimal("30")
+        assert Decimal(distribution["fixed_income_pct"]) < Decimal("70")
+        assert snapshot["wallet"]["total_invested_amount"] != "0.00"

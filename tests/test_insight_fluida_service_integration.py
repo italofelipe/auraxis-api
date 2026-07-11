@@ -10,7 +10,9 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from app.extensions.database import db
 from app.models.transaction import (
@@ -22,6 +24,15 @@ from app.models.user import User
 from app.services.ai_advisory_service import AIAdvisoryService
 from app.services.ai_monthly_report_service import get_ai_insight_by_id
 from app.services.llm_provider import LLMResponse
+
+
+@pytest.fixture(autouse=True)
+def _bypass_premium_gate():
+    """Raw users without entitlement rows; the Premium gate (#1546) has its
+    own coverage in test_ai_insight_generation_governance.py."""
+    with patch("app.services.ai_advisory_service._ensure_premium_entitlement"):
+        yield
+
 
 _LEGACY_FINANCIAL_KEYS = {
     "id",

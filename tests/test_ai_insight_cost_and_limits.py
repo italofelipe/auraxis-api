@@ -213,24 +213,22 @@ class TestNoMonthlyCap:
         assert not hasattr(rl, "get_ai_monthly_usage")
 
     def test_only_daily_cap_enforced_no_monthly_pool(self, app, client) -> None:
-        # With the monthly pool gone, the ONLY gate is the 1/day cap. The second
-        # call the same day is rejected by the DAILY cap, never a monthly one,
-        # and no monthly header leaks anymore.
+        # With the monthly pool gone, the ONLY gate is the 1/day cap. A forced
+        # second generation the same day is rejected by the DAILY cap, never a
+        # monthly one, and no monthly header leaks anymore.
         token = _register_and_login(client, "ai-no-monthly")
         _grant_premium(app, token)
 
-        with patch(
-            "app.services.ai_advisory_service.AIAdvisoryService.generate_spending_insights",
-            return_value={
-                "insights": "ok",
-                "tokens_used": 10,
-                "cost_usd": 0.0,
-                "month": "2026-05",
-                "model": "stub",
-            },
-        ):
-            first = client.get("/ai/insights/spending", headers=_auth(token, v2=True))
-            second = client.get("/ai/insights/spending", headers=_auth(token, v2=True))
+        first = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily"},
+            headers=_auth(token, v2=True),
+        )
+        second = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily", "force_regenerate": True},
+            headers=_auth(token, v2=True),
+        )
 
         assert first.status_code == 200
         assert second.status_code == 429

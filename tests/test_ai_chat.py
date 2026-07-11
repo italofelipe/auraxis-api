@@ -91,7 +91,10 @@ class TestAnswerFinancialQuestionService:
             user_id = uuid.uuid4()
             service = AIAdvisoryService(user_id=user_id, llm_provider=StubLLMProvider())
 
-            result = service.answer_financial_question("Quanto gastei hoje?")
+            # Entitlement gate now lives inside the service (#1546); this unit
+            # test uses a raw uuid without user row, so bypass the gate.
+            with patch("app.services.ai_advisory_service._ensure_premium_entitlement"):
+                result = service.answer_financial_question("Quanto gastei hoje?")
 
             assert result["answer"]
             assert result["model"] == "stub"
@@ -257,7 +260,10 @@ class TestAnswerFinancialQuestionProviderError:
                 user_id=uuid.uuid4(), llm_provider=_RaisingProvider()
             )
             try:
-                service.answer_financial_question("Quanto tenho?")
+                with patch(
+                    "app.services.ai_advisory_service._ensure_premium_entitlement"
+                ):
+                    service.answer_financial_question("Quanto tenho?")
             except LLMProviderError:
                 return
             raise AssertionError("expected LLMProviderError to propagate")

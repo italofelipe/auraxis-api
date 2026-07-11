@@ -4853,7 +4853,7 @@
           ]
         },
         {
-          "name": "GET — Insights de gastos com IA (Premium)",
+          "name": "GET — Insight de gastos do dia (leitura, Premium) — DEPRECATED",
           "request": {
             "method": "GET",
             "header": [

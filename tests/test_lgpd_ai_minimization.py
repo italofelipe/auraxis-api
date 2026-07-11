@@ -541,14 +541,16 @@ class TestAIControllerConsentMapping:
 
         return token
 
-    def test_spending_insights_returns_403_without_ai_consent(
-        self, app, client
-    ) -> None:
+    def test_generate_returns_403_without_ai_consent(self, app, client) -> None:
+        # LGPD gate lives on the GENERATION path (LLM processing). The old
+        # GET /ai/insights/spending became read-only in #1546 — reading one's
+        # own persisted insight is not LLM processing and needs no consent.
         token = self._register_and_login_and_premium(app, client, "ai-no-consent")
         # Request the standard contract envelope so we can assert on
         # ``error_code`` (legacy envelope only carries a free-text message).
-        resp = client.get(
-            "/ai/insights/spending",
+        resp = client.post(
+            "/ai/insights/generate",
+            json={"period_type": "daily"},
             headers={
                 "Authorization": f"Bearer {token}",
                 "X-API-Contract": "v2",
@@ -559,6 +561,18 @@ class TestAIControllerConsentMapping:
         # Error code must identify the LGPD path so the frontend can route
         # the user to the consent flow.
         assert "AI_CONSENT_REQUIRED" in str(body)
+
+    def test_spending_read_is_consent_free(self, app, client) -> None:
+        """Read-only path (#1546): no LLM processing → no consent required."""
+        token = self._register_and_login_and_premium(app, client, "ai-read-free")
+        resp = client.get(
+            "/ai/insights/spending",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-API-Contract": "v2",
+            },
+        )
+        assert resp.status_code == 200
 
 
 __all__ = []
