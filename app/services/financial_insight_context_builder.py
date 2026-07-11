@@ -17,6 +17,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, cast
 from uuid import UUID
 
+from sqlalchemy.orm import QueryableAttribute, joinedload
+
 from app.models.budget import Budget
 from app.models.credit_card import CreditCard
 from app.models.goal import Goal
@@ -53,7 +55,14 @@ surface it belongs to so contextual pages can filter, while the global
 `/insights` hub renders all dimensions grouped.
 """
 
-_SNAPSHOT_VERSION = "financial_insight_snapshot.v1"
+_SNAPSHOT_VERSION = "financial_insight_snapshot.v3"
+
+
+def _tag_loader() -> Any:
+    """joinedload(Transaction.tag) — cast for legacy (non-Mapped) relationships."""
+    return joinedload(cast("QueryableAttribute[Any]", Transaction.tag))
+
+
 _CURRENCY = "BRL"
 _TIMEZONE = "America/Sao_Paulo"
 _GOAL_PACE_WINDOW_DAYS = 90
@@ -63,6 +72,7 @@ _GOAL_PACE_WINDOW_DAYS = 90
 # while preserving the structural backbone (schema_version, current_period,
 # comparisons). Override via AI_SNAPSHOT_MAX_BYTES env for cost experiments.
 DEFAULT_MAX_SNAPSHOT_BYTES = 12 * 1024
+DEFAULT_MAX_SNAPSHOT_BYTES_LONG = 24 * 1024
 MAX_SNAPSHOT_BYTES = int(
     os.getenv("AI_SNAPSHOT_MAX_BYTES", str(DEFAULT_MAX_SNAPSHOT_BYTES))
 )
@@ -637,6 +647,7 @@ class FinancialInsightContextBuilder:
             include_goals=True,
             include_credit_cards=True,
             include_wallet=True,
+            include_commitments=True,
             previous_generated_at=previous_generated_at,
             timezone_name=timezone_name,
             timezone_fallback=timezone_fallback,
@@ -759,6 +770,7 @@ class FinancialInsightContextBuilder:
             include_goals=True,
             include_credit_cards=True,
             include_wallet=True,
+            include_commitments=True,
             previous_generated_at=previous_generated_at,
             timezone_name=timezone_name,
             timezone_fallback=timezone_fallback,
@@ -801,6 +813,7 @@ class FinancialInsightContextBuilder:
             include_goals=True,
             include_credit_cards=True,
             include_wallet=True,
+            include_commitments=True,
             previous_generated_at=previous_generated_at,
             timezone_name=timezone_name,
             timezone_fallback=timezone_fallback,
@@ -852,6 +865,7 @@ class FinancialInsightContextBuilder:
         include_goals: bool = False,
         include_credit_cards: bool = False,
         include_wallet: bool = False,
+        include_commitments: bool = False,
         market_rates: MarketRatesProvider | None = None,
         previous_generated_at: datetime | None = None,
         timezone_name: str = _TIMEZONE,
@@ -923,6 +937,18 @@ class FinancialInsightContextBuilder:
                 "missing_comparison_periods": [],
             },
         }
+        snapshot["tags"] = self._tags_payload(
+            [tx for tx in non_cancelled if tx.status == TransactionStatus.PAID]
+        )
+        if include_commitments:
+            snapshot["pending_commitments"] = self._pending_commitments_payload(
+                user_id=user_id,
+                anchor=end,
+            )
+            snapshot["month_summary"] = self._month_summary_payload(
+                user_id=user_id,
+                anchor=end,
+            )
         if timezone_fallback:
             snapshot["data_quality"]["timezone_fallback"] = True
         snapshot["data_quality"].update(goal_data_quality)
@@ -1181,7 +1207,8 @@ class FinancialInsightContextBuilder:
         end: date,
     ) -> list[Transaction]:
         rows = (
-            Transaction.query.filter(
+            Transaction.query.options(_tag_loader())
+            .filter(
                 Transaction.user_id == user_id,
                 Transaction.deleted.is_(False),
                 Transaction.due_date >= start,
@@ -1202,7 +1229,8 @@ class FinancialInsightContextBuilder:
         start_dt = datetime.combine(start, datetime.min.time())
         end_dt = datetime.combine(end + timedelta(days=1), datetime.min.time())
         rows = (
-            Transaction.query.filter(
+            Transaction.query.options(_tag_loader())
+            .filter(
                 Transaction.user_id == user_id,
                 Transaction.deleted.is_(False),
                 Transaction.created_at >= start_dt,
@@ -1433,6 +1461,161 @@ class FinancialInsightContextBuilder:
             )
         ]
 
+    def _tags_payload(
+        self,
+        transactions: list[Transaction],
+        *,
+        cap: int = 8,
+    ) -> dict[str, Any]:
+        """Aggregate PAID transactions by user tag (#1547).
+
+        Tags are the user's own catalogue (e.g. "academia"); surfacing them
+        lets the LLM talk about spend in the user's vocabulary. Deterministic
+        aggregation — costs a few hundred prompt tokens at most.
+        """
+
+        def _top(tx_type: TransactionType) -> list[dict[str, Any]]:
+            totals: dict[str, tuple[Decimal, int]] = {}
+            for tx in transactions:
+                if tx.type != tx_type:
+                    continue
+                tag_name = self._transaction_tag_name(tx)
+                if not tag_name:
+                    continue
+                total, count = totals.get(tag_name, (Decimal("0.00"), 0))
+                totals[tag_name] = (total + _money(tx.amount), count + 1)
+            ranked = sorted(
+                totals.items(),
+                key=lambda item: (-item[1][0], item[0]),
+            )[:cap]
+            return [
+                {"tag": tag, "total": _money_str(total), "count": count}
+                for tag, (total, count) in ranked
+            ]
+
+        return {
+            "top_by_expense": _top(TransactionType.EXPENSE),
+            "top_by_income": _top(TransactionType.INCOME),
+        }
+
+    def _pending_commitments_payload(
+        self,
+        *,
+        user_id: UUID,
+        anchor: date,
+    ) -> dict[str, Any]:
+        """Labelled overdue items + upcoming due dates (7/30 days) (#1547).
+
+        The old snapshot only carried aggregate totals — the LLM could never
+        say WHICH bill is late or WHAT is due next week.
+        """
+        unpaid_statuses = (TransactionStatus.PENDING, TransactionStatus.OVERDUE)
+        rows = (
+            Transaction.query.options(_tag_loader())
+            .filter(
+                Transaction.user_id == user_id,
+                Transaction.deleted.is_(False),
+                Transaction.status.in_(unpaid_statuses),
+                Transaction.due_date <= anchor + timedelta(days=30),
+            )
+            .order_by(Transaction.due_date.asc())
+            .all()
+        )
+        unpaid = cast(list[Transaction], rows)
+        overdue = [tx for tx in unpaid if tx.due_date < anchor]
+        upcoming = [tx for tx in unpaid if tx.due_date > anchor]
+        upcoming_7d = [
+            tx for tx in upcoming if tx.due_date <= anchor + timedelta(days=7)
+        ]
+
+        def _block(
+            items: list[Transaction],
+            *,
+            item_limit: int,
+            with_days_overdue: bool = False,
+        ) -> dict[str, Any]:
+            serialized = []
+            for tx in items[:item_limit]:
+                entry = self._serialize_transaction(tx)
+                if with_days_overdue:
+                    entry["days_overdue"] = (anchor - tx.due_date).days
+                serialized.append(entry)
+            return {
+                "count": len(items),
+                "expense_total": _money_str(self._sum(items, TransactionType.EXPENSE)),
+                "income_total": _money_str(self._sum(items, TransactionType.INCOME)),
+                "items": serialized,
+            }
+
+        return {
+            "overdue": _block(overdue, item_limit=10, with_days_overdue=True),
+            "upcoming_7d": _block(upcoming_7d, item_limit=5),
+            "upcoming_30d": _block(upcoming, item_limit=5),
+        }
+
+    def _month_summary_payload(
+        self,
+        *,
+        user_id: UUID,
+        anchor: date,
+    ) -> dict[str, Any]:
+        """Deterministic month-to-date health block (#1547).
+
+        Projection is commitments-based: current paid balance plus every
+        still-unpaid commitment of the calendar month (incl. overdue) — no
+        extrapolation the LLM could mistake for fact.
+        """
+        month_start = anchor.replace(day=1)
+        month_end = date(
+            anchor.year, anchor.month, monthrange(anchor.year, anchor.month)[1]
+        )
+        month_txs = [
+            tx
+            for tx in self._fetch_transactions(
+                user_id=user_id, start=month_start, end=month_end
+            )
+            if tx.status != TransactionStatus.CANCELLED
+        ]
+        paid_mtd = [
+            tx
+            for tx in month_txs
+            if tx.status == TransactionStatus.PAID and tx.due_date <= anchor
+        ]
+        unpaid_month = [
+            tx
+            for tx in month_txs
+            if tx.status in (TransactionStatus.PENDING, TransactionStatus.OVERDUE)
+        ]
+        income_mtd = self._sum(paid_mtd, TransactionType.INCOME)
+        expense_mtd = self._sum(paid_mtd, TransactionType.EXPENSE)
+        balance_mtd = income_mtd - expense_mtd
+        savings_rate = (
+            (balance_mtd / income_mtd * Decimal("100")).quantize(Decimal("0.01"))
+            if income_mtd > 0
+            else Decimal("0.00")
+        )
+        days_elapsed = max(1, anchor.day)
+        burn_rate = (expense_mtd / Decimal(days_elapsed)).quantize(Decimal("0.01"))
+        pending_income = self._sum(unpaid_month, TransactionType.INCOME)
+        pending_expense = self._sum(unpaid_month, TransactionType.EXPENSE)
+        projected_eom = balance_mtd + pending_income - pending_expense
+        overdue_expense = self._sum(
+            [tx for tx in unpaid_month if tx.due_date < anchor],
+            TransactionType.EXPENSE,
+        )
+        return {
+            "month": f"{anchor:%Y-%m}",
+            "income_mtd": _money_str(income_mtd),
+            "expense_mtd": _money_str(expense_mtd),
+            "balance_mtd": _money_str(balance_mtd),
+            "savings_rate_pct": _percent_str(savings_rate),
+            "burn_rate_daily": _money_str(burn_rate),
+            "pending_income_month": _money_str(pending_income),
+            "pending_expense_month": _money_str(pending_expense),
+            "projected_eom_balance": _money_str(projected_eom),
+            "overdue_total": _money_str(overdue_expense),
+        }
+
     def _transactions_payload(
         self,
         transactions: list[Transaction],
@@ -1527,7 +1710,17 @@ class FinancialInsightContextBuilder:
             payload["description"] = description
         if category:
             payload["category"] = category
+        tag_name = self._transaction_tag_name(transaction)
+        if tag_name:
+            payload["tag"] = tag_name
         return payload
+
+    @staticmethod
+    def _transaction_tag_name(transaction: Transaction) -> str | None:
+        tag = getattr(transaction, "tag", None)
+        if tag is None:
+            return None
+        return _sanitize_text(str(tag.name or ""), max_length=30) or None
 
     def _budgets_payload(
         self,
@@ -1556,23 +1749,39 @@ class FinancialInsightContextBuilder:
         result: list[dict[str, Any]] = []
         for budget in budgets:
             category = str(budget.category) if budget.category else None
+            tag_name: str | None = None
             spent = Decimal("0.00")
-            for tx in paid:
-                if category is None or _enum_value(tx.category) == category:
-                    spent += _money(tx.amount)
+            if budget.tag_id is not None:
+                # Tag-linked budget (#1547): spend is scoped to the tag, not
+                # the whole period — these budgets used to be excluded from
+                # the AI snapshot entirely.
+                tag_obj = getattr(budget, "tag", None)
+                tag_name = (
+                    _sanitize_text(str(tag_obj.name), max_length=30)
+                    if tag_obj is not None
+                    else None
+                )
+                for tx in paid:
+                    if tx.tag_id == budget.tag_id:
+                        spent += _money(tx.amount)
+            else:
+                for tx in paid:
+                    if category is None or _enum_value(tx.category) == category:
+                        spent += _money(tx.amount)
 
             amount = _money(budget.amount)
-            result.append(
-                {
-                    "name": _sanitize_text(budget.name) or "Orçamento",
-                    "category": category,
-                    "period": str(budget.period),
-                    "amount": _money_str(amount),
-                    "spent": _money_str(spent),
-                    "utilization_pct": _safe_pct(spent, amount),
-                    "exceeded": spent > amount,
-                }
-            )
+            entry: dict[str, Any] = {
+                "name": _sanitize_text(budget.name) or "Orçamento",
+                "category": category,
+                "period": str(budget.period),
+                "amount": _money_str(amount),
+                "spent": _money_str(spent),
+                "utilization_pct": _safe_pct(spent, amount),
+                "exceeded": spent > amount,
+            }
+            if tag_name:
+                entry["tag"] = tag_name
+            result.append(entry)
         return result
 
     def _goals_payload(
@@ -1752,7 +1961,10 @@ def _trim_transactions(snapshot: dict[str, Any]) -> bool:
     txs = snapshot.get("transactions")
     if not isinstance(txs, dict):
         return False
-    items = txs.get("items")
+    # Real snapshots emit "sample" (#1547 fixed a silent no-op that looked for
+    # "items" only); keep accepting "items" for synthetic/legacy payloads.
+    key = "sample" if isinstance(txs.get("sample"), list) else "items"
+    items = txs.get(key)
     if not (isinstance(items, list) and len(items) > 15):
         return False
     expenses = [i for i in items if i.get("type") == "expense"]
@@ -1765,7 +1977,7 @@ def _trim_transactions(snapshot: dict[str, Any]) -> bool:
             :5
         ]
     )
-    snapshot["transactions"] = {**txs, "items": kept}
+    snapshot["transactions"] = {**txs, key: kept}
     return True
 
 
@@ -1883,5 +2095,6 @@ __all__ = [
     "FinancialInsightContextBuilder",
     "INSIGHT_DIMENSIONS",
     "MAX_SNAPSHOT_BYTES",
+    "DEFAULT_MAX_SNAPSHOT_BYTES_LONG",
     "truncate_snapshot",
 ]

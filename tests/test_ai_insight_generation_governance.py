@@ -87,17 +87,24 @@ class _CountingStubProvider(StubLLMProvider):
     def __init__(self) -> None:
         self.calls = 0
 
-    def generate_with_usage(self, prompt, *, response_schema=None, max_tokens=None):
+    def generate_with_usage(
+        self, prompt, *, response_schema=None, max_tokens=None, model=None
+    ):
         self.calls += 1
         return super().generate_with_usage(
-            prompt, response_schema=response_schema, max_tokens=max_tokens
+            prompt,
+            response_schema=response_schema,
+            max_tokens=max_tokens,
+            model=model,
         )
 
 
 class _ExplodingProvider(StubLLMProvider):
     """Provider that fails the test if the LLM is ever invoked."""
 
-    def generate_with_usage(self, prompt, *, response_schema=None, max_tokens=None):
+    def generate_with_usage(
+        self, prompt, *, response_schema=None, max_tokens=None, model=None
+    ):
         raise AssertionError("LLM must not be called on a read-only path")
 
     def generate(self, prompt):  # pragma: no cover — defensive

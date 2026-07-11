@@ -197,7 +197,7 @@ class TestMetadataPersistenceAndMetrics:
             )
             assert row is not None
             md = row.metadata_dict
-            assert md["snapshot_version"] == "financial_insight_snapshot.v1"
+            assert md["snapshot_version"] == "financial_insight_snapshot.v3"
             assert md["dimensions_present"] == _SORTED_FINANCIAL_DIMENSIONS
             assert "snapshot_bytes_original" in md
             assert "snapshot_bytes_final" in md

@@ -316,7 +316,7 @@ class TestFinancialInsightContextBuilderDaily:
                 anchor_date=anchor,
             )
 
-        assert snapshot["schema_version"] == "financial_insight_snapshot.v1"
+        assert snapshot["schema_version"] == "financial_insight_snapshot.v3"
         assert snapshot["period_type"] == "daily"
         assert snapshot["period"] == {
             "start": "2026-05-17",

@@ -272,7 +272,7 @@ class TestAIDailyRateLimitHTTP:
             _failed = False
 
             def generate_with_usage(
-                self, prompt, *, response_schema=None, max_tokens=None
+                self, prompt, *, response_schema=None, max_tokens=None, model=None
             ):
                 if not _FlakyProvider._failed:
                     _FlakyProvider._failed = True
@@ -281,6 +281,7 @@ class TestAIDailyRateLimitHTTP:
                     prompt,
                     response_schema=response_schema,
                     max_tokens=max_tokens,
+                    model=model,
                 )
 
         with patch(
