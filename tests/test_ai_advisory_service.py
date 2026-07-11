@@ -372,13 +372,13 @@ class TestAIAdvisoryServiceFinancialInsights:
                 "budgets",
                 "wallet",
             ]
-            assert result["context_version"] == "financial_insight_snapshot.v1"
+            assert result["context_version"] == "financial_insight_snapshot.v3"
             assert result["cached"] is False
             assert result["tokens_used"] == 140
 
             call = provider.generate_with_usage.call_args
             prompt = call.args[0]
-            assert "financial_insight_snapshot.v1" in prompt
+            assert "financial_insight_snapshot.v3" in prompt
             assert "Não invente transações" in prompt
             assert (
                 call.kwargs["response_schema"]["name"] == "financial_insight_response"
