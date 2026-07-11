@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.62.0](https://github.com/italofelipe/auraxis-api/compare/v1.61.0...v1.62.0) (2026-07-11)
+
+
+### Features
+
+* **deploy:** validação hard de env auth-crítico + wrapper deploy-prod seguro ([#1540](https://github.com/italofelipe/auraxis-api/issues/1540)) ([8629241](https://github.com/italofelipe/auraxis-api/commit/8629241c1642471572396657ded934413719de6e)), closes [#1531](https://github.com/italofelipe/auraxis-api/issues/1531) [#1532](https://github.com/italofelipe/auraxis-api/issues/1532)
+* **health:** commit SHA em /healthz para detecção de drift ([#1541](https://github.com/italofelipe/auraxis-api/issues/1541)) ([1b3f775](https://github.com/italofelipe/auraxis-api/commit/1b3f7757f85e214c1204f40d13026fbfc15ab6a2))
+
+
+### Bug Fixes
+
+* **ai:** crons geram com trigger=scheduled fora da quota do usuário ([#1546](https://github.com/italofelipe/auraxis-api/issues/1546)) ([e5b4d68](https://github.com/italofelipe/auraxis-api/commit/e5b4d681d01903334528f03475e19d8248c801a3))
+* **ai:** enforce quota/entitlement in service, semantic dedupe, stable context hash and read-only spending ([#1546](https://github.com/italofelipe/auraxis-api/issues/1546)) ([196f58a](https://github.com/italofelipe/auraxis-api/commit/196f58abe7bbfefd5dbf8d8332d4433e015e1bb7))
+* **ai:** GET spending read-only + force_regenerate + mapeamento de erros compartilhado ([#1546](https://github.com/italofelipe/auraxis-api/issues/1546)) ([0456701](https://github.com/italofelipe/auraxis-api/commit/0456701f4212cc42d8ddbaa2342f016d0b1d61ab))
+* **ai:** kill-switch da geração indevida de insights + wallet com valuation real ([44daefe](https://github.com/italofelipe/auraxis-api/commit/44daefecf4319d497135336a3d52e52c736e331c))
+* **ai:** scoped daily quota counters + headers-only decorator ([#1546](https://github.com/italofelipe/auraxis-api/issues/1546)) ([0223655](https://github.com/italofelipe/auraxis-api/commit/02236559307b87c2b05a5d92404f2e17765dc93e))
+* **ai:** wallet snapshot via PortfolioValuationService com data_quality ([#1546](https://github.com/italofelipe/auraxis-api/issues/1546)) ([87d36b8](https://github.com/italofelipe/auraxis-api/commit/87d36b81f3b5d1fa777e3400077afe01962fd9a7))
+* **auth:** warn at boot when CSRF enforced but JWT_COOKIE_DOMAIN unset ([#1529](https://github.com/italofelipe/auraxis-api/issues/1529)) ([1441371](https://github.com/italofelipe/auraxis-api/commit/1441371f697793e1d212de6f7c7716c9b93ee61a)), closes [#1528](https://github.com/italofelipe/auraxis-api/issues/1528)
+* **graphql:** paridade de quota/gates nas mutations de IA + códigos públicos novos ([#1546](https://github.com/italofelipe/auraxis-api/issues/1546)) ([5005dad](https://github.com/italofelipe/auraxis-api/commit/5005dad1a1fb9fe2feb9cf498ebb46ba3cd11426))
+* **wallet:** value_resolver na distribuição + fallback manual_value para ticker sem cotação ([#1546](https://github.com/italofelipe/auraxis-api/issues/1546)) ([894e737](https://github.com/italofelipe/auraxis-api/commit/894e737937cc256a1a9ab21bf31a303866e38c37))
+
 ## [1.61.0](https://github.com/italofelipe/auraxis-api/compare/v1.60.0...v1.61.0) (2026-07-03)
 
 
