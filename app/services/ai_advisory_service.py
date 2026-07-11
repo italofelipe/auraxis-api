@@ -31,6 +31,7 @@ from sqlalchemy import case, func, or_
 
 from app.extensions.database import db
 from app.extensions.prometheus_metrics import (
+    record_ai_chat_answered,
     record_ai_insight_depth_below_target,
     record_ai_insight_generated,
 )
@@ -50,6 +51,7 @@ from app.models.goal import Goal
 from app.models.goal_contribution import GoalContribution
 from app.models.llm_audit_log import LLMAuditLog
 from app.models.transaction import Transaction, TransactionStatus, TransactionType
+from app.services.ai_chat_tools import CHAT_TOOLS_SPEC, execute_chat_tool
 from app.services.ai_insight_runs import transition_ai_insight_run_status
 from app.services.ai_lgpd import (
     ensure_ai_consent_granted,
@@ -58,6 +60,7 @@ from app.services.ai_lgpd import (
     redact_prompt_for_audit,
     redact_response_for_audit,
 )
+from app.services.chat_period_detection import detect_chat_period
 from app.services.financial_insight_context_builder import (
     DEFAULT_MAX_SNAPSHOT_BYTES,
     DEFAULT_MAX_SNAPSHOT_BYTES_LONG,
@@ -68,7 +71,12 @@ from app.services.financial_insight_context_builder import (
 from app.services.goal_projection_service import GoalProjectionService
 from app.services.insight_evidence_validator import filter_valid_items
 from app.services.insight_fluida_builder import enrich_insight_payload
-from app.services.llm_provider import LLMProvider, LLMProviderError, get_llm_provider
+from app.services.llm_provider import (
+    LLMProvider,
+    LLMProviderError,
+    LLMResponse,
+    get_llm_provider,
+)
 from app.services.weekly_summary import compute_weekly_summary
 from app.utils import timezone_utils
 from app.utils.datetime_utils import utc_now_naive
@@ -213,6 +221,40 @@ class AIEntitlementRequiredError(Exception):
 def _ai_chat_daily_limit() -> int:
     """Per-user daily cap for the Ask-anything chat (scoped counter)."""
     return max(1, int(os.getenv("AI_CHAT_DAILY_LIMIT", "20")))
+
+
+_CHAT_MAX_TOOL_ROUNDS = 3
+
+
+def _chat_tools_enabled() -> bool:
+    """Kill-switch for the chat function-calling loop (#1548)."""
+    return os.getenv("AI_CHAT_TOOLS_ENABLED", "1").strip().lower() not in (
+        "0",
+        "false",
+        "off",
+    )
+
+
+def _chat_model() -> str:
+    """Chat model (#1548, ADR R$5): extraction task — mini by default."""
+    return os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini") or "gpt-4o-mini"
+
+
+def _chat_model_kwargs() -> dict[str, Any]:
+    model = _chat_model()
+    return {"model": model} if model else {}
+
+
+def _chat_snapshot_max_bytes() -> int:
+    """Chat context cap — month-aware context needs the long budget."""
+    from app.services.financial_insight_context_builder import (
+        DEFAULT_MAX_SNAPSHOT_BYTES_LONG as _long_cap,
+    )
+
+    try:
+        return max(1024, int(os.getenv("AI_CHAT_SNAPSHOT_MAX_BYTES", str(_long_cap))))
+    except (TypeError, ValueError):
+        return _long_cap
 
 
 def _ensure_premium_entitlement(user_id: UUID) -> None:
@@ -1293,38 +1335,38 @@ class AIAdvisoryService:
         fallback_used = timezone_fallback or (
             timezone_resolution.fallback_used and timezone_name is not None
         )
-        anchor = anchor_date or timezone_utils.local_today(timezone_resolution)
+        today = timezone_utils.local_today(timezone_resolution)
 
-        snapshot = _build_period_snapshot(
-            insight_type=InsightType.daily,
+        # Deterministic pt-BR period detection (#1548): "salário de julho"
+        # anchors the context on July, not on today.
+        resolution = detect_chat_period(normalized_question, today=today)
+        anchor = anchor_date or resolution.anchor
+
+        snapshot = FinancialInsightContextBuilder().build_chat_context(
             user_id=self._user_id,
-            anchor=anchor,
+            anchor_date=anchor,
+            today=today,
             timezone_name=timezone_resolution.name,
             timezone_fallback=fallback_used,
         )
         prompt_snapshot = minimize_prompt_data(snapshot)
-        prompt_snapshot, _ = truncate_snapshot(prompt_snapshot)
+        prompt_snapshot, _ = truncate_snapshot(
+            prompt_snapshot,
+            max_bytes=_chat_snapshot_max_bytes(),
+        )
 
         _enforce_ai_insight_user_cost_budget(user_id=self._user_id)
 
-        prompt = _build_chat_prompt(prompt_snapshot, normalized_question)
-        try:
-            llm_resp = self._provider.generate_with_usage(
-                prompt,
-                max_tokens=_chat_max_tokens(),
-            )
-        except LLMProviderError as exc:
-            log.warning(
-                "ai_advisory.chat.llm_error user=%s error=%s",
-                self._user_id,
-                exc,
-            )
-            raise
+        answer, llm_resp, prompt_used, tool_rounds = self._answer_chat_question(
+            prompt_snapshot=prompt_snapshot,
+            question=normalized_question,
+            period_label=resolution.label,
+        )
 
         _log_llm_call(
             user_id=self._user_id,
             endpoint="chat_ask_anything",
-            prompt=prompt,
+            prompt=prompt_used,
             llm_response=llm_resp,
             consent_version=consent_version,
         )
@@ -1334,12 +1376,140 @@ class AIAdvisoryService:
             scope=AI_CHAT_QUOTA_SCOPE,
         )
 
+        no_info = "não tenho" in answer.lower()
+        try:
+            record_ai_chat_answered(tool_rounds=tool_rounds, no_info=no_info)
+        except Exception:  # pragma: no cover — metrics are fire-and-forget
+            log.warning("ai_advisory.chat.metrics_failed user=%s", self._user_id)
+
         return {
-            "answer": llm_resp.content.strip(),
+            "answer": answer,
             "model": llm_resp.model,
             "tokens_used": llm_resp.total_tokens,
             "cost_usd": float(llm_resp.estimated_cost_usd),
+            "period_label": resolution.label,
+            "tool_rounds": tool_rounds,
         }
+
+    def _answer_chat_question(
+        self,
+        *,
+        prompt_snapshot: dict[str, Any],
+        question: str,
+        period_label: str,
+    ) -> tuple[str, LLMResponse, str, int]:
+        """Answer via the tool loop when available, else snapshot-grounded.
+
+        Returns ``(answer, aggregated_usage, prompt_for_audit, tool_rounds)``.
+        Any tool-loop failure degrades gracefully to the single-shot path —
+        the chat must never break because a tool broke.
+        """
+        if _chat_tools_enabled() and hasattr(self._provider, "generate_chat"):
+            try:
+                return self._answer_with_tools(
+                    prompt_snapshot=prompt_snapshot,
+                    question=question,
+                    period_label=period_label,
+                )
+            except LLMProviderError:
+                raise
+            except Exception as exc:
+                log.warning(
+                    "ai_advisory.chat.tools_failed user=%s error=%s — "
+                    "falling back to snapshot-grounded answer",
+                    self._user_id,
+                    exc,
+                )
+
+        prompt = _build_chat_prompt(
+            prompt_snapshot,
+            question,
+            period_label=period_label,
+        )
+        try:
+            llm_resp = self._provider.generate_with_usage(
+                prompt,
+                max_tokens=_chat_max_tokens(),
+                **_chat_model_kwargs(),
+            )
+        except LLMProviderError as exc:
+            log.warning(
+                "ai_advisory.chat.llm_error user=%s error=%s",
+                self._user_id,
+                exc,
+            )
+            raise
+        return llm_resp.content.strip(), llm_resp, prompt, 0
+
+    def _answer_with_tools(
+        self,
+        *,
+        prompt_snapshot: dict[str, Any],
+        question: str,
+        period_label: str,
+    ) -> tuple[str, LLMResponse, str, int]:
+        """OpenAI function-calling loop (#1548): max 3 read-only tool rounds."""
+        user_message = _build_chat_user_message(
+            prompt_snapshot,
+            question,
+            period_label=period_label,
+        )
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": _chat_system_text()},
+            {"role": "user", "content": user_message},
+        ]
+
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        rounds = 0
+        last_usage: LLMResponse | None = None
+        while True:
+            offer_tools = rounds < _CHAT_MAX_TOOL_ROUNDS
+            message, usage = self._provider.generate_chat(  # type: ignore[attr-defined]
+                messages,
+                tools=CHAT_TOOLS_SPEC if offer_tools else None,
+                max_tokens=_chat_max_tokens(),
+                model=_chat_model(),
+            )
+            last_usage = usage
+            total_prompt_tokens += usage.prompt_tokens
+            total_completion_tokens += usage.completion_tokens
+
+            tool_calls = message.get("tool_calls") or []
+            if not tool_calls or not offer_tools:
+                answer = str(message.get("content") or "").strip()
+                break
+
+            rounds += 1
+            messages.append(message)
+            for call in tool_calls:
+                function = call.get("function") or {}
+                try:
+                    arguments = json.loads(str(function.get("arguments") or "{}"))
+                except (TypeError, ValueError):
+                    arguments = {}
+                result = execute_chat_tool(
+                    user_id=self._user_id,
+                    name=str(function.get("name") or ""),
+                    arguments=arguments,
+                )
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": str(call.get("id") or ""),
+                        "content": json.dumps(result, ensure_ascii=False, default=str),
+                    }
+                )
+
+        aggregated = LLMResponse(
+            content=answer,
+            prompt_tokens=total_prompt_tokens,
+            completion_tokens=total_completion_tokens,
+            total_tokens=total_prompt_tokens + total_completion_tokens,
+            model=last_usage.model if last_usage else _chat_model(),
+            latency_ms=last_usage.latency_ms if last_usage else 0,
+        )
+        return answer, aggregated, user_message, rounds
 
     # ------------------------------------------------------------------
     # 1. Spending insights
@@ -2780,36 +2950,65 @@ def _insight_reading_word_count(summary: str, items: list[dict[str, Any]]) -> in
 
 def _chat_max_tokens() -> int:
     """Output token cap for the Ask-anything chat (bounded to control cost)."""
-    return max(1, int(os.getenv("AI_CHAT_MAX_TOKENS", "600")))
+    return max(1, int(os.getenv("AI_CHAT_MAX_TOKENS", "900")))
 
 
-def _build_chat_prompt(snapshot: dict[str, Any], question: str) -> str:
-    """Build the snapshot-grounded prompt for the Ask-anything chat.
+def _chat_system_text() -> str:
+    """Chat guardrails as a proper system message (#1548).
 
-    The model must answer ONLY from the user's own financial snapshot, stay on
-    finance, refuse off-topic questions, and admit when data is outside the
-    snapshot — never inventing values.
+    Separating role=system from the user content reduces prompt-injection
+    surface: the question can no longer rewrite the rules mid-prompt.
     """
-    context = json.dumps(snapshot, ensure_ascii=False, default=str)
     return (
-        "Você é o assistente financeiro do Auraxis. Responda à pergunta do usuário "
-        "EXCLUSIVAMENTE com base nos dados financeiros (snapshot do próprio usuário) "
-        "fornecidos abaixo.\n\n"
+        "Você é o assistente financeiro do Auraxis. Responda EXCLUSIVAMENTE "
+        "com base nos dados financeiros do próprio usuário (snapshot fornecido "
+        "e resultados de ferramentas).\n"
         "Regras invioláveis:\n"
         "- Responda apenas perguntas sobre finanças pessoais e sobre os dados "
         "do usuário.\n"
         "- Se a pergunta não for sobre finanças, recuse com gentileza e explique "
         "que você só ajuda com as finanças do usuário no Auraxis.\n"
-        "- Use SOMENTE números presentes no snapshot. Nunca invente valores, "
-        "transações, categorias ou datas.\n"
-        "- Se o dado necessário não estiver no snapshot (ex.: um período fora da "
-        "janela atual), diga claramente que não tem essa informação disponível "
-        "e sugira onde o usuário pode encontrá-la no app.\n"
+        "- Use SOMENTE números presentes no snapshot ou retornados pelas "
+        "ferramentas. Nunca invente valores, transações, categorias ou datas.\n"
+        "- Quando a pergunta citar uma transação específica ou um período fora "
+        "do contexto fornecido, USE as ferramentas disponíveis (ex.: "
+        "search_transactions) antes de dizer que não tem a informação.\n"
+        "- Só diga que não tem a informação depois de esgotar o snapshot e as "
+        "ferramentas; nesse caso sugira onde encontrá-la no app.\n"
         "- Responda em português do Brasil, de forma direta e objetiva, em no "
-        "máximo 180 palavras.\n\n"
-        f"Snapshot financeiro (JSON):\n{context}\n\n"
-        f"Pergunta do usuário: {question}\n\n"
-        "Resposta:"
+        "máximo 220 palavras."
+    )
+
+
+def _build_chat_user_message(
+    snapshot: dict[str, Any],
+    question: str,
+    *,
+    period_label: str,
+) -> str:
+    context = json.dumps(snapshot, ensure_ascii=False, default=str)
+    return (
+        f"Contexto financeiro ancorado em {period_label} (JSON):\n{context}\n\n"
+        f"Pergunta do usuário: {question}"
+    )
+
+
+def _build_chat_prompt(
+    snapshot: dict[str, Any],
+    question: str,
+    *,
+    period_label: str = "",
+) -> str:
+    """Single-shot fallback prompt (providers without chat/tool support)."""
+    label_note = f" O contexto está ancorado em {period_label}." if period_label else ""
+    return (
+        _chat_system_text()
+        + label_note
+        + "\n\n"
+        + _build_chat_user_message(
+            snapshot, question, period_label=period_label or "período atual"
+        )
+        + "\n\nResposta:"
     )
 
 
