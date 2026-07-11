@@ -59,6 +59,8 @@ from app.services.ai_lgpd import (
     redact_response_for_audit,
 )
 from app.services.financial_insight_context_builder import (
+    DEFAULT_MAX_SNAPSHOT_BYTES,
+    DEFAULT_MAX_SNAPSHOT_BYTES_LONG,
     INSIGHT_DIMENSIONS,
     FinancialInsightContextBuilder,
     truncate_snapshot,
@@ -739,17 +741,7 @@ def _stable_context_projection(snapshot: dict[str, Any]) -> dict[str, Any]:
     consistent with the generation cache.
     """
     projection = copy.deepcopy(snapshot)
-
-    wallet = projection.get("wallet")
-    if isinstance(wallet, dict):
-        for key in _VOLATILE_WALLET_KEYS:
-            wallet.pop(key, None)
-        items = wallet.get("items")
-        if isinstance(items, list):
-            for item in items:
-                if isinstance(item, dict):
-                    for key in _VOLATILE_WALLET_ITEM_KEYS:
-                        item.pop(key, None)
+    _strip_volatile_wallet_fields(projection)
 
     # Derived from wallet valuation + balances — market-volatile.
     projection.pop("projections", None)
@@ -759,7 +751,36 @@ def _stable_context_projection(snapshot: dict[str, Any]) -> dict[str, Any]:
     if isinstance(transactions, dict):
         transactions.pop("changes_since_last_generation", None)
 
+    _strip_calendar_drift_fields(projection)
     return projection
+
+
+def _strip_volatile_wallet_fields(projection: dict[str, Any]) -> None:
+    wallet = projection.get("wallet")
+    if not isinstance(wallet, dict):
+        return
+    for key in _VOLATILE_WALLET_KEYS:
+        wallet.pop(key, None)
+    items = wallet.get("items")
+    if not isinstance(items, list):
+        return
+    for item in items:
+        if isinstance(item, dict):
+            for key in _VOLATILE_WALLET_ITEM_KEYS:
+                item.pop(key, None)
+
+
+def _strip_calendar_drift_fields(projection: dict[str, Any]) -> None:
+    """days_overdue grows with the calendar, not with user action (#1547)."""
+    pending = projection.get("pending_commitments")
+    if not isinstance(pending, dict):
+        return
+    overdue = pending.get("overdue")
+    if not isinstance(overdue, dict):
+        return
+    for item in overdue.get("items") or []:
+        if isinstance(item, dict):
+            item.pop("days_overdue", None)
 
 
 def _snapshot_byte_size(snapshot: dict[str, Any]) -> int:
@@ -1418,7 +1439,10 @@ class AIAdvisoryService:
             # whatever we actually send to the LLM. The hash itself is computed
             # over the stable projection (no market-driven fields) so price
             # drift never busts the cache (#1546).
-            prompt_snapshot, truncation_info = truncate_snapshot(prompt_snapshot)
+            prompt_snapshot, truncation_info = truncate_snapshot(
+                prompt_snapshot,
+                max_bytes=_snapshot_max_bytes(normalized_period_type),
+            )
             context_hash = _financial_context_hash(
                 _stable_context_projection(prompt_snapshot)
             )
@@ -1465,6 +1489,7 @@ class AIAdvisoryService:
                 prompt,
                 response_schema=_FINANCIAL_INSIGHT_RESPONSE_SCHEMA,
                 max_tokens=_period_max_tokens(normalized_period_type),
+                **_period_model_kwargs(normalized_period_type),
             )
         except LLMProviderError as exc:
             log.warning(
@@ -1648,7 +1673,10 @@ class AIAdvisoryService:
         period_label = str(snapshot["period"]["label"])
 
         prompt_snapshot = minimize_prompt_data(snapshot)
-        prompt_snapshot, _ = truncate_snapshot(prompt_snapshot)
+        prompt_snapshot, _ = truncate_snapshot(
+            prompt_snapshot,
+            max_bytes=_snapshot_max_bytes(normalized_period_type),
+        )
         context_hash = _financial_context_hash(
             _stable_context_projection(prompt_snapshot)
         )
@@ -2695,6 +2723,40 @@ _DEPTH_INSTRUCTIONS: dict[str, str] = {
 _DEPTH_WORD_TARGETS: dict[str, int] = {"daily": 450, "weekly": 2200, "monthly": 2200}
 
 
+def _snapshot_max_bytes(period_type: str) -> int:
+    """Per-period snapshot byte cap (#1547): deep reports get more context."""
+    if period_type == "daily":
+        env_key, default = "AI_SNAPSHOT_MAX_BYTES", DEFAULT_MAX_SNAPSHOT_BYTES
+    else:
+        env_key, default = (
+            "AI_SNAPSHOT_MAX_BYTES_LONG",
+            DEFAULT_MAX_SNAPSHOT_BYTES_LONG,
+        )
+    try:
+        return max(1024, int(os.getenv(env_key, str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+def _period_model_kwargs(period_type: str) -> dict[str, Any]:
+    """kwargs de modelo por período — vazio quando o default do provider vale."""
+    period_model = _period_model(period_type)
+    return {"model": period_model} if period_model else {}
+
+
+def _period_model(period_type: str) -> str | None:
+    """Model mix per period (#1547, PO 2026-07-10, ADR R$5/user/month).
+
+    Daily manual insights are extraction over a precomputed snapshot —
+    gpt-4o-mini handles them well at ~6% of the cost. Weekly/monthly deep
+    reports keep the provider default (gpt-4o) where the quality pays off.
+    Returns None to use the provider's default model.
+    """
+    if period_type == "daily":
+        return os.getenv("OPENAI_ADVISORY_MODEL_DAILY", "gpt-4o-mini") or None
+    return None
+
+
 def _period_max_tokens(period_type: str) -> int:
     """Output token budget per period — deep reports need a much larger budget."""
     if period_type == "daily":
@@ -2839,6 +2901,21 @@ def _build_financial_insight_prompt(
         "Use somente os dados do snapshot fornecido. Não invente transações, metas, "
         "orçamentos, rendas, despesas, nomes, datas ou valores ausentes. Quando uma "
         "comparação não existir, mencione a ausência apenas se ela for relevante.\n"
+        "ESTRUTURA OBRIGATÓRIA (v3): cubra, na medida em que os dados existirem, "
+        "estas frentes — (1) panorama do período e do mês até agora (use "
+        "'month_summary': income_mtd, expense_mtd, savings_rate_pct, "
+        "burn_rate_daily, projected_eom_balance); (2) pendências e vencimentos — "
+        "cite NOMINALMENTE os itens vencidos de 'pending_commitments.overdue.items' "
+        "(título, valor, dias de atraso) e o que vence em 7/30 dias em "
+        "'pending_commitments.upcoming_7d/upcoming_30d'; (3) categorias e TAGS do "
+        "usuário — use 'tags.top_by_expense' e 'tags.top_by_income' (as tags são o "
+        "vocabulário do próprio usuário, ex.: 'academia'), além de "
+        "'categories.top_expense_categories' e orçamentos por tag em 'budgets'; "
+        "(4) carteira (regras próprias abaixo); (5) recomendações acionáveis.\n"
+        "PROIBIDO conselho genérico: toda recomendação precisa citar um número do "
+        "snapshot E uma ação concreta (ex.: 'os 3 vencidos somam R$X — priorize "
+        "o Condomínio de R$Y, atrasado há Z dias'). Frases como 'reavalie seus "
+        "gastos' sem número e sem alvo são inaceitáveis.\n"
         "Cada item deve conter evidências que apontem para chaves conhecidas do "
         "snapshot, como current_period.paid.balance, "
         "current_period.created_today.pending_expense_total, "
