@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.63.0](https://github.com/italofelipe/auraxis-api/compare/v1.62.0...v1.63.0) (2026-07-11)
+
+
+### Features
+
+* **ai:** chat assistente v2 — month-aware, detecção de período e function-calling ([ff979da](https://github.com/italofelipe/auraxis-api/commit/ff979da51d55173500197716832e4258fda38079))
+* **ai:** snapshot v3 — tags, pendências rotuladas, saúde do mês e mix de modelos ([e680800](https://github.com/italofelipe/auraxis-api/commit/e680800aced87193c597af95097b17e01196d491))
+
 ## [1.62.0](https://github.com/italofelipe/auraxis-api/compare/v1.61.0...v1.62.0) (2026-07-11)
 
 
