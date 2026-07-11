@@ -15,6 +15,7 @@ Required env vars (configure in .env — never set here):
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
@@ -32,6 +33,15 @@ from app.extensions.database import db
 from app.extensions.prometheus_metrics import (
     record_ai_insight_depth_below_target,
     record_ai_insight_generated,
+)
+from app.middleware.ai_rate_limit import (
+    AI_CHAT_QUOTA_SCOPE,
+    AI_DAILY_LIMIT,
+    AI_INSIGHTS_QUOTA_SCOPE,
+    AIDailyLimitExceededError,
+    get_ai_daily_usage,
+    record_ai_daily_success,
+    request_is_admin,
 )
 from app.models.ai_insight import AIInsight, InsightType
 from app.models.ai_insight_run import AIInsightRun, AIInsightRunStatus
@@ -181,6 +191,112 @@ class AIInsightCostBudgetExceededError(LLMProviderError):
         self.scope = scope
         self.limit_usd = limit_usd
         self.spent_usd = spent_usd
+
+
+class AIEntitlementRequiredError(Exception):
+    """Raised when a non-Premium user triggers a paid AI generation (#1546).
+
+    Enforced inside the service so REST and GraphQL share the same gate —
+    the GraphQL mutations previously relied on a gate that only existed in
+    the REST controllers.
+    """
+
+    error_code = "ENTITLEMENT_REQUIRED"
+    message = "Recurso exclusivo para assinantes Premium."
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
+def _ai_chat_daily_limit() -> int:
+    """Per-user daily cap for the Ask-anything chat (scoped counter)."""
+    return max(1, int(os.getenv("AI_CHAT_DAILY_LIMIT", "20")))
+
+
+def _ensure_premium_entitlement(user_id: UUID) -> None:
+    # Admins bypass — the team must be able to exercise AI features
+    # end-to-end (mirrors the quota/cost-ceiling bypass).
+    if request_is_admin():
+        return
+    from app.services.entitlement_service import has_entitlement
+
+    if not has_entitlement(user_id, "advanced_simulations"):
+        raise AIEntitlementRequiredError()
+
+
+def _ai_daily_quota_applies(user_id: UUID) -> bool:
+    """Whether the scoped daily quota applies to this caller.
+
+    Admins bypass (team can test end-to-end); Free users are blocked earlier
+    by the entitlement gate, so the counter never applies to them.
+    """
+    if request_is_admin():
+        return False
+    from app.services.entitlement_service import has_entitlement
+
+    return has_entitlement(user_id, "advanced_simulations")
+
+
+def _enforce_ai_daily_generation_quota(
+    *,
+    user_id: UUID,
+    max_calls: int,
+    scope: str,
+    trigger: str = "user",
+) -> None:
+    if trigger != "user" or not _ai_daily_quota_applies(user_id):
+        return
+    count, retry_after = get_ai_daily_usage(user_id, scope=scope)
+    if count >= max_calls:
+        raise AIDailyLimitExceededError(retry_after_seconds=retry_after)
+
+
+def _record_ai_daily_generation(
+    *,
+    user_id: UUID,
+    scope: str,
+    trigger: str = "user",
+) -> None:
+    if trigger != "user" or not _ai_daily_quota_applies(user_id):
+        return
+    record_ai_daily_success(user_id, scope=scope)
+
+
+def _gate_user_premium_entitlement(user_id: UUID, *, trigger: str) -> None:
+    """Premium gate for user-triggered generations (skipped for crons)."""
+    if trigger == "user":
+        _ensure_premium_entitlement(user_id)
+
+
+def _deduped_period_insight_payload(
+    *,
+    user_id: UUID,
+    insight_type: InsightType,
+    period_label: str,
+    normalized_period_type: str,
+    force_regenerate: bool,
+) -> dict[str, Any] | None:
+    """Semantic dedupe (#1546): one insight per (user, type, period).
+
+    Serving the existing insight costs nothing, so it wins over quota —
+    repeat clicks and rogue clients get content, never a 429. Returns None
+    when regeneration was explicitly requested or no insight exists yet.
+    """
+    if force_regenerate:
+        return None
+    existing = _get_cached_insight(
+        user_id=user_id,
+        insight_type=insight_type,
+        period_label=period_label,
+    )
+    if existing is None:
+        return None
+    return _cached_financial_insight_payload(
+        cached=existing,
+        user_id=user_id,
+        normalized_period_type=normalized_period_type,
+        context_version=str(existing.metadata_dict.get("snapshot_version") or ""),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -592,6 +708,60 @@ def _financial_context_hash(snapshot: dict[str, Any]) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+# Volatile wallet fields: derived from live market quotes, so they drift on
+# every call even when the user's data is unchanged.
+_VOLATILE_WALLET_ITEM_KEYS = (
+    "current_value",
+    "profit_loss_amount",
+    "profit_loss_percent",
+    "market_price",
+    "unit_price",
+)
+_VOLATILE_WALLET_KEYS = (
+    "benchmark",
+    "total_value",
+    "total_current_value",
+    "total_profit_loss",
+    "total_profit_loss_percent",
+    "distribution",
+    "profile_alignment",
+)
+
+
+def _stable_context_projection(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of *snapshot* without volatile (market-driven) fields.
+
+    The context hash exists to answer "did the USER's data change since the
+    last generation?". Live market prices, benchmarks and everything derived
+    from them (wallet valuation, projections) drift between calls without any
+    user action, which used to bust the cache on every login (#1546). The
+    change-status endpoint uses the same projection so "nada mudou" stays
+    consistent with the generation cache.
+    """
+    projection = copy.deepcopy(snapshot)
+
+    wallet = projection.get("wallet")
+    if isinstance(wallet, dict):
+        for key in _VOLATILE_WALLET_KEYS:
+            wallet.pop(key, None)
+        items = wallet.get("items")
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    for key in _VOLATILE_WALLET_ITEM_KEYS:
+                        item.pop(key, None)
+
+    # Derived from wallet valuation + balances — market-volatile.
+    projection.pop("projections", None)
+
+    # Reflects the timestamp of the previous generation, not user data.
+    transactions = projection.get("transactions")
+    if isinstance(transactions, dict):
+        transactions.pop("changes_since_last_generation", None)
+
+    return projection
+
+
 def _snapshot_byte_size(snapshot: dict[str, Any]) -> int:
     return len(
         json.dumps(snapshot, ensure_ascii=False, sort_keys=True, default=str).encode(
@@ -943,7 +1113,10 @@ def _cached_financial_insight_payload_for_snapshot(
     normalized_period_type: str,
     context_version: str,
     preview_run: AIInsightRun | None,
+    force_regenerate: bool = False,
 ) -> dict[str, Any] | None:
+    if force_regenerate:
+        return None
     cached = _get_cached_insight_for_snapshot(
         user_id=user_id,
         insight_type=insight_type,
@@ -1088,6 +1261,12 @@ class AIAdvisoryService:
         if not normalized_question:
             raise ValueError("question is required")
 
+        _ensure_premium_entitlement(self._user_id)
+        _enforce_ai_daily_generation_quota(
+            user_id=self._user_id,
+            max_calls=_ai_chat_daily_limit(),
+            scope=AI_CHAT_QUOTA_SCOPE,
+        )
         consent_version = ensure_ai_consent_granted(self._user_id)
         timezone_resolution = timezone_utils.resolve_user_timezone(timezone_name)
         fallback_used = timezone_fallback or (
@@ -1129,6 +1308,11 @@ class AIAdvisoryService:
             consent_version=consent_version,
         )
 
+        _record_ai_daily_generation(
+            user_id=self._user_id,
+            scope=AI_CHAT_QUOTA_SCOPE,
+        )
+
         return {
             "answer": llm_resp.content.strip(),
             "model": llm_resp.model,
@@ -1148,10 +1332,23 @@ class AIAdvisoryService:
         preview_run_id: UUID | None = None,
         timezone_name: str | None = None,
         timezone_fallback: bool = False,
+        force_regenerate: bool = False,
+        trigger: str = "user",
     ) -> dict[str, Any]:
-        """Generate period-aware financial insights with structured evidence."""
+        """Generate period-aware financial insights with structured evidence.
+
+        Governance (#1546):
+        - ``trigger="user"`` (default) enforces the Premium entitlement and the
+          scoped daily quota inside the service, so REST and GraphQL share one
+          enforcement point. Crons pass ``trigger="scheduled"`` and never touch
+          the user's quota.
+        - An insight that already exists for the same ``(user, period_type,
+          period_label)`` is returned as ``cached`` without calling the LLM,
+          unless ``force_regenerate`` is set (explicit user confirmation).
+        """
         normalized_period_type = period_type.strip().lower()
         insight_type = InsightType(normalized_period_type)
+        _gate_user_premium_entitlement(self._user_id, trigger=trigger)
         timezone_resolution = timezone_utils.resolve_user_timezone(timezone_name)
         fallback_used = timezone_fallback or (
             timezone_resolution.fallback_used
@@ -1187,6 +1384,15 @@ class AIAdvisoryService:
                 insight_type=insight_type,
                 anchor=anchor,
             )
+            deduped_payload = _deduped_period_insight_payload(
+                user_id=self._user_id,
+                insight_type=insight_type,
+                period_label=period_label_hint,
+                normalized_period_type=normalized_period_type,
+                force_regenerate=force_regenerate,
+            )
+            if deduped_payload is not None:
+                return deduped_payload
             previous = _get_latest_insight_for_period_context(
                 user_id=self._user_id,
                 insight_type=insight_type,
@@ -1208,10 +1414,14 @@ class AIAdvisoryService:
             context_version = str(snapshot["schema_version"])
 
             prompt_snapshot = minimize_prompt_data(snapshot)
-            # Apply 12 KiB cap before hashing/prompting so context_hash matches
-            # whatever we actually send to the LLM.
+            # Apply the byte cap before hashing/prompting so context_hash matches
+            # whatever we actually send to the LLM. The hash itself is computed
+            # over the stable projection (no market-driven fields) so price
+            # drift never busts the cache (#1546).
             prompt_snapshot, truncation_info = truncate_snapshot(prompt_snapshot)
-            context_hash = _financial_context_hash(prompt_snapshot)
+            context_hash = _financial_context_hash(
+                _stable_context_projection(prompt_snapshot)
+            )
 
         cached_payload = _cached_financial_insight_payload_for_snapshot(
             user_id=self._user_id,
@@ -1221,9 +1431,17 @@ class AIAdvisoryService:
             normalized_period_type=normalized_period_type,
             context_version=context_version,
             preview_run=preview_run,
+            force_regenerate=force_regenerate,
         )
         if cached_payload is not None:
             return cached_payload
+
+        _enforce_ai_daily_generation_quota(
+            user_id=self._user_id,
+            max_calls=AI_DAILY_LIMIT,
+            scope=AI_INSIGHTS_QUOTA_SCOPE,
+            trigger=trigger,
+        )
 
         _enforce_financial_insight_generation_budget(
             user_id=self._user_id,
@@ -1311,6 +1529,12 @@ class AIAdvisoryService:
             cost_usd=llm_resp.estimated_cost_usd,
             previous_insight_id=previous.id if previous else None,
             metadata=persist_metadata,
+        )
+
+        _record_ai_daily_generation(
+            user_id=self._user_id,
+            scope=AI_INSIGHTS_QUOTA_SCOPE,
+            trigger=trigger,
         )
 
         if preview_run is not None:
@@ -1425,7 +1649,9 @@ class AIAdvisoryService:
 
         prompt_snapshot = minimize_prompt_data(snapshot)
         prompt_snapshot, _ = truncate_snapshot(prompt_snapshot)
-        context_hash = _financial_context_hash(prompt_snapshot)
+        context_hash = _financial_context_hash(
+            _stable_context_projection(prompt_snapshot)
+        )
 
         existing: AIInsight | None = (
             db.session.query(AIInsight)
@@ -1454,6 +1680,64 @@ class AIAdvisoryService:
             "last_generated_at": (
                 last_generated_at.isoformat() if last_generated_at else None
             ),
+        }
+
+    def read_spending_insights(self, month: str | None = None) -> dict[str, Any]:
+        """Return today's persisted spending insight WITHOUT ever calling the LLM.
+
+        Read-only replacement for the legacy generate-on-GET behaviour of
+        ``GET /ai/insights/spending`` (#1546). Response keeps the historical
+        shape and adds ``generated``: ``False`` means no insight exists for
+        today yet — clients must use ``POST /ai/insights/generate``.
+        """
+        today = date.today()
+        if month:
+            year, mon = int(month[:4]), int(month[5:7])
+        else:
+            year, mon = today.year, today.month
+
+        end = date(year, mon, monthrange(year, mon)[1])
+        is_recap = today == end
+        insight_type = InsightType.recap if is_recap else InsightType.daily
+        period_label = (
+            f"{year}-{mon:02d}-recap" if is_recap else today.strftime("%Y-%m-%d")
+        )
+
+        cached = _get_cached_insight(
+            user_id=self._user_id,
+            insight_type=insight_type,
+            period_label=period_label,
+        )
+        if cached is None:
+            return {
+                "insights": "[]",
+                "items": [],
+                "tokens_used": 0,
+                "cost_usd": 0.0,
+                "month": f"{year}-{mon:02d}",
+                "model": None,
+                "cached": False,
+                "generated": False,
+            }
+
+        cached_items: list[InsightItem] = []
+        try:
+            cached_items = _coerce_spending_insight_items(cached.content)
+        except LLMProviderError:
+            log.warning(
+                "ai_advisory.spending_insights.cached_parse_failed user=%s insight=%s",
+                self._user_id,
+                cached.id,
+            )
+        return {
+            "insights": cached.content,
+            "items": cached_items,
+            "tokens_used": cached.tokens_used,
+            "cost_usd": float(cached.cost_usd),
+            "month": f"{year}-{mon:02d}",
+            "model": cached.model,
+            "cached": True,
+            "generated": True,
         }
 
     def generate_spending_insights(self, month: str | None = None) -> dict[str, Any]:
@@ -2563,11 +2847,19 @@ def _build_financial_insight_prompt(
         "financial_health. Nunca diga que não houve transações hoje quando "
         "current_period.created_today.transaction_count for maior que zero.\n"
         "Quando 'wallet' estiver presente e o ativo total for > 0, contextualize "
-        "a rentabilidade e a alocação atual: compare com "
+        "a rentabilidade e a alocação atual usando exclusivamente "
+        "'wallet.total_current_value', 'wallet.total_invested_amount', "
+        "'wallet.total_profit_loss' e 'wallet.total_profit_loss_percent': compare com "
         "'wallet.benchmark.cdi_monthly_pct' e 'wallet.benchmark.ipca_monthly_pct' "
         "quando disponíveis, e sinalize desvios do perfil de investidor via "
         "'wallet.profile_alignment'. Quando o usuário não tiver perfil declarado, "
         "descreva a distribuição sem afirmações de adequação.\n"
+        "REGRAS INVIOLÁVEIS sobre a carteira: NUNCA afirme que a carteira vale "
+        "R$0,00, que 'não apresenta rentabilidade' ou similar quando "
+        "'wallet.items' não estiver vazio. Se "
+        "'wallet.data_quality.market_data_unavailable' for true, NÃO afirme "
+        "rentabilidade nem valor de mercado — diga que a cotação de mercado está "
+        "temporariamente indisponível e analise apenas alocação e aportes.\n"
         "Para mudanças desde a última geração, use somente "
         "transactions.changes_since_last_generation. Não use texto de insights "
         "anteriores como fonte factual.\n"
