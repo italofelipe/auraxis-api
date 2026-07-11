@@ -502,6 +502,8 @@ class AIChatAskAnythingResource(MethodResource):
                     "model": "gpt-4o-mini",
                     "tokens_used": 380,
                     "cost_usd": 0.000057,
+                    "period_label": "julho/2026",
+                    "tool_rounds": 1,
                 },
             ),
             400: json_error_response(
