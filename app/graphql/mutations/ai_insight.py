@@ -319,6 +319,10 @@ class AskFinancialQuestionPayload(graphene.ObjectType):
     model = graphene.String()
     tokens_used = graphene.Int()
     cost_usd = graphene.Float()
+    # Additive (#1548): which period the answer context was anchored on and
+    # how many read-only tool rounds the model used.
+    period_label = graphene.String()
+    tool_rounds = graphene.Int()
 
 
 class AskFinancialQuestionMutation(graphene.Mutation):
@@ -369,6 +373,8 @@ class AskFinancialQuestionMutation(graphene.Mutation):
             model=result.get("model"),
             tokens_used=int(result.get("tokens_used") or 0),
             cost_usd=float(result.get("cost_usd") or 0),
+            period_label=result.get("period_label"),
+            tool_rounds=int(result.get("tool_rounds") or 0),
         )
 
 

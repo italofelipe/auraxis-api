@@ -220,6 +220,61 @@ class OpenAILLMProvider:
         except Exception as exc:
             raise LLMProviderError(f"OpenAI call failed: {exc}") from exc
 
+    def generate_chat(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
+        model: str | None = None,
+    ) -> tuple[dict[str, Any], LLMResponse]:
+        """Multi-message chat completion with optional function-calling (#1548).
+
+        Returns ``(assistant_message, usage)`` — the raw assistant message may
+        carry ``tool_calls`` for the caller's tool loop. ``usage.content`` is
+        the text content (empty string when the model only called tools).
+        """
+        if not self._api_key:
+            raise LLMProviderError("OPENAI_API_KEY is not configured.")
+        import requests  # lazy import to keep startup fast
+
+        resolved_max_tokens = _resolve_max_tokens(max_tokens)
+        start = time.monotonic()
+        payload: dict[str, Any] = {
+            "model": model or self._model,
+            "messages": messages,
+            "max_tokens": resolved_max_tokens,
+            "temperature": 0.4,
+        }
+        if tools:
+            payload["tools"] = tools
+
+        try:
+            resp = requests.post(
+                self._BASE_URL,
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=_timeout_for_max_tokens(resolved_max_tokens),
+            )
+            resp.raise_for_status()
+            latency_ms = int((time.monotonic() - start) * 1000)
+            data = resp.json()
+            usage = data.get("usage", {})
+            message = dict(data["choices"][0]["message"])
+            return message, LLMResponse(
+                content=str(message.get("content") or ""),
+                prompt_tokens=int(usage.get("prompt_tokens", 0)),
+                completion_tokens=int(usage.get("completion_tokens", 0)),
+                total_tokens=int(usage.get("total_tokens", 0)),
+                model=str(data.get("model", model or self._model)),
+                latency_ms=latency_ms,
+            )
+        except Exception as exc:
+            raise LLMProviderError(f"OpenAI chat call failed: {exc}") from exc
+
 
 class ClaudeLLMProvider:
     """Calls the Anthropic Messages API (requires `requests` + ANTHROPIC_API_KEY)."""

@@ -55,6 +55,7 @@ _AI_INSIGHT_TRUNCATED_TOTAL: Any = None
 _AI_INSIGHT_DEPTH_BELOW_TARGET_TOTAL: Any = None
 _AI_INSIGHT_DATA_QUALITY_DOMAINS: Any = None
 _AI_INSIGHT_RUNS_PURGED_TOTAL: Any = None
+_AI_CHAT_MESSAGES_TOTAL: Any = None
 
 _DURATION_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5)
 _AI_TOKENS_BUCKETS = (100, 250, 500, 1000, 2500, 5000, 10000, 25000)
@@ -66,6 +67,7 @@ def _init_ai_insight_metrics() -> None:  # noqa: C901 — flat list of counter i
     """Lazily initialise the MVP-3 AI insight observability instruments."""
     global \
         _AI_INSIGHT_GENERATED_TOTAL, \
+        _AI_CHAT_MESSAGES_TOTAL, \
         _AI_INSIGHT_TOKENS, \
         _AI_INSIGHT_SNAPSHOT_BYTES, \
         _AI_INSIGHT_RUNS_TOTAL, \
@@ -81,6 +83,12 @@ def _init_ai_insight_metrics() -> None:  # noqa: C901 — flat list of counter i
             "auraxis_ai_insight_generated_total",
             "AI insights generated, by period_type and dimension",
             ["period_type", "dimension"],
+        )
+    if _AI_CHAT_MESSAGES_TOTAL is None:
+        _AI_CHAT_MESSAGES_TOTAL = Counter(
+            "auraxis_ai_chat_messages_total",
+            "Ask-anything chat answers, by tool usage and no-info outcome",
+            ["tools_used", "no_info"],
         )
     if _AI_INSIGHT_TOKENS is None:
         _AI_INSIGHT_TOKENS = Histogram(
@@ -307,6 +315,20 @@ def record_auth_login_cookie_only_header(*, header_present: bool) -> None:
     if _AUTH_LOGIN_COOKIE_ONLY_HEADER_TOTAL is not None:
         label = "yes" if header_present else "no"
         _AUTH_LOGIN_COOKIE_ONLY_HEADER_TOTAL.labels(header_present=label).inc()
+
+
+def record_ai_chat_answered(*, tool_rounds: int, no_info: bool) -> None:
+    """Telemetry for the Ask-anything chat (#1548).
+
+    ``no_info`` tracks answers admitting missing data — the trigger metric for
+    deepening the tool set.
+    """
+    _ensure_metrics_initialized()
+    if _AI_CHAT_MESSAGES_TOTAL is not None:
+        _AI_CHAT_MESSAGES_TOTAL.labels(
+            tools_used="true" if tool_rounds > 0 else "false",
+            no_info="true" if no_info else "false",
+        ).inc()
 
 
 def record_ai_insight_generated(

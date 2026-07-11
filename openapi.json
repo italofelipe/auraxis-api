@@ -1256,7 +1256,9 @@
                     "answer": "Até agora você gastou R$320,00 com alimentação.",
                     "cost_usd": 5.7e-05,
                     "model": "gpt-4o-mini",
-                    "tokens_used": 380
+                    "period_label": "julho/2026",
+                    "tokens_used": 380,
+                    "tool_rounds": 1
                   },
                   "message": "Resposta gerada com sucesso"
                 },

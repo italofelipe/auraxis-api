@@ -1478,6 +1478,8 @@ type AskFinancialQuestionPayload {
   model: String
   tokensUsed: Int
   costUsd: Float
+  periodLabel: String
+  toolRounds: Int
 }
 
 """Canonical payload for completeOnboarding mutation."""
