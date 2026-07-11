@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import uuid
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -38,7 +37,11 @@ from app.docs.openapi_helpers import (
     json_request_body,
     json_success_response,
 )
-from app.middleware.ai_rate_limit import ai_daily_limit
+from app.middleware.ai_rate_limit import (
+    AI_CHAT_QUOTA_SCOPE,
+    AIDailyLimitExceededError,
+    ai_daily_limit,
+)
 from app.schemas.ai_chat_schema import AIChatRequestSchema
 from app.schemas.ai_insight_feedback_schema import AIInsightFeedbackSchema
 from app.schemas.ai_insight_schema import (
@@ -47,7 +50,9 @@ from app.schemas.ai_insight_schema import (
 )
 from app.services.ai_advisory_service import (
     AIAdvisoryService,
+    AIEntitlementRequiredError,
     AIInsightCostBudgetExceededError,
+    _ai_chat_daily_limit,
 )
 from app.services.ai_lgpd import AIConsentRequiredError, ensure_ai_consent_granted
 from app.services.ai_monthly_report_service import (
@@ -89,6 +94,64 @@ def _ai_consent_required_response(exc: AIConsentRequiredError) -> Response:
         status_code=403,
         message=exc.message,
         error_code=AIConsentRequiredError.error_code,
+    )
+
+
+def _ai_daily_limit_response(exc: AIDailyLimitExceededError) -> Response:
+    """Standard 429 mapping for the scoped daily AI quota (#1546)."""
+    message = str(exc)
+    resp = compat_error_response(
+        legacy_payload={"error": message},
+        status_code=429,
+        message=message,
+        error_code=AIDailyLimitExceededError.error_code,
+    )
+    resp.headers["Retry-After"] = str(exc.retry_after_seconds)
+    resp.headers["X-AI-Calls-Remaining"] = "0"
+    return resp
+
+
+def _ai_generation_error_response(
+    exc: Exception,
+    *,
+    llm_error_message: str,
+    internal_error_message: str,
+) -> Response:
+    """Map AI-generation exceptions to the REST contract (#1546).
+
+    Shared by the generate and chat endpoints so the service-level gates
+    (consent, quota, entitlement, budget) always surface the same codes.
+    """
+    if isinstance(exc, AIConsentRequiredError):
+        return _ai_consent_required_response(exc)
+    if isinstance(exc, AIDailyLimitExceededError):
+        return _ai_daily_limit_response(exc)
+    if isinstance(exc, AIEntitlementRequiredError):
+        return compat_error_response(
+            legacy_payload={"error": exc.message},
+            status_code=403,
+            message=exc.message,
+            error_code=exc.error_code,
+        )
+    if isinstance(exc, AIInsightCostBudgetExceededError):
+        return compat_error_response(
+            legacy_payload={"error": str(exc)},
+            status_code=429,
+            message=str(exc),
+            error_code="AI_INSIGHT_BUDGET_EXCEEDED",
+        )
+    if isinstance(exc, LLMProviderError):
+        return compat_error_response(
+            legacy_payload={"error": str(exc)},
+            status_code=500,
+            message=llm_error_message,
+            error_code="INTERNAL_ERROR",
+        )
+    return compat_error_response(
+        legacy_payload={"error": internal_error_message},
+        status_code=500,
+        message=internal_error_message,
+        error_code="INTERNAL_ERROR",
     )
 
 
@@ -157,7 +220,10 @@ def _parse_goal_projection_body(
 
 def _parse_ai_insight_generate_body(
     body: dict[str, Any],
-) -> tuple[Response, None, None, None] | tuple[None, str, date | None, UUID | None]:
+) -> (
+    tuple[Response, None, None, None, None]
+    | tuple[None, str, date | None, UUID | None, bool]
+):
     period_type = str(body.get("period_type", "")).strip().lower()
     if period_type not in _AI_INSIGHT_PERIOD_TYPES:
         return (
@@ -169,6 +235,7 @@ def _parse_ai_insight_generate_body(
                 message="period_type deve ser daily, weekly ou monthly",
                 error_code="VALIDATION_ERROR",
             ),
+            None,
             None,
             None,
             None,
@@ -190,11 +257,14 @@ def _parse_ai_insight_generate_body(
                 None,
                 None,
                 None,
+                None,
             )
+
+    force_regenerate = bool(body.get("force_regenerate", False))
 
     raw_preview_run_id = body.get("preview_run_id")
     if raw_preview_run_id in (None, ""):
-        return None, period_type, anchor_date, None
+        return None, period_type, anchor_date, None, force_regenerate
 
     try:
         preview_run_id = uuid.UUID(str(raw_preview_run_id))
@@ -209,9 +279,10 @@ def _parse_ai_insight_generate_body(
             None,
             None,
             None,
+            None,
         )
 
-    return None, period_type, anchor_date, preview_run_id
+    return None, period_type, anchor_date, preview_run_id, force_regenerate
 
 
 def _raw_ai_insight_request_timezone(body: dict[str, Any]) -> object:
@@ -362,7 +433,7 @@ class AIInsightGenerateResource(MethodResource):
             return entitlement_error
 
         body = request.get_json(silent=True) or {}
-        parse_error, period_type, anchor_date, preview_run_id = (
+        parse_error, period_type, anchor_date, preview_run_id, force_regenerate = (
             _parse_ai_insight_generate_body(body)
         )
         if parse_error is not None:
@@ -387,30 +458,14 @@ class AIInsightGenerateResource(MethodResource):
                 period_type=period_type,
                 anchor_date=anchor_date,
                 preview_run_id=preview_run_id,
+                force_regenerate=bool(force_regenerate),
                 **timezone_kwargs,
             )
-        except AIConsentRequiredError as exc:
-            return _ai_consent_required_response(exc)
-        except AIInsightCostBudgetExceededError as exc:
-            return compat_error_response(
-                legacy_payload={"error": str(exc)},
-                status_code=429,
-                message=str(exc),
-                error_code="AI_INSIGHT_BUDGET_EXCEEDED",
-            )
-        except LLMProviderError as exc:
-            return compat_error_response(
-                legacy_payload={"error": str(exc)},
-                status_code=500,
-                message="Erro ao gerar insight financeiro",
-                error_code="INTERNAL_ERROR",
-            )
-        except Exception:
-            return compat_error_response(
-                legacy_payload={"error": "Erro interno ao gerar insight financeiro"},
-                status_code=500,
-                message="Erro interno ao gerar insight financeiro",
-                error_code="INTERNAL_ERROR",
+        except Exception as exc:  # mapped to the REST error contract
+            return _ai_generation_error_response(
+                exc,
+                llm_error_message="Erro ao gerar insight financeiro",
+                internal_error_message="Erro interno ao gerar insight financeiro",
             )
 
         return compat_success_response(
@@ -419,11 +474,6 @@ class AIInsightGenerateResource(MethodResource):
             message="Insight financeiro gerado com sucesso",
             data=result,
         )
-
-
-def _ai_chat_daily_limit() -> int:
-    """Per-user daily cap for the Ask-anything chat (shared AI-call counter)."""
-    return max(1, int(os.getenv("AI_CHAT_DAILY_LIMIT", "20")))
 
 
 class AIChatAskAnythingResource(MethodResource):
@@ -481,7 +531,7 @@ class AIChatAskAnythingResource(MethodResource):
         },
     )
     @jwt_required()
-    @ai_daily_limit(max_calls=_ai_chat_daily_limit())
+    @ai_daily_limit(max_calls=_ai_chat_daily_limit(), scope=AI_CHAT_QUOTA_SCOPE)
     def post(self) -> Response:
         token_error = _guard_revoked_token()
         if token_error is not None:
@@ -513,28 +563,11 @@ class AIChatAskAnythingResource(MethodResource):
                 timezone_name=timezone_resolution.name,
                 timezone_fallback=timezone_resolution.fallback_used,
             )
-        except AIConsentRequiredError as exc:
-            return _ai_consent_required_response(exc)
-        except AIInsightCostBudgetExceededError as exc:
-            return compat_error_response(
-                legacy_payload={"error": str(exc)},
-                status_code=429,
-                message=str(exc),
-                error_code="AI_INSIGHT_BUDGET_EXCEEDED",
-            )
-        except LLMProviderError as exc:
-            return compat_error_response(
-                legacy_payload={"error": str(exc)},
-                status_code=500,
-                message="Erro ao processar a pergunta",
-                error_code="INTERNAL_ERROR",
-            )
-        except Exception:
-            return compat_error_response(
-                legacy_payload={"error": "Erro interno ao processar a pergunta"},
-                status_code=500,
-                message="Erro interno ao processar a pergunta",
-                error_code="INTERNAL_ERROR",
+        except Exception as exc:  # mapped to the REST error contract
+            return _ai_generation_error_response(
+                exc,
+                llm_error_message="Erro ao processar a pergunta",
+                internal_error_message="Erro interno ao processar a pergunta",
             )
 
         return compat_success_response(
@@ -670,12 +703,20 @@ class AIInsightChangeStatusResource(MethodResource):
 
 
 class AISpendingInsightsResource(MethodResource):
-    """GET /ai/insights/spending — monthly spending analysis with AI insights."""
+    """GET /ai/insights/spending — read-only spending insight of the day.
+
+    DEPRECATED generate-on-GET behaviour removed in #1546: this endpoint now
+    only returns the persisted insight for today (``generated: false`` when
+    none exists) and NEVER calls the LLM. Generation moved exclusively to
+    ``POST /ai/insights/generate``.
+    """
 
     @doc(
-        summary="Insights de gastos com IA (Premium)",
+        summary="Insight de gastos do dia (leitura, Premium) — DEPRECATED",
         description=(
-            "Analisa os gastos do mês informado e retorna insights gerados por LLM em PT-BR. "  # noqa: E501
+            "Retorna o insight de gastos já persistido para o dia atual, sem "
+            "nunca chamar o LLM (`generated: false` quando ainda não existe). "
+            "DEPRECATED: use POST /ai/insights/generate para gerar. "
             "Requer entitlement 'advanced_simulations' (plano Premium)."
         ),
         tags=["AI Advisory"],
@@ -709,7 +750,8 @@ class AISpendingInsightsResource(MethodResource):
                     "cost_usd": 0.000048,
                     "month": "2026-05",
                     "model": "gpt-4o-mini",
-                    "cached": False,
+                    "cached": True,
+                    "generated": True,
                 },
             ),
             401: json_error_response(
@@ -733,7 +775,6 @@ class AISpendingInsightsResource(MethodResource):
         },
     )
     @jwt_required()
-    @ai_daily_limit()
     def get(self) -> Response:
         token_error = _guard_revoked_token()
         if token_error is not None:
@@ -749,30 +790,25 @@ class AISpendingInsightsResource(MethodResource):
 
         service = AIAdvisoryService(user_id=user_id)
         try:
-            result = service.generate_spending_insights(month=month)
-        except AIConsentRequiredError as exc:
-            return _ai_consent_required_response(exc)
-        except LLMProviderError as exc:
-            return compat_error_response(
-                legacy_payload={"error": str(exc)},
-                status_code=500,
-                message="Erro ao gerar insights de gastos",
-                error_code="INTERNAL_ERROR",
-            )
+            result = service.read_spending_insights(month=month)
         except Exception:
             return compat_error_response(
-                legacy_payload={"error": "Erro interno ao gerar insights"},
+                legacy_payload={"error": "Erro interno ao ler insights"},
                 status_code=500,
-                message="Erro interno ao gerar insights",
+                message="Erro interno ao ler insights",
                 error_code="INTERNAL_ERROR",
             )
 
-        return compat_success_response(
+        response = compat_success_response(
             legacy_payload=result,
             status_code=200,
-            message="Insights de gastos gerados com sucesso",
+            message="Insights de gastos do dia",
             data=result,
         )
+        # RFC 8594-style deprecation signal: generation moved to POST generate.
+        response.headers["Deprecation"] = "true"
+        response.headers["Link"] = '</ai/insights/generate>; rel="successor-version"'
+        return response
 
 
 class AIGoalProjectionResource(MethodResource):
