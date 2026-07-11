@@ -852,6 +852,67 @@ class FinancialInsightContextBuilder:
             "data_quality": snapshot["data_quality"],
         }
 
+    def build_chat_context(
+        self,
+        *,
+        user_id: UUID,
+        anchor_date: date,
+        today: date,
+        timezone_name: str = _TIMEZONE,
+        timezone_fallback: bool = False,
+    ) -> dict[str, Any]:
+        """Month-aware context for the Ask-anything chat (#1548).
+
+        Covers the WHOLE calendar month of ``anchor_date`` (capped at *today*
+        for the current month) with a larger labelled transaction sample (40,
+        incomes included) — the old daily snapshot could not see "Salário BRQ"
+        paid on the 1st. Includes commitments/month_summary and a "today"
+        highlight block when the anchor month is the current one.
+        """
+        month_start = anchor_date.replace(day=1)
+        month_end = date(
+            anchor_date.year,
+            anchor_date.month,
+            monthrange(anchor_date.year, anchor_date.month)[1],
+        )
+        is_current_month = (anchor_date.year, anchor_date.month) == (
+            today.year,
+            today.month,
+        )
+        end = min(month_end, today) if is_current_month else month_end
+
+        snapshot = self._period_snapshot(
+            user_id=user_id,
+            start=month_start,
+            end=end,
+            label=f"{anchor_date:%Y-%m}",
+            period_type="chat_month",
+            include_daily_series=False,
+            include_budgets=True,
+            include_goals=True,
+            include_credit_cards=True,
+            include_wallet=True,
+            include_commitments=True,
+            transactions_sample_limit=40,
+            timezone_name=timezone_name,
+            timezone_fallback=timezone_fallback,
+        )
+
+        if is_current_month:
+            today_txs = [
+                tx
+                for tx in self._fetch_transactions(
+                    user_id=user_id, start=today, end=today
+                )
+                if tx.status != TransactionStatus.CANCELLED
+            ]
+            snapshot["today"] = {
+                "date": today.isoformat(),
+                "transaction_count": len(today_txs),
+                "items": [self._serialize_transaction(tx) for tx in today_txs[:10]],
+            }
+        return snapshot
+
     def _period_snapshot(
         self,
         *,
@@ -866,6 +927,7 @@ class FinancialInsightContextBuilder:
         include_credit_cards: bool = False,
         include_wallet: bool = False,
         include_commitments: bool = False,
+        transactions_sample_limit: int = 20,
         market_rates: MarketRatesProvider | None = None,
         previous_generated_at: datetime | None = None,
         timezone_name: str = _TIMEZONE,
@@ -923,6 +985,7 @@ class FinancialInsightContextBuilder:
             },
             "transactions": self._transactions_payload(
                 non_cancelled,
+                sample_limit=transactions_sample_limit,
                 previous_generated_at=previous_generated_at,
             ),
             "budgets": self._budgets_payload(user_id=user_id, start=start, end=end)
