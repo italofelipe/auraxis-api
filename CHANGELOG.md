@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.64.0](https://github.com/italofelipe/auraxis-api/compare/v1.63.0...v1.64.0) (2026-07-12)
+
+
+### Features
+
+* **billing:** alerta de backlog FAILED e cron diario para retry de webhooks ([#1556](https://github.com/italofelipe/auraxis-api/issues/1556)) ([9fd9082](https://github.com/italofelipe/auraxis-api/commit/9fd9082e4d5bddc09e1d9274fd8f26be11e4bd83))
+* **billing:** completa dunning do ciclo de vida — trial D-2, trial expirado e cancel local ([#1555](https://github.com/italofelipe/auraxis-api/issues/1555)) ([c4648ee](https://github.com/italofelipe/auraxis-api/commit/c4648eeeb9ca65e45f68e8eae994c017f25f9de7))
+* **billing:** dunning de ciclo de vida (trial D-2/expirado/cancel) + retry de webhooks FAILED com alerta ([69c53cc](https://github.com/italofelipe/auraxis-api/commit/69c53cc642409c58f441ca96aefac570967b834f))
+
 ## [1.63.0](https://github.com/italofelipe/auraxis-api/compare/v1.62.0...v1.63.0) (2026-07-11)
 
 
