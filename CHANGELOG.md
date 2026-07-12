@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.64.1](https://github.com/italofelipe/auraxis-api/compare/v1.64.0...v1.64.1) (2026-07-12)
+
+
+### Bug Fixes
+
+* **lgpd:** corrige purge-deleted-accounts — path de prod e espera do SSM ([bc9e525](https://github.com/italofelipe/auraxis-api/commit/bc9e525bbde8786bdd3e59d7beeca99b34dce603)), closes [#1560](https://github.com/italofelipe/auraxis-api/issues/1560)
+* **lgpd:** purge-deleted-accounts — corrige path de prod e passa a esperar o resultado do SSM ([4d137fb](https://github.com/italofelipe/auraxis-api/commit/4d137fb5e683286341ef38a1062aeb9317212650))
+
 ## [1.64.0](https://github.com/italofelipe/auraxis-api/compare/v1.63.0...v1.64.0) (2026-07-12)
 
 
