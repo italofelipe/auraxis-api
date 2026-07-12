@@ -144,3 +144,65 @@ def test_dispatch_due_soon_dry_run_does_not_send(app) -> None:
 
     outbox = get_email_outbox()
     assert len(outbox) == 0
+
+
+def test_dispatch_trial_ending_cli_sends_reminder(app) -> None:
+    from datetime import datetime, time
+
+    from app.models.subscription import Subscription, SubscriptionStatus
+
+    with app.app_context():
+        user = User(
+            id=uuid.uuid4(),
+            name="Trial CLI User",
+            email="trial-cli@email.com",
+            password="hash",
+        )
+        db.session.add(user)
+        db.session.flush()
+        db.session.add(
+            Subscription(
+                user_id=user.id,
+                plan_code="trial",
+                status=SubscriptionStatus.TRIALING,
+                trial_ends_at=datetime.combine(
+                    date.today() + timedelta(days=2), time(hour=12)
+                ),
+            )
+        )
+        db.session.commit()
+
+        runner = app.test_cli_runner()
+        result = runner.invoke(args=["reminders", "dispatch-trial-ending"])
+
+        assert result.exit_code == 0
+        assert "trial-ending reminders:" in result.output
+        assert "sent=1" in result.output
+        outbox = get_email_outbox()
+        assert len(outbox) == 1
+        assert outbox[0]["tag"] == "billing_trial_ending_2d"
+        outbox.clear()
+
+
+def test_dispatch_trial_ending_cli_dry_run_does_not_send(app) -> None:
+    runner = app.test_cli_runner()
+    result = runner.invoke(args=["reminders", "dispatch-trial-ending", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "[dry-run]" in result.output
+    assert len(get_email_outbox()) == 0
+
+
+def test_dispatch_trial_ending_cli_unexpected_error_exits_nonzero(app) -> None:
+    import unittest.mock as mock
+
+    with app.app_context():
+        runner = app.test_cli_runner()
+        with mock.patch(
+            "app.application.services.trial_ending_reminder_service.dispatch_trial_ending_reminders",
+            side_effect=RuntimeError("DB connection lost"),
+        ):
+            result = runner.invoke(args=["reminders", "dispatch-trial-ending"])
+
+    assert result.exit_code == 1
+    assert "ERROR" in result.output
