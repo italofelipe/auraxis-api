@@ -539,3 +539,157 @@ class TestBillingCheckoutEndpoint:
         assert resp.status_code == 400
         body = resp.get_json()
         assert body["error"]["code"] == "VALIDATION_ERROR"
+
+
+# ---------------------------------------------------------------------------
+# Dunning emails — trial expiration + local cancellation (#1555)
+# ---------------------------------------------------------------------------
+
+
+class TestTrialExpirationEmail:
+    def test_process_trial_expirations_sends_trial_expired_email(self, app) -> None:
+        """The expiry job must email the downgraded user (downgrade efetivado)."""
+        from scripts.process_trial_expirations import process_trial_expirations
+
+        with app.app_context():
+            user = User(
+                id=uuid.uuid4(),
+                name="Expired Trial User",
+                email="expired-trial@test.com",
+                password="hash",
+            )
+            db.session.add(user)
+            db.session.flush()
+            sub = Subscription(
+                user_id=user.id,
+                plan_code="trial",
+                status=SubscriptionStatus.TRIALING,
+                trial_ends_at=datetime.utcnow() - timedelta(hours=1),
+            )
+            db.session.add(sub)
+            db.session.commit()
+            sub_id = sub.id
+
+        count = process_trial_expirations(dry_run=False, flask_app=app)
+
+        assert count == 1
+        with app.app_context():
+            from app.services.email_provider import get_email_outbox
+
+            downgraded = Subscription.query.filter_by(id=sub_id).first()
+            assert downgraded is not None
+            assert downgraded.status == SubscriptionStatus.FREE
+
+            outbox = get_email_outbox()
+            tags = [entry["tag"] for entry in outbox]
+            assert "billing_trial_expired" in tags
+            emails = [entry["email"] for entry in outbox]
+            assert "expired-trial@test.com" in emails
+            outbox.clear()
+
+    def test_process_trial_expirations_dry_run_sends_no_email(self, app) -> None:
+        from scripts.process_trial_expirations import process_trial_expirations
+
+        with app.app_context():
+            user = User(
+                id=uuid.uuid4(),
+                name="Dry Run Trial User",
+                email="dry-trial@test.com",
+                password="hash",
+            )
+            db.session.add(user)
+            db.session.flush()
+            db.session.add(
+                Subscription(
+                    user_id=user.id,
+                    plan_code="trial",
+                    status=SubscriptionStatus.TRIALING,
+                    trial_ends_at=datetime.utcnow() - timedelta(hours=1),
+                )
+            )
+            db.session.commit()
+
+        count = process_trial_expirations(dry_run=True, flask_app=app)
+
+        assert count == 1
+        with app.app_context():
+            from app.services.email_provider import get_email_outbox
+
+            assert len(get_email_outbox()) == 0
+
+
+class TestCancelSubscriptionEmail:
+    class _UnusedProvider:
+        """cancel_subscription must not call the provider for local-only subs."""
+
+        def cancel_subscription(self, provider_subscription_id: str) -> None:
+            raise AssertionError("provider must not be called for local cancel")
+
+    class _RecordingProvider:
+        def __init__(self) -> None:
+            self.canceled: list[str] = []
+
+        def cancel_subscription(self, provider_subscription_id: str) -> None:
+            self.canceled.append(provider_subscription_id)
+
+    def test_local_cancel_sends_confirmation_email(self, app) -> None:
+        """Cancel without provider_subscription_id has no webhook — email here."""
+        from app.services.email_provider import get_email_outbox
+        from app.services.subscription_service import cancel_subscription
+
+        with app.app_context():
+            user = User(
+                id=uuid.uuid4(),
+                name="Local Cancel User",
+                email="local-cancel@test.com",
+                password="hash",
+            )
+            db.session.add(user)
+            db.session.flush()
+            sub = Subscription(
+                user_id=user.id,
+                plan_code="premium",
+                status=SubscriptionStatus.ACTIVE,
+            )
+            db.session.add(sub)
+            db.session.commit()
+
+            result = cancel_subscription(sub, self._UnusedProvider())
+
+            assert result.status == SubscriptionStatus.CANCELED
+            outbox = get_email_outbox()
+            assert len(outbox) == 1
+            assert outbox[0]["tag"] == "billing_subscription_canceled"
+            assert outbox[0]["email"] == "local-cancel@test.com"
+            outbox.clear()
+
+    def test_provider_backed_cancel_relies_on_webhook_email(self, app) -> None:
+        """Provider-backed cancel gets SUBSCRIPTION_DELETED webhook — no dupe."""
+        from app.services.email_provider import get_email_outbox
+        from app.services.subscription_service import cancel_subscription
+
+        with app.app_context():
+            user = User(
+                id=uuid.uuid4(),
+                name="Provider Cancel User",
+                email="provider-cancel@test.com",
+                password="hash",
+            )
+            db.session.add(user)
+            db.session.flush()
+            sub = Subscription(
+                user_id=user.id,
+                plan_code="premium",
+                status=SubscriptionStatus.ACTIVE,
+                provider="asaas",
+                provider_subscription_id="sub_prov_1",
+            )
+            db.session.add(sub)
+            db.session.commit()
+
+            provider = self._RecordingProvider()
+            result = cancel_subscription(sub, provider)
+
+            assert result.status == SubscriptionStatus.CANCELED
+            assert provider.canceled == ["sub_prov_1"]
+            assert len(get_email_outbox()) == 0
