@@ -78,16 +78,54 @@ jobs:
             DRY_RUN_FLAG="--dry-run"
           fi
 
-          aws ssm send-command \
+          # Stack de prod vive em /opt/auraxis (não /opt/auraxis-api) e o compose
+          # de prod exige -f docker-compose.prod.yml. O container é resolvido por
+          # CID (padrão do fix #1407 — `compose exec web` pode pegar zombie).
+          COMMAND_ID=$(aws ssm send-command \
             --region "${AWS_REGION}" \
             --instance-ids "${PROD_INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
+            --comment "purge-deleted-accounts (LGPD) via GH Actions" \
             --parameters "commands=[
-              \"cd /opt/auraxis-api\",
-              \"docker compose exec -T web python scripts/purge_deleted_accounts.py --grace-days ${GRACE_DAYS} ${DRY_RUN_FLAG}\"
+              \"cd /opt/auraxis\",
+              \"WEB_CID=\$(docker compose --env-file .env.prod -f docker-compose.prod.yml ps -q web)\",
+              \"test -n \\\"\$WEB_CID\\\"\",
+              \"docker exec \\\"\$WEB_CID\\\" python scripts/purge_deleted_accounts.py --grace-days ${GRACE_DAYS} ${DRY_RUN_FLAG}\"
             ]" \
             --output text \
-            --query "Command.CommandId"
+            --query "Command.CommandId")
+          echo "SSM CommandId: ${COMMAND_ID}"
+
+          # Espera o resultado real: sem isso o job termina success com o purge
+          # quebrado no host e o alerta de falha abaixo nunca dispara.
+          STATUS="Pending"
+          for _ in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation \
+              --region "${AWS_REGION}" \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "${PROD_INSTANCE_ID}" \
+              --query "Status" --output text 2>/dev/null || echo "Pending")
+            case "${STATUS}" in
+              Success|Failed|Cancelled|TimedOut) break ;;
+            esac
+            sleep 10
+          done
+
+          echo "--- stdout ---"
+          aws ssm get-command-invocation \
+            --region "${AWS_REGION}" \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${PROD_INSTANCE_ID}" \
+            --query "StandardOutputContent" --output text
+          echo "--- stderr ---"
+          aws ssm get-command-invocation \
+            --region "${AWS_REGION}" \
+            --command-id "${COMMAND_ID}" \
+            --instance-id "${PROD_INSTANCE_ID}" \
+            --query "StandardErrorContent" --output text
+
+          echo "SSM status final: ${STATUS}"
+          [ "${STATUS}" = "Success" ]
 
       - name: Notify failure via GitHub Issue
         if: failure()
