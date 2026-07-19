@@ -17,8 +17,8 @@ def _retry_single_event(event: Any) -> tuple[bool, str | None]:
 
     from app.controllers.subscription_controller import (
         _extract_event_id,
-        _extract_provider_snapshot,
         _process_webhook_snapshot,
+        resolve_webhook_parser,
     )
     from app.extensions.database import db
     from app.utils.datetime_utils import utc_now_naive
@@ -35,7 +35,17 @@ def _retry_single_event(event: Any) -> tuple[bool, str | None]:
         db.session.commit()
         return False, f"payload_parse_error:{exc}"
 
-    snapshot = _extract_provider_snapshot(payload)
+    # Reprocess with the parser of the gateway that originally sent the event,
+    # not whichever provider happens to be active now.
+    parser = resolve_webhook_parser(getattr(event, "provider", None))
+    if parser is None:
+        event.mark_failed(
+            reason=f"unknown_provider:{event.provider}", now=utc_now_naive()
+        )
+        db.session.commit()
+        return False, f"unknown_provider:{event.provider}"
+
+    snapshot = parser.parse(payload)
     if snapshot is None:
         event.mark_failed(
             reason="unresolvable_subscription_on_retry", now=utc_now_naive()

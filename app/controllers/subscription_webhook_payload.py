@@ -16,7 +16,7 @@ from flask import current_app
 from flask.ctx import has_app_context
 
 from app.config.billing_plans import resolve_checkout_plan_offer
-from app.models.subscription import Subscription, SubscriptionStatus
+from app.models.subscription import Subscription
 from app.services.billing_adapter import BillingSubscriptionSnapshot
 
 _WEBHOOK_SIGNATURE_HEADER = "X-Billing-Signature"
@@ -24,15 +24,6 @@ _ASAAS_WEBHOOK_TOKEN_HEADER = "asaas-access-token"
 _WEBHOOK_SECRET_ENV = "BILLING_WEBHOOK_SECRET"
 _WEBHOOK_ALLOW_UNSIGNED_ENV = "BILLING_WEBHOOK_ALLOW_UNSIGNED"
 _ASAAS_WEBHOOK_TOKEN_ENV = "BILLING_ASAAS_WEBHOOK_TOKEN"
-_SUPPORTED_WEBHOOK_EVENTS = {
-    "subscription.activated",
-    "subscription.canceled",
-    "subscription.past_due",
-    "PAYMENT_RECEIVED",
-    "PAYMENT_CONFIRMED",
-    "PAYMENT_OVERDUE",
-    "SUBSCRIPTION_DELETED",
-}
 
 
 def _read_bool_env(name: str, default: bool = False) -> bool:
@@ -90,14 +81,6 @@ def _verify_asaas_webhook_token(header_value: str) -> bool:
     if not header_value.strip():
         return False
     return hmac.compare_digest(expected, header_value.strip())
-
-
-def _is_webhook_request_authorized(
-    payload: bytes, signature: str, asaas_token: str
-) -> bool:
-    return _verify_webhook_signature(payload, signature) or _verify_asaas_webhook_token(
-        asaas_token
-    )
 
 
 def _extract_event_id(payload: dict[str, Any]) -> str | None:
@@ -243,62 +226,6 @@ def _extract_subscription_identifiers(
         _coerce_datetime(current_period_start),
         _coerce_datetime(current_period_end),
     )
-
-
-def _resolve_status(event_type: str) -> str | None:
-    status_map = {
-        "subscription.activated": SubscriptionStatus.ACTIVE.value,
-        "subscription.canceled": SubscriptionStatus.CANCELED.value,
-        "subscription.past_due": SubscriptionStatus.PAST_DUE.value,
-        "PAYMENT_RECEIVED": SubscriptionStatus.ACTIVE.value,
-        "PAYMENT_CONFIRMED": SubscriptionStatus.ACTIVE.value,
-        "PAYMENT_OVERDUE": SubscriptionStatus.PAST_DUE.value,
-        "SUBSCRIPTION_DELETED": SubscriptionStatus.CANCELED.value,
-    }
-    return status_map.get(event_type)
-
-
-def _extract_provider_snapshot(
-    payload: dict[str, Any],
-) -> BillingSubscriptionSnapshot | None:
-    event_type = str(payload.get("event") or "").strip()
-    (
-        provider_subscription_id,
-        provider_customer_id,
-        external_reference,
-        current_period_start,
-        current_period_end,
-    ) = _extract_subscription_identifiers(payload)
-
-    if not provider_customer_id and not provider_subscription_id:
-        return None
-
-    status = _resolve_status(event_type)
-    if status is None:
-        return None
-
-    offer_metadata = _resolve_offer_from_external_reference(external_reference)
-    snapshot: BillingSubscriptionSnapshot = {
-        "status": status,
-        "provider_customer_id": provider_customer_id,
-        "current_period_start": current_period_start,
-        "current_period_end": current_period_end,
-    }
-    if event_type.isupper():
-        snapshot["provider"] = "asaas"
-    if provider_subscription_id:
-        snapshot["provider_id"] = provider_subscription_id
-    if offer_metadata["plan_code"]:
-        snapshot["plan_code"] = offer_metadata["plan_code"]
-    if offer_metadata["offer_code"]:
-        snapshot["offer_code"] = offer_metadata["offer_code"]
-    if offer_metadata["billing_cycle"]:
-        snapshot["billing_cycle"] = offer_metadata["billing_cycle"]
-    return snapshot
-
-
-def _is_supported_webhook_event(event_type: str) -> bool:
-    return event_type in _SUPPORTED_WEBHOOK_EVENTS
 
 
 def _find_subscription_for_snapshot(

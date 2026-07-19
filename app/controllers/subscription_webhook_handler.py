@@ -11,22 +11,22 @@ Re-exports consumed by ``billing_webhooks_cli`` remain in
 from __future__ import annotations
 
 import logging
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, cast
 
 from flask import request
 from flask.typing import ResponseReturnValue
 
 from app.application.services.billing_email_service import dispatch_billing_email
+from app.controllers.billing_webhook_parsers import (
+    BillingWebhookParser,
+    default_webhook_parser,
+)
 from app.controllers.response_contract import compat_error_response
 from app.controllers.subscription_webhook_payload import (
-    _ASAAS_WEBHOOK_TOKEN_HEADER,
-    _WEBHOOK_SIGNATURE_HEADER,
     _extract_event_id,
-    _extract_provider_snapshot,
     _extract_subscription_identifiers,
     _find_subscription_for_snapshot,
-    _is_supported_webhook_event,
-    _is_webhook_request_authorized,
 )
 from app.extensions.database import db
 from app.http.request_context import current_request_id
@@ -107,28 +107,29 @@ def _process_webhook_snapshot(
     return _ok({"received": True, "processed": True})
 
 
-def handle_webhook_request() -> ResponseReturnValue:
+def handle_webhook_request(
+    parser: BillingWebhookParser | None = None,
+) -> ResponseReturnValue:
     """Process a provider webhook POST.
 
-    Validates the signature, persists an audit record, and delegates to
-    ``_process_webhook_snapshot`` for supported event types.
-    Called by ``subscription_controller.handle_webhook``.
+    Verifies the signature, persists an audit record, and delegates to
+    ``_process_webhook_snapshot`` for supported event types.  Called by
+    ``subscription_controller.handle_webhook``.
 
-    Supported events
-    ----------------
-    subscription.activated   — set status to ACTIVE
-    subscription.canceled    — set status to CANCELED
-    subscription.past_due    — set status to PAST_DUE
-    PAYMENT_RECEIVED         — set status to ACTIVE
-    PAYMENT_CONFIRMED        — set status to ACTIVE
-    PAYMENT_OVERDUE          — set status to PAST_DUE
-    SUBSCRIPTION_DELETED     — set status to CANCELED
-    <any other event>        — 200 no-op
+    Signature scheme, event vocabulary and payload shape all come from the
+    ``BillingWebhookParser`` (``app.controllers.billing_webhook_parsers``);
+    unsupported events are a 200 no-op.  ``parser`` defaults to the gateway
+    behind the unscoped legacy route.
     """
+    if parser is None:
+        parser = default_webhook_parser()
+
     raw_body: bytes = request.get_data()
-    signature = request.headers.get(_WEBHOOK_SIGNATURE_HEADER, "")
-    asaas_token = request.headers.get(_ASAAS_WEBHOOK_TOKEN_HEADER, "")
-    sig_verified = _is_webhook_request_authorized(raw_body, signature, asaas_token)
+    # Werkzeug's Headers is not a nominal Mapping, but its ``get`` is
+    # case-insensitive — which is what header lookup needs.  Casting to dict
+    # instead would make ``asaas-access-token`` miss ``Asaas-Access-Token``.
+    headers = cast(Mapping[str, str], request.headers)
+    sig_verified = parser.verify(raw_body, headers)
 
     payload: dict[str, Any] = request.get_json(silent=True) or {}
     event_type: str = payload.get("event", "")
@@ -149,7 +150,7 @@ def handle_webhook_request() -> ResponseReturnValue:
     webhook_ev = WebhookEvent(
         event_id=event_id,
         event_type=event_type or "unknown",
-        provider="asaas",
+        provider=parser.provider,
         provider_subscription_id=provider_subscription_id,
         provider_customer_id=provider_customer_id,
         raw_payload=raw_text,
@@ -173,13 +174,13 @@ def handle_webhook_request() -> ResponseReturnValue:
             details={"request_id": current_request_id()},
         )
 
-    if not _is_supported_webhook_event(event_type):
+    if not parser.supports_event(event_type):
         webhook_ev.mark_skipped(reason=f"unsupported_event:{event_type}")
         db.session.commit()
         logger.info("Unhandled billing webhook event: %s — ignoring", event_type)
         return _ok({"received": True, "processed": False})
 
-    snapshot = _extract_provider_snapshot(payload)
+    snapshot = parser.parse(payload)
     if snapshot is None:
         webhook_ev.mark_skipped(reason="unresolvable_subscription")
         db.session.commit()
