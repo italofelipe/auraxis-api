@@ -380,6 +380,33 @@ class TestWebhookParser:
         assert snapshot is not None
         assert "trial_ends_at" not in snapshot
 
+    @pytest.mark.parametrize(
+        "location",
+        ["checkout", "payment", "subscription"],
+    )
+    def test_resolves_plan_from_external_reference(self, location: str) -> None:
+        """Without this, a paid subscription lands active but with Free plan_code,
+        so entitlements stay Free — the user pays and gets no Premium access."""
+        payload = _webhook("subscription.completed")
+        payload["data"][location] = {
+            **payload["data"].get(location, {}),
+            "externalId": "auraxis:user-42:premium_monthly",
+        }
+
+        snapshot = AbacatePayWebhookParser().parse(payload)
+
+        assert snapshot is not None
+        assert snapshot["plan_code"] == "premium"
+        assert snapshot["offer_code"] == "premium_monthly"
+        assert snapshot["billing_cycle"] == "monthly"
+
+    def test_missing_external_reference_omits_plan(self) -> None:
+        """No externalId (e.g. auto-cancel payload) must not fabricate a plan."""
+        snapshot = AbacatePayWebhookParser().parse(_webhook("subscription.cancelled"))
+
+        assert snapshot is not None
+        assert "plan_code" not in snapshot
+
     def test_ignores_unknown_event(self) -> None:
         assert AbacatePayWebhookParser().parse(_webhook("checkout.refunded")) is None
 

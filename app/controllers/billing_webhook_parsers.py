@@ -236,6 +236,63 @@ def _resolve_abacatepay_customer_id(data: dict[str, Any]) -> str | None:
     return None
 
 
+def _resolve_abacatepay_external_reference(data: dict[str, Any]) -> str | None:
+    """Find the ``auraxis:{user_id}:{offer_slug}`` reference we sent at checkout.
+
+    It surfaces in different sub-objects depending on the event, so probe all
+    three.  Without it the snapshot carries no plan, ``plan_code`` stays Free,
+    and a paid subscription lands active with Free entitlements.
+    """
+    for key in ("checkout", "payment", "subscription"):
+        obj = data.get(key)
+        if isinstance(obj, dict):
+            reference = _clean(obj.get("externalId")) or _clean(
+                obj.get("externalReference")
+            )
+            if reference:
+                return reference
+    return None
+
+
+def _build_abacatepay_snapshot(
+    data: dict[str, Any],
+    subscription_object: dict[str, Any],
+    *,
+    status: str,
+    provider_subscription_id: str | None,
+    provider_customer_id: str | None,
+) -> BillingSubscriptionSnapshot:
+    snapshot: BillingSubscriptionSnapshot = {
+        "status": status,
+        "provider": ABACATEPAY_PROVIDER,
+        "provider_customer_id": provider_customer_id,
+        "current_period_start": _coerce_datetime(subscription_object.get("updatedAt")),
+        "current_period_end": _coerce_datetime(subscription_object.get("nextChargeAt")),
+    }
+
+    offer_metadata = _resolve_offer_from_external_reference(
+        _resolve_abacatepay_external_reference(data)
+    )
+    if offer_metadata["plan_code"]:
+        # Entitlements derive from plan_code — without this a paid sub stays on
+        # Free features despite an active status.
+        snapshot["plan_code"] = offer_metadata["plan_code"]
+    if offer_metadata["offer_code"]:
+        snapshot["offer_code"] = offer_metadata["offer_code"]
+    if offer_metadata["billing_cycle"]:
+        snapshot["billing_cycle"] = offer_metadata["billing_cycle"]
+
+    trial_ends_at = _coerce_datetime(subscription_object.get("trialEndsAt"))
+    if trial_ends_at is not None:
+        # Drives trial_expiry_cli and the D-N ending reminders.
+        snapshot["trial_ends_at"] = trial_ends_at
+
+    if provider_subscription_id:
+        # Promotes the stored bill_… placeholder to the real subs_… id.
+        snapshot["provider_id"] = provider_subscription_id
+    return snapshot
+
+
 class AbacatePayWebhookParser:
     """AbacatePay webhooks (API v2 envelope).
 
@@ -294,27 +351,28 @@ class AbacatePayWebhookParser:
     def supports_event(self, event_type: str) -> bool:
         return event_type in self._EVENTS
 
+    def _devmode_blocks(self, payload: dict[str, Any]) -> bool:
+        """Whether a sandbox payload must be dropped in this runtime."""
+        if not (payload.get("devMode") is True and _is_production_runtime()):
+            return False
+        if not _devmode_allowed_in_production():
+            return True
+        logger.warning(
+            "Accepting AbacatePay devMode webhook in production because "
+            "%s is enabled — turn it off once validation is done",
+            _ABACATEPAY_ALLOW_DEVMODE_ENV,
+        )
+        return False
+
     def parse(self, payload: dict[str, Any]) -> BillingSubscriptionSnapshot | None:
         event_type = str(payload.get("event") or "").strip()
         status = self._EVENTS.get(event_type)
-        if status is None:
+        if status is None or self._devmode_blocks(payload):
             return None
-
-        if payload.get("devMode") is True and _is_production_runtime():
-            # Sandbox traffic must never move real subscriptions, unless the
-            # operator explicitly opted in to validate a sandbox key in place.
-            if not _devmode_allowed_in_production():
-                return None
-            logger.warning(
-                "Accepting AbacatePay devMode webhook in production because "
-                "%s is enabled — turn it off once validation is done",
-                _ABACATEPAY_ALLOW_DEVMODE_ENV,
-            )
 
         data = payload.get("data")
         if not isinstance(data, dict):
             return None
-
         subscription_object = data.get("subscription")
         if not isinstance(subscription_object, dict):
             return None
@@ -324,26 +382,13 @@ class AbacatePayWebhookParser:
         if not provider_subscription_id and not provider_customer_id:
             return None
 
-        snapshot: BillingSubscriptionSnapshot = {
-            "status": status,
-            "provider": ABACATEPAY_PROVIDER,
-            "provider_customer_id": provider_customer_id,
-            "current_period_start": _coerce_datetime(
-                subscription_object.get("updatedAt")
-            ),
-            "current_period_end": _coerce_datetime(
-                subscription_object.get("nextChargeAt")
-            ),
-        }
-        trial_ends_at = _coerce_datetime(subscription_object.get("trialEndsAt"))
-        if trial_ends_at is not None:
-            # Drives trial_expiry_cli and the D-N ending reminders.
-            snapshot["trial_ends_at"] = trial_ends_at
-
-        if provider_subscription_id:
-            # Promotes the stored bill_… placeholder to the real subs_… id.
-            snapshot["provider_id"] = provider_subscription_id
-        return snapshot
+        return _build_abacatepay_snapshot(
+            data,
+            subscription_object,
+            status=status,
+            provider_subscription_id=provider_subscription_id,
+            provider_customer_id=provider_customer_id,
+        )
 
 
 _PARSERS: dict[str, BillingWebhookParser] = {
