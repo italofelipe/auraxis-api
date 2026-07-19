@@ -2,9 +2,9 @@ name: Spending Patterns Job
 
 on:
   schedule:
-    # Weekly on Saturdays at 06:00 UTC = 03:00 BRT (issue #1553 — PO 2026-07-10:
-    # automatic insights are weekly/monthly only; the daily run created a new
-    # AIInsight per user every night, perceived as "new insight on every login")
+    # Weekly — Saturdays 06:00 UTC = 03:00 BRT (#1553). Automatic insights are
+    # weekly/monthly only (PO 2026-07-10); the daily run made a fresh radar
+    # insight appear every morning, perceived as "generated on login".
     - cron: "0 6 * * 6"
   workflow_dispatch:
     inputs:
