@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import logging
 import os
 from collections.abc import Mapping
 from datetime import datetime
@@ -31,15 +32,21 @@ from app.controllers.subscription_webhook_payload import (
 from app.models.subscription import SubscriptionStatus
 from app.services.billing_adapter import BillingSubscriptionSnapshot
 
+logger = logging.getLogger(__name__)
+
 ASAAS_PROVIDER = "asaas"
 ABACATEPAY_PROVIDER = "abacatepay"
 
 _ABACATEPAY_SIGNATURE_HEADER = "X-Webhook-Signature"
 _ABACATEPAY_SECRET_QUERY_PARAM = "webhookSecret"
 _ABACATEPAY_WEBHOOK_SECRET_ENV = "BILLING_ABACATEPAY_WEBHOOK_SECRET"
+# Name the secret ships under in the platform .env.
+_ABACATEPAY_WEBHOOK_SECRET_FALLBACK_ENV = "ABACATE_PAY_WEBHOOK_SECRET"
 _ABACATEPAY_SIGNING_KEY_ENV = "BILLING_ABACATEPAY_SIGNING_KEY"
+_ABACATEPAY_ALLOW_DEVMODE_ENV = "BILLING_ABACATEPAY_ALLOW_DEVMODE"
 
 _PRODUCTION_ENV_NAMES = {"prod", "production"}
+_TRUTHY = {"1", "true", "yes", "on"}
 
 
 def _is_production_runtime() -> bool:
@@ -48,6 +55,25 @@ def _is_production_runtime() -> bool:
         if value:
             return value in _PRODUCTION_ENV_NAMES
     return False
+
+
+def _devmode_allowed_in_production() -> bool:
+    """Escape hatch for validating a sandbox key against the production API.
+
+    Off by default and meant to be temporary: while it is on, sandbox traffic
+    can move real subscriptions.  Turn it off as soon as the paid-path check
+    is done.
+    """
+    return (
+        str(os.getenv(_ABACATEPAY_ALLOW_DEVMODE_ENV) or "").strip().lower() in _TRUTHY
+    )
+
+
+def _abacatepay_webhook_secret() -> str:
+    return (
+        os.getenv(_ABACATEPAY_WEBHOOK_SECRET_ENV, "").strip()
+        or os.getenv(_ABACATEPAY_WEBHOOK_SECRET_FALLBACK_ENV, "").strip()
+    )
 
 
 def _clean(value: object) -> str | None:
@@ -245,7 +271,7 @@ class AbacatePayWebhookParser:
         headers: Mapping[str, str],
         query: Mapping[str, str] | None = None,
     ) -> bool:
-        expected_secret = os.getenv(_ABACATEPAY_WEBHOOK_SECRET_ENV, "").strip()
+        expected_secret = _abacatepay_webhook_secret()
         if not expected_secret:
             return False
 
@@ -275,8 +301,15 @@ class AbacatePayWebhookParser:
             return None
 
         if payload.get("devMode") is True and _is_production_runtime():
-            # Sandbox traffic must never move real subscriptions.
-            return None
+            # Sandbox traffic must never move real subscriptions, unless the
+            # operator explicitly opted in to validate a sandbox key in place.
+            if not _devmode_allowed_in_production():
+                return None
+            logger.warning(
+                "Accepting AbacatePay devMode webhook in production because "
+                "%s is enabled — turn it off once validation is done",
+                _ABACATEPAY_ALLOW_DEVMODE_ENV,
+            )
 
         data = payload.get("data")
         if not isinstance(data, dict):
