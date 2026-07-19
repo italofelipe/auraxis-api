@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.65.0](https://github.com/italofelipe/auraxis-api/compare/v1.64.1...v1.65.0) (2026-07-19)
+
+
+### Features
+
+* **billing:** route webhooks per provider via /subscriptions/webhook/&lt;provider&gt; ([51922c6](https://github.com/italofelipe/auraxis-api/commit/51922c69d1b68b81923f41ab42e1ebb33f92ebea))
+
 ## [1.64.1](https://github.com/italofelipe/auraxis-api/compare/v1.64.0...v1.64.1) (2026-07-12)
 
 
