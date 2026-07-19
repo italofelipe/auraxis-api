@@ -266,6 +266,24 @@ PRIVILEGED_OPERATIONS: set[str] = {
 # Enrichment config — custom bodies, pre-request, test scripts per operation
 # ---------------------------------------------------------------------------
 ENRICHMENT: dict[str, dict[str, Any]] = {
+    # ── Premium-gated (#1569) ─────────────────────────────────────────
+    # Signup creates a Free subscription now — the 7-day trial moved to the
+    # payment gateway and requires a card. The suite user therefore has no
+    # Premium entitlements, so these answer 403 instead of 200.
+    "GET /transactions/export": {
+        "test_lines": [
+            "pm.test('Exportar transacoes — 200 (Premium) ou 403 (Free)', function () {",
+            "  pm.expect(pm.response.code).to.be.oneOf([200, 403]);",
+            "});",
+        ],
+    },
+    "GET /ai/insights/spending-patterns/latest": {
+        "test_lines": [
+            "pm.test('Radar de gastos — 200 (Premium) ou 403 (Free)', function () {",
+            "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]);",
+            "});",
+        ],
+    },
     # ── Auth ──────────────────────────────────────────────────────────
     "POST /auth/register": {
         "body_override": json.dumps(
