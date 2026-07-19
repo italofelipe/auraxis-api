@@ -21,9 +21,51 @@ from app.models.subscription import BillingCycle
 from app.services.retry_wrapper import with_retry
 
 _ASAAS_PROVIDER = "asaas"
+_ABACATEPAY_PROVIDER = "abacatepay"
 _STUB_PROVIDER = "stub"
 _DEFAULT_ASAAS_BASE_URL = "https://api-sandbox.asaas.com/v3"
+_DEFAULT_ABACATEPAY_BASE_URL = "https://api.abacatepay.com/v2"
 _REQUEST_TIMEOUT_SECONDS = 15.0
+
+# AbacatePay reports subscription state with values outside its own declared
+# enum (ACTIVE is documented nowhere but is what the API returns), so unknown
+# values degrade to past_due rather than raising.
+_ABACATEPAY_STATUS_MAP = {
+    "ACTIVE": "active",
+    "PAID": "active",
+    "PENDING": "pending",
+    "CANCELLED": "canceled",
+    "CANCELED": "canceled",
+    "EXPIRED": "canceled",
+    "REFUNDED": "canceled",
+}
+
+
+def _map_abacatepay_status(raw_status: object) -> str:
+    return _ABACATEPAY_STATUS_MAP.get(str(raw_status or "").strip().upper(), "past_due")
+
+
+def _unwrap_abacatepay_envelope(response: Response) -> dict[str, object]:
+    """Unwrap ``{"success", "data", "error"}`` and surface API-level errors.
+
+    AbacatePay answers business errors with HTTP 400/422 *and* a populated
+    ``error`` string, so status code alone is not enough to tell them apart.
+    """
+    try:
+        body = cast(dict[str, object], response.json())
+    except ValueError:
+        body = {}
+
+    if not response.ok or body.get("success") is False:
+        message = str(body.get("error") or response.text or "unknown error").strip()
+        raise BillingProviderError(
+            f"AbacatePay request failed with status {response.status_code}: {message}"
+        )
+
+    data = body.get("data")
+    if isinstance(data, dict):
+        return cast(dict[str, object], data)
+    return body
 
 
 class BillingProviderError(RuntimeError):
@@ -333,6 +375,174 @@ class AsaasBillingProvider:
         }
 
 
+class AbacatePayBillingProvider:
+    """Billing provider backed by the AbacatePay API v2.
+
+    Shape notes verified against the sandbox on 2026-07-19 (the docs contradict
+    themselves on several of these):
+
+    * Every response is wrapped in ``{"success", "data", "error"}``; errors come
+      back as ``success: false`` with ``error`` as a plain string.
+    * ``POST /subscriptions/create`` returns a **checkout** (``bill_…``), not a
+      subscription.  The real ``subs_…`` id only exists once the customer pays
+      and reaches us through the ``subscription.completed`` webhook.  We store
+      the ``bill_…`` meanwhile and let the webhook promote it.
+    * Cycle, price and trial live on the **product**, registered in the
+      dashboard — the request only carries ``items[{id, quantity}]``.
+    * ``methods: ["PIX"]`` is rejected until PIX Automático is enabled for the
+      store, so subscriptions are card-only for now.
+    """
+
+    def __init__(self) -> None:
+        # BILLING_ABACATEPAY_API_KEY is canonical; ABACATE_PAY_API_TOKEN is the
+        # name the key ships under in the platform .env.
+        self._api_key = _env("BILLING_ABACATEPAY_API_KEY") or _env(
+            "ABACATE_PAY_API_TOKEN"
+        )
+        self._base_url = _env(
+            "BILLING_ABACATEPAY_BASE_URL", _DEFAULT_ABACATEPAY_BASE_URL
+        )
+        self._session = requests.Session()
+        self._session.headers.update(
+            {
+                "accept": "application/json",
+                "content-type": "application/json",
+                "authorization": f"Bearer {self._api_key}",
+            }
+        )
+
+    def _ensure_enabled(self) -> None:
+        if not self._api_key:
+            raise BillingProviderError(
+                "BILLING_ABACATEPAY_API_KEY (or ABACATE_PAY_API_TOKEN) is "
+                "required when BILLING_PROVIDER=abacatepay"
+            )
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_payload: object | None = None,
+        params: dict[str, str] | None = None,
+    ) -> dict[str, object]:
+        self._ensure_enabled()
+        url = f"{self._base_url.rstrip('/')}/{path.lstrip('/')}"
+
+        @with_retry(provider=_ABACATEPAY_PROVIDER)
+        def _do() -> dict[str, object]:
+            response = self._session.request(
+                method=method,
+                url=url,
+                json=json_payload,
+                params=params,
+                timeout=_REQUEST_TIMEOUT_SECONDS,
+            )
+            return _unwrap_abacatepay_envelope(response)
+
+        try:
+            return _do()
+        except RequestException as exc:
+            raise BillingProviderError("AbacatePay request failed") from exc
+
+    def _product_id_for(self, offer: BillingPlanOffer) -> str:
+        env_name = f"BILLING_ABACATEPAY_PRODUCT_{offer.slug.upper()}"
+        product_id = _env(env_name)
+        if not product_id:
+            raise BillingProviderError(
+                f"{env_name} is required to sell offer '{offer.slug}' — "
+                "products carry price and cycle on AbacatePay"
+            )
+        return product_id
+
+    def _ensure_customer(self, customer: BillingCheckoutCustomer) -> str | None:
+        """Best-effort customer creation.
+
+        A missing customer does not block checkout — AbacatePay collects the
+        payer's details on the hosted page — so a failure here degrades to an
+        anonymous checkout instead of losing the sale.
+        """
+        try:
+            payload = self._request(
+                "POST",
+                "/customers/create",
+                json_payload={"name": customer.name, "email": customer.email},
+            )
+        except BillingProviderError:
+            return None
+        return str(payload.get("id") or "").strip() or None
+
+    def get_subscription(self, provider_id: str) -> BillingSubscriptionSnapshot:
+        payload = self._request("GET", "/subscriptions/get", params={"id": provider_id})
+        return {
+            "provider_id": str(payload.get("id") or provider_id),
+            "provider": _ABACATEPAY_PROVIDER,
+            "provider_customer_id": (
+                str(payload.get("customerId") or "").strip() or None
+            ),
+            "status": _map_abacatepay_status(payload.get("status")),
+        }
+
+    def cancel_subscription(self, provider_id: str) -> BillingSubscriptionSnapshot:
+        payload = self._request(
+            "POST", "/subscriptions/cancel", json_payload={"id": provider_id}
+        )
+        return {
+            "provider_id": str(payload.get("id") or provider_id),
+            "status": "canceled",
+            "provider": _ABACATEPAY_PROVIDER,
+            "provider_customer_id": (
+                str(payload.get("customerId") or "").strip() or None
+            ),
+        }
+
+    def create_checkout_session(
+        self, customer: BillingCheckoutCustomer, plan_slug: str
+    ) -> BillingCheckoutSession:
+        offer = resolve_checkout_plan_offer(plan_slug)
+        if offer is None:
+            raise BillingProviderError(f"Unsupported plan slug: {plan_slug}")
+
+        success_url = _env("BILLING_CHECKOUT_SUCCESS_URL")
+        cancel_url = _env("BILLING_CHECKOUT_CANCEL_URL")
+        if not success_url or not cancel_url:
+            raise BillingProviderError(
+                "BILLING_CHECKOUT_SUCCESS_URL and "
+                "BILLING_CHECKOUT_CANCEL_URL must be configured"
+            )
+
+        # Resolve the product before touching the API: failing after creating a
+        # customer would leave an orphan record for a sale we cannot complete.
+        product_id = self._product_id_for(offer)
+
+        customer_id = self._ensure_customer(customer)
+        body: dict[str, object] = {
+            "items": [{"id": product_id, "quantity": 1}],
+            "externalId": f"auraxis:{customer.user_id}:{offer.slug}",
+            "completionUrl": success_url,
+            "returnUrl": cancel_url,
+            "methods": ["CARD"],
+            "metadata": {"user_id": customer.user_id, "offer_slug": offer.slug},
+        }
+        if customer_id:
+            body["customerId"] = customer_id
+
+        payload = self._request("POST", "/subscriptions/create", json_payload=body)
+        checkout_url = str(payload.get("url") or "").strip()
+        if not checkout_url:
+            raise BillingProviderError(
+                "AbacatePay checkout response did not include a url"
+            )
+        return {
+            "checkout_url": checkout_url,
+            "provider": _ABACATEPAY_PROVIDER,
+            "provider_customer_id": customer_id
+            or (str(payload.get("customerId") or "").strip() or None),
+            # bill_… placeholder; the webhook replaces it with the subs_… id.
+            "provider_subscription_id": str(payload.get("id") or "").strip() or None,
+        }
+
+
 def get_default_billing_provider() -> BillingProvider:
     """Factory that returns the active billing provider.
 
@@ -343,6 +553,8 @@ def get_default_billing_provider() -> BillingProvider:
     provider_name = (
         _env("BILLING_PROVIDER") or _env("AURAXIS_BILLING_PROVIDER") or _STUB_PROVIDER
     ).lower()
+    if provider_name == _ABACATEPAY_PROVIDER:
+        return AbacatePayBillingProvider()
     if provider_name == _ASAAS_PROVIDER:
         return AsaasBillingProvider()
     return StubBillingProvider()
