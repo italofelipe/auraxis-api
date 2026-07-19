@@ -28,6 +28,8 @@ são a fonte da verdade. O deploy (`scripts/aws_deploy_i6.py`) valida as chaves
 | `SENTRY_DSN` | Sem observabilidade de erros. |
 | `EMAIL_PROVIDER`, `EMAIL_FROM` | Emails (confirmação, recap) silenciosamente não saem. |
 | `BILLING_PROVIDER`, `BILLING_ASAAS_*` | Checkout/assinatura quebra. |
+| `BILLING_ABACATEPAY_API_KEY`, `BILLING_ABACATEPAY_PRODUCT_*` | Checkout do AbacatePay quebra (produto carrega preco e ciclo). |
+| `BILLING_ABACATEPAY_WEBHOOK_SECRET` | Webhooks do AbacatePay rejeitados — assinatura nunca ativa apos pagamento. |
 | `JWT_COOKIE_SAMESITE` | Default `Lax` no config; explicitar em prod é preferível. |
 
 ## Regras

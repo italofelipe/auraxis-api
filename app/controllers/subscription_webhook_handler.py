@@ -129,7 +129,7 @@ def handle_webhook_request(
     # case-insensitive — which is what header lookup needs.  Casting to dict
     # instead would make ``asaas-access-token`` miss ``Asaas-Access-Token``.
     headers = cast(Mapping[str, str], request.headers)
-    sig_verified = parser.verify(raw_body, headers)
+    sig_verified = parser.verify(raw_body, headers, request.args)
 
     payload: dict[str, Any] = request.get_json(silent=True) or {}
     event_type: str = payload.get("event", "")

@@ -58,30 +58,29 @@ def _auth(token: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-class TestTrialBootstrap:
-    def test_registration_creates_trialing_subscription(self, app) -> None:
-        """New users must get a TRIALING subscription with trial_ends_at ~14 days."""
+class TestFreeBootstrap:
+    """#1569 — signup no longer grants a trial.
+
+    The 7-day trial moved to the payment gateway (AbacatePay product with
+    ``trialDays: 7``), so it requires a tokenised card and arrives through the
+    ``subscription.trial_started`` webhook.  Supersedes the H-PROD-01 14-day
+    no-card trial, which contradicted the published Terms of Use.
+    """
+
+    def test_registration_creates_free_subscription(self, app) -> None:
         user, _token = _make_user(app)
         with app.app_context():
             sub = Subscription.query.filter_by(user_id=user.id).first()
             assert sub is not None, "Subscription must be created at registration"
-            assert sub.status == SubscriptionStatus.TRIALING
-            assert sub.plan_code == "trial"
-            assert sub.trial_ends_at is not None
-            now = datetime.utcnow()
-            delta = sub.trial_ends_at - now
-            # Trial must be between 13 and 15 days from now
-            assert timedelta(days=13) < delta < timedelta(days=15)
+            assert sub.status == SubscriptionStatus.FREE
+            assert sub.plan_code == "free"
 
-    def test_registration_trial_ends_at_is_14_days(self, app) -> None:
-        """trial_ends_at should be approximately now + 14 days."""
+    def test_registration_does_not_grant_a_trial(self, app) -> None:
         user, _token = _make_user(app)
         with app.app_context():
             sub = Subscription.query.filter_by(user_id=user.id).first()
             assert sub is not None
-            expected_approx = datetime.utcnow() + timedelta(days=14)
-            diff = abs((sub.trial_ends_at - expected_approx).total_seconds())
-            assert diff < 60, f"trial_ends_at differs from expected by {diff}s"
+            assert sub.trial_ends_at is None
 
 
 # ---------------------------------------------------------------------------
