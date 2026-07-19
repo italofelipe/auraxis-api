@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   dispatch-reminders:
-    name: Dispatch Reminders (due-date + email verification)
+    name: Dispatch Reminders (due-date + email verification + trial ending)
     runs-on: ubuntu-latest
     environment: prod
 
@@ -112,7 +112,7 @@ jobs:
           echo "Timed out waiting for container health check."
           exit 1
 
-      - name: Dispatch reminders via SSM (due-date + email verification)
+      - name: Dispatch reminders via SSM (due-date + email verification + trial ending)
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
@@ -121,7 +121,7 @@ jobs:
             --region "${AWS_REGION}" \
             --instance-ids "${PROD_INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=["cd /opt/auraxis && docker compose exec -T web flask reminders dispatch-due-soon && docker compose exec -T web flask reminders dispatch-email-verification"]' \
+            --parameters 'commands=["cd /opt/auraxis && docker compose exec -T web flask reminders dispatch-due-soon && docker compose exec -T web flask reminders dispatch-email-verification && docker compose exec -T web flask reminders dispatch-trial-ending"]' \
             --query "Command.CommandId" \
             --output text)
 

@@ -6,6 +6,7 @@ keeping controllers thin and provider-agnostic.
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime
 from typing import cast
@@ -21,6 +22,8 @@ from app.models.user import User
 from app.services.billing_adapter import BillingProvider, BillingSubscriptionSnapshot
 from app.services.entitlement_service import sync_entitlements_from_subscription
 from app.utils.datetime_utils import utc_now_naive
+
+logger = logging.getLogger(__name__)
 
 _FREE_PLAN_CODE = "free"
 _PREMIUM_OVERRIDE_USER_IDS_CONFIG_KEY = "AURAXIS_PREMIUM_OVERRIDE_USER_IDS"
@@ -337,4 +340,32 @@ def cancel_subscription(
         entity_id=str(snapshot.id),
         actor_id=str(snapshot.user_id),
     )
+    if not snapshot.provider_subscription_id:
+        _dispatch_local_cancellation_email(snapshot)
     return snapshot
+
+
+def _dispatch_local_cancellation_email(subscription: Subscription) -> None:
+    """Send the cancellation confirmation for local-only cancels (#1555).
+
+    Provider-backed subscriptions get their confirmation via the
+    ``SUBSCRIPTION_DELETED`` webhook; local-only subscriptions (no
+    ``provider_subscription_id``) never receive a webhook, so the email is
+    dispatched here. Failures are logged but never block the cancel flow.
+    """
+    from app.application.services.billing_email_service import dispatch_billing_email
+
+    user = cast(User | None, db.session.get(User, subscription.user_id))
+    if user is None:
+        return
+    try:
+        dispatch_billing_email(
+            user=user,
+            subscription=subscription,
+            event_type="subscription.canceled",
+        )
+    except Exception:
+        logger.exception(
+            "Failed to dispatch cancellation email for subscription_id=%s",
+            str(subscription.id),
+        )

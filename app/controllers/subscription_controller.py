@@ -25,6 +25,9 @@ from app.config.billing_plans import (
     list_public_billing_plans,
     resolve_checkout_plan_offer,
 )
+from app.controllers.billing_webhook_parsers import (
+    resolve_webhook_parser as resolve_webhook_parser,  # re-export for CLI
+)
 from app.controllers.response_contract import compat_error_response
 from app.controllers.subscription_webhook_handler import (
     _process_webhook_snapshot as _process_webhook_snapshot,  # noqa: F401  re-export
@@ -34,9 +37,6 @@ from app.controllers.subscription_webhook_handler import (
 )
 from app.controllers.subscription_webhook_payload import (
     _extract_event_id as _extract_event_id,  # re-export for billing_webhooks_cli
-)
-from app.controllers.subscription_webhook_payload import (
-    _extract_provider_snapshot as _extract_provider_snapshot,  # re-export
 )
 from app.extensions.database import db
 from app.models.subscription import Subscription, SubscriptionStatus
@@ -211,8 +211,29 @@ def cancel_my_subscription() -> ResponseReturnValue:
 
 @subscription_bp.post("/webhook")
 def handle_webhook() -> ResponseReturnValue:
-    """Receive provider webhook events (delegated to subscription_webhook_handler)."""
+    """Receive webhook events for the default gateway.
+
+    Kept unscoped for retrocompatibility: this URL is already registered in the
+    Asaas dashboard in production.  New gateways use the scoped route below.
+    """
     return handle_webhook_request()
+
+
+@subscription_bp.post("/webhook/<provider>")
+def handle_provider_webhook(provider: str) -> ResponseReturnValue:
+    """Receive webhook events for an explicitly named gateway.
+
+    Routing by path segment keeps each provider's signature scheme and event
+    vocabulary isolated, instead of guessing the origin from payload shape.
+    """
+    parser = resolve_webhook_parser(provider)
+    if parser is None:
+        return _err(
+            f"Unknown billing provider: {provider}",
+            "NOT_FOUND",
+            404,
+        )
+    return handle_webhook_request(parser)
 
 
 def register_subscription_dependencies(app: Any) -> None:  # noqa: ANN401

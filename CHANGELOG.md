@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.65.0](https://github.com/italofelipe/auraxis-api/compare/v1.64.1...v1.65.0) (2026-07-19)
+
+
+### Features
+
+* **billing:** route webhooks per provider via /subscriptions/webhook/&lt;provider&gt; ([51922c6](https://github.com/italofelipe/auraxis-api/commit/51922c69d1b68b81923f41ab42e1ebb33f92ebea))
+
+## [1.64.1](https://github.com/italofelipe/auraxis-api/compare/v1.64.0...v1.64.1) (2026-07-12)
+
+
+### Bug Fixes
+
+* **lgpd:** corrige purge-deleted-accounts — path de prod e espera do SSM ([bc9e525](https://github.com/italofelipe/auraxis-api/commit/bc9e525bbde8786bdd3e59d7beeca99b34dce603)), closes [#1560](https://github.com/italofelipe/auraxis-api/issues/1560)
+* **lgpd:** purge-deleted-accounts — corrige path de prod e passa a esperar o resultado do SSM ([4d137fb](https://github.com/italofelipe/auraxis-api/commit/4d137fb5e683286341ef38a1062aeb9317212650))
+
+## [1.64.0](https://github.com/italofelipe/auraxis-api/compare/v1.63.0...v1.64.0) (2026-07-12)
+
+
+### Features
+
+* **billing:** alerta de backlog FAILED e cron diario para retry de webhooks ([#1556](https://github.com/italofelipe/auraxis-api/issues/1556)) ([9fd9082](https://github.com/italofelipe/auraxis-api/commit/9fd9082e4d5bddc09e1d9274fd8f26be11e4bd83))
+* **billing:** completa dunning do ciclo de vida — trial D-2, trial expirado e cancel local ([#1555](https://github.com/italofelipe/auraxis-api/issues/1555)) ([c4648ee](https://github.com/italofelipe/auraxis-api/commit/c4648eeeb9ca65e45f68e8eae994c017f25f9de7))
+* **billing:** dunning de ciclo de vida (trial D-2/expirado/cancel) + retry de webhooks FAILED com alerta ([69c53cc](https://github.com/italofelipe/auraxis-api/commit/69c53cc642409c58f441ca96aefac570967b834f))
+
 ## [1.63.0](https://github.com/italofelipe/auraxis-api/compare/v1.62.0...v1.63.0) (2026-07-11)
 
 

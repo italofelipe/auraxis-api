@@ -1,26 +1,20 @@
-name: Purge Deleted Accounts (LGPD)
+name: Billing Webhooks Retry Job
 
 on:
   schedule:
-    # Runs every day at 04:00 UTC — after the recurrence job (03:00 UTC)
-    - cron: "0 4 * * *"
+    # Daily at 05:30 UTC = 02:30 BRT — low-frequency reprocessing of FAILED
+    # billing webhook events (#1556). Recovery normally relies on provider
+    # redelivery; this job is the safety net + backlog alert (Sentry).
+    - cron: "30 5 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Dry run (log eligible accounts without deleting)"
-        required: false
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
-      grace_days:
-        description: "Grace period in days before hard delete (default: 30)"
-        required: false
-        default: "30"
+        description: "Dry-run only (list eligible FAILED events, reprocess nothing)"
+        type: boolean
+        default: false
 
 concurrency:
-  group: purge-deleted-accounts-${{ github.ref }}
+  group: billing-webhooks-retry-job
   cancel-in-progress: false
 
 permissions:
@@ -29,15 +23,12 @@ permissions:
   issues: write
 
 jobs:
-  purge-deleted-accounts:
-    name: Purge Soft-Deleted Accounts
+  retry-failed:
+    name: Reprocess FAILED billing webhook events
     runs-on: ubuntu-latest
     environment: prod
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Validate required variables
         run: |
           [ -n "${AWS_REGION:-}" ] || { echo "Missing var AWS_REGION"; exit 1; }
@@ -48,84 +39,72 @@ jobs:
           AWS_ROLE_ARN_PROD: ${{ vars.AWS_ROLE_ARN_PROD }}
           AURAXIS_PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-          cache: pip
-          cache-dependency-path: requirements.txt
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN_PROD }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Run purge script via SSM
+      - name: Retry FAILED webhook events via SSM
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
-          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-          GRACE_DAYS: ${{ github.event.inputs.grace_days || '30' }}
+          DRY_RUN: ${{ inputs.dry_run == true && '--dry-run' || '' }}
         run: |
-          DRY_RUN_FLAG=""
-          if [ "${DRY_RUN}" = "true" ]; then
-            DRY_RUN_FLAG="--dry-run"
-          fi
-
-          # Stack de prod vive em /opt/auraxis (não /opt/auraxis-api) e o compose
-          # de prod exige -f docker-compose.prod.yml. O container é resolvido por
-          # CID (padrão do fix #1407 — `compose exec web` pode pegar zombie).
+          FLASK_CMD="flask billing-webhooks retry-failed ${DRY_RUN}"
           COMMAND_ID=$(aws ssm send-command \
             --region "${AWS_REGION}" \
             --instance-ids "${PROD_INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
-            --comment "purge-deleted-accounts (LGPD) via GH Actions" \
-            --parameters "commands=[
-              \"cd /opt/auraxis\",
-              \"WEB_CID=\$(docker compose --env-file .env.prod -f docker-compose.prod.yml ps -q web)\",
-              \"test -n \\\"\$WEB_CID\\\"\",
-              \"docker exec \\\"\$WEB_CID\\\" python scripts/purge_deleted_accounts.py --grace-days ${GRACE_DAYS} ${DRY_RUN_FLAG}\"
-            ]" \
-            --output text \
-            --query "Command.CommandId")
-          echo "SSM CommandId: ${COMMAND_ID}"
+            --parameters "commands=[\"cd /opt/auraxis && docker compose exec -T web ${FLASK_CMD}\"]" \
+            --query "Command.CommandId" \
+            --output text)
 
-          # Espera o resultado real: sem isso o job termina success com o purge
-          # quebrado no host e o alerta de falha abaixo nunca dispara.
-          STATUS="Pending"
-          for _ in $(seq 1 60); do
+          echo "SSM Command ID: ${COMMAND_ID}"
+
+          for i in $(seq 1 30); do
             STATUS=$(aws ssm get-command-invocation \
               --region "${AWS_REGION}" \
               --command-id "${COMMAND_ID}" \
               --instance-id "${PROD_INSTANCE_ID}" \
-              --query "Status" --output text 2>/dev/null || echo "Pending")
-            case "${STATUS}" in
-              Success|Failed|Cancelled|TimedOut) break ;;
-            esac
+              --query "StatusDetails" \
+              --output text 2>/dev/null || echo "Pending")
+
+            echo "Attempt ${i}: ${STATUS}"
+
+            if [ "${STATUS}" = "Success" ]; then
+              echo "Webhook retry run completed successfully."
+              aws ssm get-command-invocation \
+                --region "${AWS_REGION}" \
+                --command-id "${COMMAND_ID}" \
+                --instance-id "${PROD_INSTANCE_ID}" \
+                --query "StandardOutputContent" \
+                --output text 2>/dev/null || true
+              exit 0
+            elif [ "${STATUS}" = "Failed" ] || [ "${STATUS}" = "Cancelled" ] || [ "${STATUS}" = "TimedOut" ]; then
+              echo "Webhook retry run failed with status: ${STATUS}"
+              echo "--- stdout ---"
+              aws ssm get-command-invocation \
+                --region "${AWS_REGION}" \
+                --command-id "${COMMAND_ID}" \
+                --instance-id "${PROD_INSTANCE_ID}" \
+                --query "StandardOutputContent" \
+                --output text 2>/dev/null || true
+              echo "--- stderr ---"
+              aws ssm get-command-invocation \
+                --region "${AWS_REGION}" \
+                --command-id "${COMMAND_ID}" \
+                --instance-id "${PROD_INSTANCE_ID}" \
+                --query "StandardErrorContent" \
+                --output text 2>/dev/null || true
+              exit 1
+            fi
+
             sleep 10
           done
 
-          echo "--- stdout ---"
-          aws ssm get-command-invocation \
-            --region "${AWS_REGION}" \
-            --command-id "${COMMAND_ID}" \
-            --instance-id "${PROD_INSTANCE_ID}" \
-            --query "StandardOutputContent" --output text
-          echo "--- stderr ---"
-          aws ssm get-command-invocation \
-            --region "${AWS_REGION}" \
-            --command-id "${COMMAND_ID}" \
-            --instance-id "${PROD_INSTANCE_ID}" \
-            --query "StandardErrorContent" --output text
-
-          echo "SSM status final: ${STATUS}"
-          [ "${STATUS}" = "Success" ]
+          echo "Timed out waiting for SSM command to complete."
+          exit 1
 
       - name: Notify failure via GitHub Issue
         if: failure()
@@ -135,25 +114,25 @@ jobs:
           script: |
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const now = new Date().toISOString();
-            const title = '🚨 [purge-deleted-accounts] Falha na purga de contas excluídas (LGPD)';
+            const title = '🚨 [billing-webhooks] Falha no reprocesso de webhooks FAILED';
             const issueBody = [
-              '## Purge de contas deletadas falhou',
+              '## Billing Webhooks Retry Job falhou',
               '',
               `**Última falha:** ${now}`,
               `**Run:** ${runUrl}`,
               '',
-              'O job agendado de purga de contas LGPD falhou via SSM.',
-              'Verifique os logs do workflow e o estado da stack de produção.',
+              'O job diário de reprocesso de eventos de webhook FAILED falhou via SSM.',
               '',
               '### Ações sugeridas',
               '- Revisar logs da execução no link acima',
               '- Verificar o estado de `docker compose` e do container `web` na instância PROD',
-              '- Executar `scripts/purge_deleted_accounts.py --dry-run` manualmente para diagnóstico',
+              '- Executar `flask billing-webhooks retry-failed --dry-run` no container para validar',
+              '- Conferir o Sentry para alertas de backlog FAILED acumulado',
               '',
               '_Issue criada automaticamente pelo GitHub Actions._',
             ].join('\n');
             const commentBody = [
-              'Nova falha detectada no purge-deleted-accounts job.',
+              'Nova falha detectada no billing webhooks retry job.',
               '',
               `- Data: ${now}`,
               `- Run: ${runUrl}`,
@@ -193,5 +172,5 @@ jobs:
               repo: context.repo.repo,
               title,
               body: issueBody,
-              labels: ['bug', 'ops', 'lgpd'],
+              labels: ['bug', 'ops'],
             });

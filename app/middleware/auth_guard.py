@@ -34,8 +34,10 @@ def register_auth_guard(app: Flask) -> None:
             "swagger-ui.static",
             "swagger-ui.swagger_json",
             "installment_vs_cash_calculation",
-            # Billing webhook — provider calls this directly without JWT
+            # Billing webhooks — providers call these directly without JWT.
+            # Authenticity is enforced per gateway by BillingWebhookParser.verify.
             "handle_webhook",
+            "handle_provider_webhook",
             # Public billing catalog for checkout surfaces
             "list_subscription_plans",
             # Internal observability export guarded by dedicated header token

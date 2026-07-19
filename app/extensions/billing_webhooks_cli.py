@@ -17,8 +17,8 @@ def _retry_single_event(event: Any) -> tuple[bool, str | None]:
 
     from app.controllers.subscription_controller import (
         _extract_event_id,
-        _extract_provider_snapshot,
         _process_webhook_snapshot,
+        resolve_webhook_parser,
     )
     from app.extensions.database import db
     from app.utils.datetime_utils import utc_now_naive
@@ -35,7 +35,17 @@ def _retry_single_event(event: Any) -> tuple[bool, str | None]:
         db.session.commit()
         return False, f"payload_parse_error:{exc}"
 
-    snapshot = _extract_provider_snapshot(payload)
+    # Reprocess with the parser of the gateway that originally sent the event,
+    # not whichever provider happens to be active now.
+    parser = resolve_webhook_parser(getattr(event, "provider", None))
+    if parser is None:
+        event.mark_failed(
+            reason=f"unknown_provider:{event.provider}", now=utc_now_naive()
+        )
+        db.session.commit()
+        return False, f"unknown_provider:{event.provider}"
+
+    snapshot = parser.parse(payload)
     if snapshot is None:
         event.mark_failed(
             reason="unresolvable_subscription_on_retry", now=utc_now_naive()
@@ -57,6 +67,54 @@ def _retry_single_event(event: Any) -> tuple[bool, str | None]:
             event.id,
         )
         return False, str(exc)
+
+
+def _alert_failed_backlog(threshold: int) -> int:
+    """Alert (log + Sentry) when FAILED webhook events accumulate (#1556).
+
+    Counts every event still in FAILED status — including those that
+    exhausted ``--max-retries`` and need manual intervention.  Returns the
+    backlog size so callers can report it.
+    """
+    from sqlalchemy import func
+
+    from app.extensions.database import db
+    from app.models.webhook_event import WebhookEvent, WebhookEventStatus
+
+    backlog = (
+        db.session.query(func.count(WebhookEvent.id))
+        .filter(WebhookEvent.status == WebhookEventStatus.FAILED.value)
+        .scalar()
+        or 0
+    )
+    if backlog < threshold:
+        return int(backlog)
+
+    oldest = (
+        db.session.query(func.min(WebhookEvent.received_at))
+        .filter(WebhookEvent.status == WebhookEventStatus.FAILED.value)
+        .scalar()
+    )
+    logger.error(
+        "billing-webhooks: %d webhook event(s) stuck in FAILED status "
+        "(threshold=%d oldest_received_at=%s) — manual review required",
+        backlog,
+        threshold,
+        oldest,
+    )
+    try:
+        import sentry_sdk
+
+        sentry_sdk.capture_message(
+            f"billing-webhooks: {backlog} webhook event(s) stuck in FAILED "
+            f"status (threshold={threshold}, oldest_received_at={oldest})",
+            level="error",
+        )
+    except Exception:
+        logger.debug(
+            "Sentry unavailable for billing-webhooks backlog alert", exc_info=True
+        )
+    return int(backlog)
 
 
 def register_billing_webhooks_commands(app: Flask) -> None:
@@ -85,13 +143,27 @@ def register_billing_webhooks_commands(app: Flask) -> None:
         default=False,
         help="Log eligible events without reprocessing them.",
     )
-    def retry_failed(max_events: int, max_retries: int, dry_run: bool) -> None:
+    @click.option(
+        "--alert-threshold",
+        default=1,
+        show_default=True,
+        type=int,
+        help=(
+            "Emit a Sentry/log alert when at least this many events remain "
+            "in FAILED status after the run."
+        ),
+    )
+    def retry_failed(
+        max_events: int, max_retries: int, dry_run: bool, alert_threshold: int
+    ) -> None:
         """Retry webhook events that failed during processing.
 
         Reprocesses up to ``--max-events`` events whose status is ``failed``
         and whose ``retry_count`` is below ``--max-retries``.  Each successful
         retry updates the event status to ``processed``; each new failure
-        increments ``retry_count`` and keeps status ``failed``.
+        increments ``retry_count`` and keeps status ``failed``.  After the
+        run, any remaining FAILED backlog above ``--alert-threshold`` is
+        reported via log + Sentry (#1556).
         """
         from app.extensions.database import db
         from app.models.webhook_event import WebhookEvent, WebhookEventStatus
@@ -109,6 +181,11 @@ def register_billing_webhooks_commands(app: Flask) -> None:
 
         if not eligible:
             click.echo("billing-webhooks retry-failed: no eligible events found.")
+            backlog = _alert_failed_backlog(alert_threshold)
+            click.echo(
+                f"billing-webhooks retry-failed: backlog={backlog} "
+                "FAILED event(s) remaining."
+            )
             return
 
         click.echo(
@@ -138,4 +215,9 @@ def register_billing_webhooks_commands(app: Flask) -> None:
             f"billing-webhooks retry-failed: done — "
             f"processed={processed_count} failed={failed_count} "
             f"skipped_dry_run={len(eligible) if dry_run else 0}"
+        )
+        backlog = _alert_failed_backlog(alert_threshold)
+        click.echo(
+            f"billing-webhooks retry-failed: backlog={backlog} "
+            "FAILED event(s) remaining."
         )

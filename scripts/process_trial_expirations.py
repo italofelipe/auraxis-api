@@ -23,6 +23,12 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from flask import Flask
+
+    from app.models.subscription import Subscription
 
 # ---------------------------------------------------------------------------
 # Bootstrap: ensure the project root is on sys.path
@@ -52,8 +58,38 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def process_trial_expirations(*, dry_run: bool = False) -> int:
+def _notify_trial_expired(sub: Subscription) -> None:
+    """Send the "downgrade efetivado" email for an expired trial (#1555).
+
+    Email failures are logged and never block the downgrade batch.
+    """
+    from app.application.services.billing_email_service import (
+        dispatch_trial_expired_email,
+    )
+    from app.extensions.database import db
+    from app.models.user import User
+
+    user = db.session.get(User, sub.user_id)
+    if user is None:
+        return
+    try:
+        dispatch_trial_expired_email(user=user, subscription=sub)
+    except Exception:
+        logger.exception(
+            "Failed to dispatch trial-expired email for user_id=%s",
+            sub.user_id,
+        )
+
+
+def process_trial_expirations(
+    *, dry_run: bool = False, flask_app: Flask | None = None
+) -> int:
     """Downgrade all expired TRIALING subscriptions to FREE.
+
+    Args:
+        dry_run: Print candidates without committing changes.
+        flask_app: Optional pre-built Flask app (tests). When omitted, a
+            minimal app is bootstrapped via ``create_app``.
 
     Returns the count of processed subscriptions.
     """
@@ -63,7 +99,7 @@ def process_trial_expirations(*, dry_run: bool = False) -> int:
     from app.services.entitlement_service import deactivate_premium
     from app.utils.datetime_utils import utc_now_naive
 
-    app = create_app(enable_http_runtime=False)
+    app = flask_app or create_app(enable_http_runtime=False)
 
     processed = 0
     with app.app_context():
@@ -101,6 +137,8 @@ def process_trial_expirations(*, dry_run: bool = False) -> int:
         if not dry_run:
             db.session.commit()
             logger.info("Downgraded %d expired trial subscription(s).", processed)
+            for sub in expired_subs:
+                _notify_trial_expired(sub)
         else:
             logger.info(
                 "[dry-run] Would downgrade %d expired trial subscription(s).", processed
