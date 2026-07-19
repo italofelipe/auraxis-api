@@ -77,6 +77,7 @@ OPENAPI_GAPS: set[tuple[str, str]] = {
     ("POST", "/subscriptions/checkout"),
     ("POST", "/subscriptions/cancel"),
     ("POST", "/subscriptions/webhook"),
+    ("POST", "/subscriptions/webhook/{param}"),
     # Shared entries
     ("POST", "/shared-entries"),
     ("GET", "/shared-entries/by-me"),
