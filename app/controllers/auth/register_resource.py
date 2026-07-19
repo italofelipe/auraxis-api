@@ -16,7 +16,6 @@ from app.models.subscription import Subscription, SubscriptionStatus
 from app.models.user import User
 from app.schemas.user_schemas import UserRegistrationSchema
 from app.services.captcha_service import get_captcha_service
-from app.utils.datetime_utils import utc_now_naive
 from app.utils.typed_decorators import typed_doc as doc
 from app.utils.typed_decorators import typed_use_kwargs as use_kwargs
 
@@ -124,17 +123,18 @@ class RegisterResource(MethodResource):
             db.session.add(user)
             db.session.flush()
 
-            # H-PROD-01: bootstrap a 14-day trial subscription for every new user
-            from datetime import timedelta
-
-            trial_ends_at = utc_now_naive() + timedelta(days=14)
-            trial_subscription = Subscription(
+            # #1569: new accounts start on Free. The 7-day trial moved to the
+            # payment gateway (AbacatePay product `trialDays: 7`), so it now
+            # requires a tokenised card and is granted by the
+            # `subscription.trial_started` webhook — not by signing up.
+            # Supersedes H-PROD-01, whose 14-day no-card trial both contradicted
+            # the published Terms of Use and would have stacked to 21 free days.
+            free_subscription = Subscription(
                 user_id=user.id,
-                plan_code="trial",
-                status=SubscriptionStatus.TRIALING,
-                trial_ends_at=trial_ends_at,
+                plan_code="free",
+                status=SubscriptionStatus.FREE,
             )
-            db.session.add(trial_subscription)
+            db.session.add(free_subscription)
 
             # #890: seed default tags for the new user
             from app.models.tag import seed_default_tags
@@ -143,17 +143,18 @@ class RegisterResource(MethodResource):
 
             db.session.commit()
 
-            # Sync trial entitlements (export_pdf, advanced_simulations, etc.)
+            # Sync free-tier entitlements for the new account (#1569: the trial
+            # entitlements now arrive with the subscription.trial_started webhook).
             from app.services.entitlement_service import (
                 sync_entitlements_from_subscription,
             )
 
             try:
-                sync_entitlements_from_subscription(trial_subscription)
+                sync_entitlements_from_subscription(free_subscription)
                 db.session.commit()
             except Exception:
                 current_app.logger.warning(
-                    "Failed to sync trial entitlements for user %s", user.id
+                    "Failed to sync entitlements for user %s", user.id
                 )
 
             try:
