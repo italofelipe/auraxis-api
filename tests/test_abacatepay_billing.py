@@ -364,6 +364,35 @@ class TestWebhookParser:
 
         assert AbacatePayWebhookParser().parse(payload) is None
 
+    def test_devmode_escape_hatch_is_off_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Absent config must reject — the opt-in has to be deliberate."""
+        monkeypatch.setenv("APP_ENV", "production")
+        monkeypatch.delenv("BILLING_ABACATEPAY_ALLOW_DEVMODE", raising=False)
+
+        payload = _webhook("subscription.completed", dev_mode=True)
+        assert AbacatePayWebhookParser().parse(payload) is None
+
+    @pytest.mark.parametrize("flag", ["false", "0", "no", "off", "", "maybe"])
+    def test_devmode_escape_hatch_rejects_non_truthy_values(
+        self, monkeypatch: pytest.MonkeyPatch, flag: str
+    ) -> None:
+        monkeypatch.setenv("APP_ENV", "production")
+        monkeypatch.setenv("BILLING_ABACATEPAY_ALLOW_DEVMODE", flag)
+
+        payload = _webhook("subscription.completed", dev_mode=True)
+        assert AbacatePayWebhookParser().parse(payload) is None
+
+    def test_devmode_accepted_in_production_when_explicitly_enabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("APP_ENV", "production")
+        monkeypatch.setenv("BILLING_ABACATEPAY_ALLOW_DEVMODE", "true")
+
+        payload = _webhook("subscription.completed", dev_mode=True)
+        assert AbacatePayWebhookParser().parse(payload) is not None
+
     def test_sandbox_traffic_accepted_outside_production(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -380,6 +409,18 @@ class TestWebhookVerification:
         monkeypatch.delenv("BILLING_ABACATEPAY_WEBHOOK_SECRET", raising=False)
 
         assert not AbacatePayWebhookParser().verify(b"{}", {}, {"webhookSecret": "x"})
+
+    def test_accepts_platform_env_secret_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ABACATE_PAY_WEBHOOK_SECRET is the name the secret ships under."""
+        monkeypatch.delenv("BILLING_ABACATEPAY_WEBHOOK_SECRET", raising=False)
+        monkeypatch.setenv("ABACATE_PAY_WEBHOOK_SECRET", "from_platform_env")
+        monkeypatch.delenv("BILLING_ABACATEPAY_SIGNING_KEY", raising=False)
+
+        parser = AbacatePayWebhookParser()
+        assert parser.verify(b"{}", {}, {"webhookSecret": "from_platform_env"})
+        assert not parser.verify(b"{}", {}, {"webhookSecret": "wrong"})
 
     def test_accepts_matching_query_secret(
         self, monkeypatch: pytest.MonkeyPatch
