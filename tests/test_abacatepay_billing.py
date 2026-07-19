@@ -264,6 +264,34 @@ class TestSubscriptionQueries:
 
         assert provider.get_subscription("subs_1")["status"] == "past_due"
 
+    def test_unpaid_checkout_does_not_hit_the_api(
+        self, provider_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A stored bill_ id means the customer has not paid yet.
+
+        Querying it returns 400 "Subscription not found", which would 500
+        GET /subscriptions/me for everyone mid-checkout.
+        """
+        provider = AbacatePayBillingProvider()
+        session = _FakeSession([])  # any request would raise IndexError
+        monkeypatch.setattr(provider, "_session", session)
+
+        snapshot = provider.get_subscription("bill_UFJCy04PJLa2T4MMmuF6QXfz")
+
+        assert session.calls == []
+        assert "status" not in snapshot
+        assert snapshot["provider_id"] == "bill_UFJCy04PJLa2T4MMmuF6QXfz"
+
+    def test_no_status_leaves_subscription_untouched(self) -> None:
+        """The placeholder snapshot must be a no-op when applied."""
+        from app.services.subscription_service import _set_if_changed
+
+        current = "active"
+        result, changed = _set_if_changed(current, None)
+
+        assert result == current
+        assert changed is False
+
     def test_cancel_subscription(
         self, provider_env: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:

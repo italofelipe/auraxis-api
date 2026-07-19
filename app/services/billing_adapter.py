@@ -25,6 +25,8 @@ _ABACATEPAY_PROVIDER = "abacatepay"
 _STUB_PROVIDER = "stub"
 _DEFAULT_ASAAS_BASE_URL = "https://api-sandbox.asaas.com/v3"
 _DEFAULT_ABACATEPAY_BASE_URL = "https://api.abacatepay.com/v2"
+# Checkouts are bill_…; the subscription only gets a subs_… id once it is paid.
+_ABACATEPAY_SUBSCRIPTION_ID_PREFIX = "subs_"
 _REQUEST_TIMEOUT_SECONDS = 15.0
 
 # AbacatePay reports subscription state with values outside its own declared
@@ -474,6 +476,17 @@ class AbacatePayBillingProvider:
         return str(payload.get("id") or "").strip() or None
 
     def get_subscription(self, provider_id: str) -> BillingSubscriptionSnapshot:
+        if not provider_id.startswith(_ABACATEPAY_SUBSCRIPTION_ID_PREFIX):
+            # Still holding the bill_… placeholder: the customer created a
+            # checkout but has not paid, so no subscription exists yet and the
+            # API answers 400 "Subscription not found".  Report no change and
+            # let the webhook promote the id — raising here would 500
+            # GET /subscriptions/me for everyone mid-checkout.
+            return {
+                "provider_id": provider_id,
+                "provider": _ABACATEPAY_PROVIDER,
+            }
+
         payload = self._request("GET", "/subscriptions/get", params={"id": provider_id})
         return {
             "provider_id": str(payload.get("id") or provider_id),
