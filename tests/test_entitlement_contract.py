@@ -60,16 +60,21 @@ def _grant_entitlement(
 # ---------------------------------------------------------------------------
 
 
-def test_entitlements_list_trial_user_has_trial_features(client) -> None:
-    """New users are bootstrapped into a trial subscription with trial entitlements."""
+def test_entitlements_list_new_user_has_free_features(client) -> None:
+    """#1569 — signup bootstraps a Free subscription, not a trial.
+
+    Trial entitlements now arrive with the ``subscription.trial_started``
+    webhook, once the customer has tokenised a card at checkout.
+    """
     from app.config.plan_features import PLAN_FEATURES
 
-    token = _register_and_login(client, prefix="ent-trial")
+    token = _register_and_login(client, prefix="ent-free")
     resp = client.get("/entitlements", headers=_auth(token))
     assert resp.status_code == 200
     body = resp.get_json()
     granted_keys = {e["feature_key"] for e in body["items"]}
-    assert granted_keys == set(PLAN_FEATURES["trial"])
+    assert granted_keys == set(PLAN_FEATURES["free"])
+    assert granted_keys != set(PLAN_FEATURES["trial"])
 
 
 def test_entitlements_list_requires_auth(client) -> None:

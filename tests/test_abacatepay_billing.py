@@ -313,6 +313,7 @@ class TestWebhookParser:
     @pytest.mark.parametrize(
         ("event", "expected"),
         [
+            ("subscription.trial_started", "trialing"),
             ("subscription.completed", "active"),
             ("subscription.renewed", "active"),
             ("subscription.cancelled", "canceled"),
@@ -330,6 +331,26 @@ class TestWebhookParser:
         assert snapshot["provider_id"] == "subs_tAFqDWBhcEYTjQh2K0ZYDHau"
         assert snapshot["provider_customer_id"] == "cust_def456"
         assert snapshot["provider"] == ABACATEPAY_PROVIDER
+
+    def test_trial_started_carries_trial_end_date(self) -> None:
+        """trial_ends_at feeds trial_expiry_cli and the D-N reminders."""
+        payload = _webhook("subscription.trial_started")
+        payload["data"]["subscription"]["trialEndsAt"] = "2026-07-26T23:59:59.999Z"
+
+        snapshot = AbacatePayWebhookParser().parse(payload)
+
+        assert snapshot is not None
+        assert snapshot["status"] == "trialing"
+        trial_ends_at = snapshot["trial_ends_at"]
+        assert trial_ends_at is not None
+        assert trial_ends_at.date().isoformat() == "2026-07-26"
+
+    def test_renewal_without_trial_data_omits_trial_end(self) -> None:
+        """A renewal must not wipe the date recorded when the trial started."""
+        snapshot = AbacatePayWebhookParser().parse(_webhook("subscription.renewed"))
+
+        assert snapshot is not None
+        assert "trial_ends_at" not in snapshot
 
     def test_ignores_unknown_event(self) -> None:
         assert AbacatePayWebhookParser().parse(_webhook("checkout.refunded")) is None
