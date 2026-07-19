@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.66.0](https://github.com/italofelipe/auraxis-api/compare/v1.65.0...v1.66.0) (2026-07-19)
+
+
+### Features
+
+* **billing:** AbacatePay provider e webhook parser (v0 funcional) ([#1568](https://github.com/italofelipe/auraxis-api/issues/1568)) ([00d0cc2](https://github.com/italofelipe/auraxis-api/commit/00d0cc2634339c46003e8d73db856f00be6ab0ee))
+
 ## [1.65.0](https://github.com/italofelipe/auraxis-api/compare/v1.64.1...v1.65.0) (2026-07-19)
 
 
