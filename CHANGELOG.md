@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.66.1](https://github.com/italofelipe/auraxis-api/compare/v1.66.0...v1.66.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* **billing:** accept 403 on premium endpoints in the Newman release gate ([dce85bc](https://github.com/italofelipe/auraxis-api/commit/dce85bc67f386a4912b5dcbefbbf467c8250adce))
+* **billing:** do not query AbacatePay for an unpaid checkout id ([20a2896](https://github.com/italofelipe/auraxis-api/commit/20a2896c8204948f71f0c7253786dd159e5acb69))
+* **billing:** não consultar o AbacatePay com id de checkout não pago ([1011b19](https://github.com/italofelipe/auraxis-api/commit/1011b19248ff4dbc02807c7dd7dcd9b1f8acd783))
+
 ## [1.66.0](https://github.com/italofelipe/auraxis-api/compare/v1.65.0...v1.66.0) (2026-07-19)
 
 
