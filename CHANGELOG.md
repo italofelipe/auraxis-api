@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.66.2](https://github.com/italofelipe/auraxis-api/compare/v1.66.1...v1.66.2) (2026-07-19)
+
+
+### Bug Fixes
+
+* **billing:** resolve plan from AbacatePay webhook external reference ([809b2fc](https://github.com/italofelipe/auraxis-api/commit/809b2fc9d606b3bd2d79912e8d7ccaa3db5cecc9))
+* **billing:** webhook AbacatePay resolve o plano → assinatura paga recebe Premium ([78a3a5c](https://github.com/italofelipe/auraxis-api/commit/78a3a5c179df8d190daf61740633c68299122787))
+* **lgpd:** add missing sharing_audit_events migration ([2ff28c3](https://github.com/italofelipe/auraxis-api/commit/2ff28c3d640d1842b405e3fa322344ee025d290f))
+* **lgpd:** criar migration faltante de sharing_audit_events (DELETE /user/me quebrado em prod) ([25a5a4c](https://github.com/italofelipe/auraxis-api/commit/25a5a4ceb7acd75956dfca7202cc4090decf4747))
+
 ## [1.66.1](https://github.com/italofelipe/auraxis-api/compare/v1.66.0...v1.66.1) (2026-07-19)
 
 
