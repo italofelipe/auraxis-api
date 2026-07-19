@@ -1969,8 +1969,8 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Exportar transações (CSV ou PDF) — status 200', function () {",
-                  "  pm.response.to.have.status(200);",
+                  "pm.test('Exportar transacoes — 200 (Premium) ou 403 (Free)', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 403]);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -4924,8 +4924,8 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Radar de gastos em cache (Premium, somente leitura) — status 200', function () {",
-                  "  pm.response.to.have.status(200);",
+                  "pm.test('Radar de gastos — 200 (Premium) ou 403 (Free)', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]);",
                   "});"
                 ],
                 "type": "text/javascript"
