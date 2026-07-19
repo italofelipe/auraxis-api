@@ -82,6 +82,7 @@ class BillingSubscriptionSnapshot(TypedDict, total=False):
     billing_cycle: str | None
     current_period_start: datetime | None
     current_period_end: datetime | None
+    trial_ends_at: datetime | None
 
 
 class BillingCheckoutSession(TypedDict, total=False):

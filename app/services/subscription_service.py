@@ -273,6 +273,16 @@ def apply_subscription_snapshot(
     )
     changed = changed or did_change
 
+    # #1569: the gateway owns the trial window now, so trial_ends_at follows the
+    # provider. Only set when present — a renewal payload carries no trial data
+    # and must not wipe the date the trial_started event recorded.
+    trial_ends_at = snapshot.get("trial_ends_at")
+    if trial_ends_at is not None:
+        subscription.trial_ends_at, did_change = _set_if_changed(
+            subscription.trial_ends_at, trial_ends_at
+        )
+        changed = changed or did_change
+
     _sync_access_if_needed(subscription, changed=changed)
     db.session.commit()
     return subscription

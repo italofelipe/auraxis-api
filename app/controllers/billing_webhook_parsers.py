@@ -192,6 +192,24 @@ class AsaasWebhookParser:
         return None
 
 
+def _resolve_abacatepay_customer_id(data: dict[str, Any]) -> str | None:
+    """Find the customer id, which moves between payload variants.
+
+    The automatic-cancellation payload (max retries exceeded) ships without the
+    ``checkout`` block, and anonymous checkouts ship without ``customer``.
+    """
+    customer_object = data.get("customer")
+    if isinstance(customer_object, dict):
+        customer_id = _clean(customer_object.get("id"))
+        if customer_id:
+            return customer_id
+
+    checkout_object = data.get("checkout")
+    if isinstance(checkout_object, dict):
+        return _clean(checkout_object.get("customerId"))
+    return None
+
+
 class AbacatePayWebhookParser:
     """AbacatePay webhooks (API v2 envelope).
 
@@ -210,6 +228,7 @@ class AbacatePayWebhookParser:
     """
 
     _EVENTS = {
+        "subscription.trial_started": SubscriptionStatus.TRIALING.value,
         "subscription.completed": SubscriptionStatus.ACTIVE.value,
         "subscription.renewed": SubscriptionStatus.ACTIVE.value,
         "subscription.cancelled": SubscriptionStatus.CANCELED.value,
@@ -264,19 +283,11 @@ class AbacatePayWebhookParser:
             return None
 
         subscription_object = data.get("subscription")
-        customer_object = data.get("customer")
         if not isinstance(subscription_object, dict):
             return None
 
         provider_subscription_id = _clean(subscription_object.get("id"))
-        provider_customer_id = None
-        if isinstance(customer_object, dict):
-            provider_customer_id = _clean(customer_object.get("id"))
-        if provider_customer_id is None:
-            checkout_object = data.get("checkout")
-            if isinstance(checkout_object, dict):
-                provider_customer_id = _clean(checkout_object.get("customerId"))
-
+        provider_customer_id = _resolve_abacatepay_customer_id(data)
         if not provider_subscription_id and not provider_customer_id:
             return None
 
@@ -291,6 +302,11 @@ class AbacatePayWebhookParser:
                 subscription_object.get("nextChargeAt")
             ),
         }
+        trial_ends_at = _coerce_datetime(subscription_object.get("trialEndsAt"))
+        if trial_ends_at is not None:
+            # Drives trial_expiry_cli and the D-N ending reminders.
+            snapshot["trial_ends_at"] = trial_ends_at
+
         if provider_subscription_id:
             # Promotes the stored bill_… placeholder to the real subs_… id.
             snapshot["provider_id"] = provider_subscription_id
