@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.67.0](https://github.com/italofelipe/auraxis-api/compare/v1.66.2...v1.67.0) (2026-07-20)
+
+
+### Features
+
+* **billing:** agendar expire-trials diariamente (trial expirado nunca virava Free) ([2f6c59e](https://github.com/italofelipe/auraxis-api/commit/2f6c59e517800d26d2694e3e8394967588f02c0e))
+* **billing:** schedule flask billing expire-trials daily ([47719af](https://github.com/italofelipe/auraxis-api/commit/47719af85914bb47b8954c86c82f054b35f5d5b0))
+
 ## [1.66.2](https://github.com/italofelipe/auraxis-api/compare/v1.66.1...v1.66.2) (2026-07-19)
 
 
