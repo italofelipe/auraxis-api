@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import math
 from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
@@ -23,7 +24,7 @@ from uuid import UUID
 from flask import Response, jsonify
 from flask_jwt_extended import verify_jwt_in_request
 
-from app.config.plan_features import PLAN_FEATURES
+from app.config.plan_features import PLAN_FEATURES, PREMIUM_FEATURES
 from app.extensions.database import db
 from app.models.entitlement import Entitlement, EntitlementSource
 from app.models.subscription import Subscription, SubscriptionStatus
@@ -78,6 +79,14 @@ def has_entitlement(user_id: str | UUID, feature_key: str) -> bool:
     except (TypeError, ValueError):
         pass
 
+    from app.services.premium_override_service import get_active_premium_override
+
+    now = utc_now_naive()
+    premium_override = (
+        get_active_premium_override(user_id, now=now)
+        if feature_key in PREMIUM_FEATURES
+        else None
+    )
     cache = get_cache_service()
     cache_key = _entitlement_cache_key(user_id, feature_key)
 
@@ -85,7 +94,6 @@ def has_entitlement(user_id: str | UUID, feature_key: str) -> bool:
     if cached is not None:
         return bool(cached)
 
-    now = utc_now_naive()
     ent = (
         Entitlement.query.filter_by(
             user_id=user_id,
@@ -94,8 +102,19 @@ def has_entitlement(user_id: str | UUID, feature_key: str) -> bool:
         .filter((Entitlement.expires_at.is_(None)) | (Entitlement.expires_at > now))
         .first()
     )
-    result = ent is not None
-    cache.set(cache_key, result, ttl=ENTITLEMENT_CACHE_TTL)
+    result = premium_override is not None or ent is not None
+    expirations = [
+        candidate
+        for candidate in (
+            premium_override.expires_at if premium_override else None,
+            ent.expires_at if ent else None,
+        )
+        if candidate is not None
+    ]
+    ttl = ENTITLEMENT_CACHE_TTL
+    if expirations:
+        ttl = max(1, min(ttl, math.ceil((min(expirations) - now).total_seconds())))
+    cache.set(cache_key, result, ttl=ttl)
     return result
 
 

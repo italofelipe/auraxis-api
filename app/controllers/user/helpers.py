@@ -78,9 +78,9 @@ def validate_user_token(
         or user.current_jti != token_jti
     ):
         return compat_error(
-            legacy_payload={"message": "Token revogado ou usuário não encontrado"},
+            legacy_payload={"message": "Token revogado"},
             status_code=401,
-            message="Token revogado ou usuário não encontrado",
+            message="Token revogado",
             error_code="UNAUTHORIZED",
         )
     return user

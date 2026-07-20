@@ -47,6 +47,7 @@ from app.services.billing_adapter import (
     BillingProviderError,
     get_default_billing_provider,
 )
+from app.services.premium_override_service import has_active_premium_override
 from app.services.subscription_service import (
     cancel_subscription,
     get_or_create_subscription,
@@ -109,7 +110,18 @@ def get_my_subscription() -> ResponseReturnValue:
     sub = get_or_create_subscription(UUID(auth.subject))
     provider = _get_provider()
     sub = sync_subscription_from_provider(sub, provider)
-    return _ok({"subscription": serialize_subscription(sub)})
+    effective_access = (
+        "premium"
+        if has_active_premium_override(UUID(auth.subject))
+        or sub.status in {SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING}
+        else "free"
+    )
+    return _ok(
+        {
+            "subscription": serialize_subscription(sub),
+            "effective_access": effective_access,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ from sqlalchemy.pool import NullPool
 from app.cli.ai_insights_cli import register_ai_insights_commands
 from app.cli.features import features as features_cli_group
 from app.cli.openapi_export import openapi_export_command
+from app.cli.premium_overrides_cli import register_premium_override_commands
 from app.cli.recurrence_cli import register_recurrence_commands
 from app.cli.transactions_cli import register_transactions_commands
 from app.cli.worker_cli import worker_cli_group
@@ -98,6 +99,7 @@ from app.models.goal import Goal  # noqa: F401
 from app.models.goal_contribution import GoalContribution  # noqa: F401
 from app.models.investment_operation import InvestmentOperation  # noqa: F401
 from app.models.llm_audit_log import LLMAuditLog  # noqa: F401
+from app.models.premium_override import PremiumOverride  # noqa: F401
 from app.models.refresh_token import RefreshToken  # noqa: F401
 from app.models.shared_entry import Invitation, SharedEntry  # noqa: F401
 from app.models.sharing_audit import SharingAuditEvent  # noqa: F401
@@ -307,6 +309,7 @@ def create_app(*, enable_http_runtime: bool = True) -> Flask:
     register_ai_insights_commands(app)
     register_recurrence_commands(app)
     register_transactions_commands(app)
+    register_premium_override_commands(app)
     register_email_dlq_commands(app)
     app.cli.add_command(features_cli_group, "features")
     app.cli.add_command(openapi_export_command)

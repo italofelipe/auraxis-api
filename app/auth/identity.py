@@ -25,6 +25,10 @@ class RevokedTokenError(AuthContextError):
     """Raised when the token is structurally valid but no longer active."""
 
 
+class AccountBlockedError(AuthContextError):
+    """Raised when a valid identity belongs to a blocked account."""
+
+
 @dataclass(frozen=True)
 class AuthContext:
     subject: str
@@ -91,7 +95,10 @@ def get_current_auth_context(*, optional: bool = False) -> AuthContext | None:
 
 def _get_current_auth_context(*, optional: bool) -> AuthContext | None:
     try:
-        verify_jwt_in_request(optional=optional)
+        # Revocation is resolved below against the canonical User record. Keeping
+        # framework verification structural here lets us distinguish blocked
+        # accounts from ordinary revoked sessions in the public error contract.
+        verify_jwt_in_request(optional=optional, skip_revocation_check=True)
     except NoAuthorizationError:
         if optional:
             return None
@@ -153,13 +160,42 @@ def _user_from_auth_context(context: AuthContext) -> User | None:
 
 def is_auth_context_revoked(context: AuthContext) -> bool:
     user = _user_from_auth_context(context)
-    return (
+    if (
         user is None
         or user.deleted_at is not None  # LGPD: soft-deleted accounts are always revoked
+        or user.blocked_at is not None
         or context.jti is None
-        or not hasattr(user, "current_jti")
-        or user.current_jti != context.jti
+    ):
+        return True
+
+    # Match the Flask-JWT-Extended callback semantics even though structural JWT
+    # verification intentionally skips that callback. This preserves multi-device
+    # sessions while allowing callers to distinguish ACCOUNT_BLOCKED from a normal
+    # revoked token.
+    from app.application.services.session_service import (
+        check_refresh_jti_revoked,
+        has_any_session,
+        is_access_jti_active,
     )
+
+    token_type = context.raw_claims.get("type", "access")
+    if token_type == "refresh":
+        refresh_revoked = check_refresh_jti_revoked(
+            user_id=user.id,
+            jti=context.jti,
+        )
+        if refresh_revoked is not None:
+            return refresh_revoked
+        return cast(str | None, user.refresh_token_jti) != context.jti
+
+    if has_any_session(user_id=user.id):
+        return not is_access_jti_active(user_id=user.id, jti=context.jti)
+    return cast(str | None, user.current_jti) != context.jti
+
+
+def is_auth_context_blocked(context: AuthContext) -> bool:
+    user = _user_from_auth_context(context)
+    return user is not None and user.blocked_at is not None
 
 
 @overload
@@ -177,6 +213,8 @@ def get_active_auth_context(*, optional: bool = False) -> AuthContext | None:
         context = get_current_auth_context()
     if context is None:
         return None
+    if is_auth_context_blocked(context):
+        raise AccountBlockedError("Account is blocked.")
     if is_auth_context_revoked(context):
         raise RevokedTokenError("JWT is revoked.")
     return context
@@ -186,6 +224,8 @@ def _get_active_auth_context(*, optional: bool) -> AuthContext | None:
     context = _get_current_auth_context(optional=optional)
     if context is None:
         return None
+    if is_auth_context_blocked(context):
+        raise AccountBlockedError("Account is blocked.")
     if is_auth_context_revoked(context):
         raise RevokedTokenError("JWT is revoked.")
     return context

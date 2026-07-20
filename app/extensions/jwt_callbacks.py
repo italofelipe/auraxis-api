@@ -32,7 +32,14 @@ def is_token_revoked(jti: str) -> bool:
         if identity is None:
             return True
         user = db.session.get(User, identity)
-        return not user or user.deleted_at is not None or user.current_jti != jti
+        if user and user.blocked_at is not None:
+            g.account_blocked = True
+        return (
+            not user
+            or user.deleted_at is not None
+            or user.blocked_at is not None
+            or user.current_jti != jti
+        )
     except InvalidAuthContextError:
         return True
 
@@ -69,23 +76,30 @@ def _is_access_token_revoked(user_id: str, jti: str) -> bool:
 
     Side-effect: sets ``g.session_displaced = True`` for the legacy path.
     """
+    # A block operation deletes this cache entry before returning. Preserve the
+    # established hot path for active legacy sessions; a miss revalidates the
+    # canonical user row and repopulates only after the blocked/deleted checks.
+    cache = get_jwt_revocation_cache()
+    cached_jti = cache.get_current_jti(user_id)
+    if cached_jti is not None:
+        displaced = cached_jti != jti
+        if displaced:
+            g.session_displaced = True
+        return displaced
+
+    user = db.session.get(User, UUID(user_id))
+    if not user or user.deleted_at is not None:
+        return True
+    if user.blocked_at is not None:
+        g.account_blocked = True
+        return True
+
     # Multi-device fast path — try RefreshToken table first.
     multi = _is_access_token_revoked_multi_session(user_id, jti)
     if multi is not None:
         return multi
 
     # Legacy single-session path (no RefreshToken rows for this user).
-    cache = get_jwt_revocation_cache()
-    cached_jti = cache.get_current_jti(user_id)
-    if cached_jti is not None:
-        displaced = cached_jti != jti
-        if displaced:
-            # cached_jti is non-empty → another session is active → displaced
-            g.session_displaced = True
-        return displaced
-    user = db.session.get(User, UUID(user_id))
-    if not user or user.deleted_at is not None:  # LGPD: soft-deleted = revoked
-        return True
     cache.set_current_jti(user_id, user.current_jti)
     if user.current_jti != jti:
         # current_jti is non-null → another session replaced this one
@@ -103,6 +117,9 @@ def _is_refresh_token_revoked(user_id: str, jti: str) -> bool:
     """
     user = db.session.get(User, UUID(user_id))
     if not user or user.deleted_at is not None:  # LGPD: soft-deleted = revoked
+        return True
+    if user.blocked_at is not None:
+        g.account_blocked = True
         return True
 
     from app.application.services.session_service import check_refresh_jti_revoked
@@ -138,6 +155,12 @@ def register_jwt_callbacks(jwt: JWTManager) -> None:
         # H-P5.3 — single-session policy feedback:
         # SESSION_DISPLACED → another device logged in (current_jti replaced).
         # SESSION_REVOKED   → explicit logout or account erasure.
+        if getattr(g, "account_blocked", False):
+            return _jwt_error_response(
+                "Conta bloqueada. Entre em contato com o suporte.",
+                code="ACCOUNT_BLOCKED",
+                status_code=403,
+            )
         if getattr(g, "session_displaced", False):
             return _jwt_error_response(
                 "Sua sessão foi encerrada porque você entrou em outro dispositivo.",

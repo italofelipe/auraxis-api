@@ -1,5 +1,27 @@
 # Data Flow - auraxis-api
 
+## Account block and session revocation
+
+1. FastAPI v2 persists an idempotent administrative action, then updates the v1 identity
+   through its restricted repository.
+2. The v1 user receives `blocked_at`, `blocked_reason` and `blocked_by`; all refresh-token
+   families are revoked and current access/refresh JTI fields are cleared.
+3. Revocation caches are invalidated. Existing bearer tokens are rejected by the request guard,
+   while login and refresh reject only after credential/token validation with
+   `ACCOUNT_BLOCKED`.
+4. Unblock clears block metadata but does not restore any JTI, so a new login is required.
+
+## Premium override
+
+1. The control plane grants or revokes one `premium_overrides` row with actor, reason and
+   optional future expiry; `subscriptions` is not updated.
+2. Entitlement checks treat an active override as access to the current premium feature set.
+3. Cache entries never live beyond the earliest entitlement/override expiry.
+4. `/subscriptions/me` returns the billing subscription unchanged plus
+   `effective_access: premium|free` for cross-version consumers.
+5. During migration, configured environment IDs are converted to the same audited rows by
+   `flask premium-overrides migrate-env`; a missing configured user fails the command.
+
 ## Card Expense Creation
 
 1. Client sends `POST /transactions` with `credit_card_id` and `impact_policy`.

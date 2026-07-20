@@ -53,6 +53,7 @@ from app.services.login_attempt_guard_service import (
     build_login_attempt_context,
     get_login_attempt_guard,
 )
+from app.utils.datetime_utils import utc_now_naive
 
 AUTH_BACKEND_UNAVAILABLE_MESSAGE = (
     "Authentication temporarily unavailable. Try again later."
@@ -245,7 +246,11 @@ class LoginMutation(graphene.Mutation):
             password_hash=password_hash,
             plain_password=password,
         )
-        if not identity.user or not is_valid_password:
+        if (
+            not identity.user
+            or not is_valid_password
+            or identity.user.deleted_at is not None
+        ):
             _guard_register_failure_or_raise(
                 login_guard=login_guard,
                 login_context=login_context,
@@ -253,6 +258,12 @@ class LoginMutation(graphene.Mutation):
             raise _public_graphql_error(
                 "Invalid credentials",
                 code=GRAPHQL_ERROR_CODE_UNAUTHORIZED,
+            )
+
+        if identity.user.blocked_at is not None:
+            raise _public_graphql_error(
+                "Account blocked",
+                code="ACCOUNT_BLOCKED",
             )
 
         _guard_register_success_or_raise(
@@ -265,7 +276,8 @@ class LoginMutation(graphene.Mutation):
         jti = get_jti(token)
         if identity.user.current_jti != jti:
             identity.user.current_jti = jti
-            db.session.commit()
+        identity.user.last_login_at = utc_now_naive()
+        db.session.commit()
         return AuthPayloadType(
             message="Login successful",
             token=token,

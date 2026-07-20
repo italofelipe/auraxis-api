@@ -236,6 +236,7 @@ class TestCheckIfTokenRevokedWithCache:
         mock_user = MagicMock()
         mock_user.current_jti = stored_jti
         mock_user.deleted_at = None  # active user
+        mock_user.blocked_at = None
 
         jwt_manager, captured = _make_jwt_manager_and_capture()
 
@@ -268,6 +269,7 @@ class TestCheckIfTokenRevokedWithCache:
         mock_user = MagicMock()
         mock_user.current_jti = stored_jti
         mock_user.deleted_at = None  # active user
+        mock_user.blocked_at = None
 
         jwt_manager, captured = _make_jwt_manager_and_capture()
 
@@ -373,6 +375,7 @@ class TestSessionDisplacedFlag:
         mock_user = MagicMock()
         mock_user.current_jti = "new-session-jti"  # a different session is active
         mock_user.deleted_at = None
+        mock_user.blocked_at = None
 
         import app.extensions.jwt_callbacks as _m
 
@@ -400,6 +403,7 @@ class TestSessionDisplacedFlag:
         mock_user = MagicMock()
         mock_user.current_jti = None  # explicit logout cleared it
         mock_user.deleted_at = None
+        mock_user.blocked_at = None
 
         import app.extensions.jwt_callbacks as _m
 
