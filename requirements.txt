@@ -50,7 +50,7 @@ Werkzeug==3.1.8
 types-python-dateutil==2.9.0.20260518
 types-requests==2.33.0.20260518
 reportlab==4.5.1
-boto3==1.43.46
+boto3==1.43.51
 pywebpush==2.3.0
 py-vapid==1.9.4
 http-ece==1.2.1
