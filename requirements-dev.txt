@@ -1,4 +1,4 @@
-ruff==0.15.21
+ruff==0.15.22
 mypy==1.20.2
 pre-commit==4.6.0
 bandit==1.9.4
