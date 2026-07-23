@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.68.0](https://github.com/italofelipe/auraxis-api/compare/v1.67.0...v1.68.0) (2026-07-23)
+
+
+### Features
+
+* add auditable backoffice account controls ([#1585](https://github.com/italofelipe/auraxis-api/issues/1585)) ([6c45751](https://github.com/italofelipe/auraxis-api/commit/6c457513e2edb7a8d8ba4a5f796656b3661c9b97))
+
 ## [1.67.0](https://github.com/italofelipe/auraxis-api/compare/v1.66.2...v1.67.0) (2026-07-20)
 
 
