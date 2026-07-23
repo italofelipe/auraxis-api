@@ -6,8 +6,8 @@ from datetime import datetime
 from flask_jwt_extended import create_access_token, get_jti
 
 from app.extensions.database import db
-from app.models.entitlement import Entitlement
-from app.models.subscription import BillingCycle, Subscription, SubscriptionStatus
+from app.models.premium_override import PremiumOverride
+from app.models.subscription import Subscription, SubscriptionStatus
 from app.models.user import User
 
 _PREMIUM_OVERRIDE_CONFIG_KEY = "AURAXIS_PREMIUM_OVERRIDE_USER_IDS"
@@ -50,7 +50,7 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_configured_override_existing_free_subscription_is_returned_as_premium(
+def test_configured_override_preserves_free_plan_and_grants_access(
     app,
     client,
 ) -> None:
@@ -72,25 +72,22 @@ def test_configured_override_existing_free_subscription_is_returned_as_premium(
 
     assert response.status_code == 200, response.get_json()
     subscription = response.get_json()["data"]["subscription"]
-    assert subscription["plan_code"] == "premium"
-    assert subscription["offer_code"] == "premium_monthly"
-    assert subscription["status"] == "active"
-    assert subscription["billing_cycle"] == "monthly"
+    assert subscription["plan_code"] == "free"
+    assert subscription["offer_code"] == "free"
+    assert subscription["status"] == "free"
+    assert response.get_json()["data"]["effective_access"] == "premium"
 
     with app.app_context():
         stored = Subscription.query.filter_by(user_id=user_id).one()
-        assert stored.plan_code == "premium"
-        assert stored.status == SubscriptionStatus.ACTIVE
-        assert stored.billing_cycle == BillingCycle.MONTHLY
-        assert stored.trial_ends_at is None
-        assert stored.current_period_end is None
-        assert stored.canceled_at is None
-        entitlement = Entitlement.query.filter_by(
-            user_id=user_id,
-            feature_key=_PREMIUM_FEATURE,
-        ).one_or_none()
-        assert entitlement is not None
-        assert entitlement.expires_at is None
+        assert stored.plan_code == "free"
+        assert stored.status == SubscriptionStatus.FREE
+        assert stored.trial_ends_at == datetime(2026, 5, 1)
+        assert stored.current_period_end == datetime(2026, 5, 1)
+        assert stored.canceled_at == datetime(2026, 5, 1)
+        override = PremiumOverride.query.filter_by(user_id=user_id).one()
+        assert override.reason == "Migrated from AURAXIS_PREMIUM_OVERRIDE_USER_IDS"
+        assert override.granted_by == "system:legacy-premium-override-env"
+        assert override.expires_at is None
 
 
 def test_configured_override_entitlement_check_is_active_without_subscription_call(

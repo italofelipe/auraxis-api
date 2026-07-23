@@ -1,5 +1,23 @@
 # Architecture - auraxis-api
 
+## Backoffice account-control primitives
+
+The v1 API remains the enforcement point for v1 identities while FastAPI v2 owns the
+administrative control plane. `users` stores block metadata and last login, and
+`premium_overrides` stores audited manual access independently from subscriptions/provider
+state. Blocking revokes every persisted refresh-token family and clears current JTI fields;
+authentication middleware, REST login/refresh and legacy GraphQL authentication all reject a
+blocked identity with `ACCOUNT_BLOCKED` after credentials are validated.
+
+Premium gates first evaluate a non-revoked, non-expired override. The override grants every
+feature in the premium feature set, including future additions, while cache TTL is bounded by
+its expiry. `/subscriptions/me` exposes `effective_access` without rewriting the billing plan.
+
+The temporary `AURAXIS_PREMIUM_OVERRIDE_USER_IDS` fallback now creates an auditable override
+record rather than promoting subscriptions. Operators must run
+`flask premium-overrides migrate-env` before removing that configuration. See
+`docs/wiki/Backoffice-Account-Controls.md`.
+
 ## Credit Card Impact Policy
 
 Transactions remain the canonical source for both regular expenses and card expenses. A card launch is a `Transaction` with `credit_card_id` and an `impact_policy`.

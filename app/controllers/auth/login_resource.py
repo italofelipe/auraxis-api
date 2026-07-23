@@ -28,6 +28,7 @@ from app.services.login_attempt_guard_service import (
     LoginAttemptContext,
     LoginAttemptGuardService,
 )
+from app.utils.datetime_utils import utc_now_naive
 from app.utils.typed_decorators import typed_doc as doc
 from app.utils.typed_decorators import typed_use_kwargs as use_kwargs
 
@@ -39,6 +40,26 @@ from .guard import guard_login_check, guard_register_failure, guard_register_suc
 
 def _record_login_identifier_metric(*, channel: str) -> None:
     increment_metric(f"auth.login.identifier.{channel}.email")
+
+
+def _validate_login_request(
+    *, captcha_token: str | None, email: str, password: object
+) -> Response | None:
+    if not get_captcha_service().verify(captcha_token):
+        return compat_error(
+            legacy_payload={"message": "CAPTCHA verification failed"},
+            status_code=400,
+            message="CAPTCHA verification failed",
+            error_code="CAPTCHA_INVALID",
+        )
+    if not password or not email:
+        return compat_error(
+            legacy_payload={"message": "Missing credentials"},
+            status_code=400,
+            message="Missing credentials",
+            error_code="VALIDATION_ERROR",
+        )
+    return None
 
 
 def _invalid_credentials_response(
@@ -75,15 +96,9 @@ def _persist_session(
     # We still update user.current_jti / user.refresh_token_jti for backward
     # compatibility with the Redis revocation cache (single-session fast path).
     # The RefreshToken row is the authoritative record for per-session tracking.
-    needs_commit = (
-        user.current_jti != jti
-        or user.refresh_token_jti != refresh_jti
-        or pending_new_hash is not None
-    )
-    if not needs_commit:
-        return
     user.current_jti = jti
     user.refresh_token_jti = refresh_jti
+    user.last_login_at = utc_now_naive()
     if pending_new_hash is not None:
         user.password = pending_new_hash
     create_session(
@@ -189,24 +204,15 @@ class AuthResource(MethodResource):
     @use_kwargs(AuthSchema, location="json")
     def post(self, **kwargs: Any) -> Response:
         captcha_token: str | None = kwargs.pop("captcha_token", None)
-        if not get_captcha_service().verify(captcha_token):
-            return compat_error(
-                legacy_payload={"message": "CAPTCHA verification failed"},
-                status_code=400,
-                message="CAPTCHA verification failed",
-                error_code="CAPTCHA_INVALID",
-            )
-
         email = str(kwargs.get("email", ""))
         password = kwargs.get("password")
-
-        if not password or not email:
-            return compat_error(
-                legacy_payload={"message": "Missing credentials"},
-                status_code=400,
-                message="Missing credentials",
-                error_code="VALIDATION_ERROR",
-            )
+        validation_error = _validate_login_request(
+            captcha_token=captcha_token,
+            email=email,
+            password=password,
+        )
+        if validation_error is not None:
+            return validation_error
 
         dependencies: AuthDependencies = get_auth_dependencies()
         auth_policy = dependencies.get_auth_security_policy()
@@ -252,6 +258,15 @@ class AuthResource(MethodResource):
             return _invalid_credentials_response(
                 login_guard=login_guard,
                 login_context=login_context,
+            )
+
+        if identity.user.blocked_at is not None:
+            record_auth_login(status="blocked")
+            return compat_error(
+                legacy_payload={"message": "Account blocked"},
+                status_code=403,
+                message="Account blocked",
+                error_code="ACCOUNT_BLOCKED",
             )
 
         try:

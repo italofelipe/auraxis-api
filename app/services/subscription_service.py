@@ -21,13 +21,13 @@ from app.models.subscription import BillingCycle, Subscription, SubscriptionStat
 from app.models.user import User
 from app.services.billing_adapter import BillingProvider, BillingSubscriptionSnapshot
 from app.services.entitlement_service import sync_entitlements_from_subscription
-from app.utils.datetime_utils import utc_now_naive
 
 logger = logging.getLogger(__name__)
 
 _FREE_PLAN_CODE = "free"
 _PREMIUM_OVERRIDE_USER_IDS_CONFIG_KEY = "AURAXIS_PREMIUM_OVERRIDE_USER_IDS"
-_PREMIUM_PLAN_CODE = "premium"
+_ENV_OVERRIDE_REASON = "Migrated from AURAXIS_PREMIUM_OVERRIDE_USER_IDS"
+_ENV_OVERRIDE_ACTOR = "system:legacy-premium-override-env"
 
 
 def _premium_override_user_ids_config() -> str:
@@ -38,7 +38,7 @@ def _premium_override_user_ids_config() -> str:
     return os.getenv(_PREMIUM_OVERRIDE_USER_IDS_CONFIG_KEY, "")
 
 
-def _configured_premium_override_user_ids() -> frozenset[UUID]:
+def configured_premium_override_user_ids() -> frozenset[UUID]:
     configured_user_ids: set[UUID] = set()
     raw_config = _premium_override_user_ids_config()
     for token in raw_config.replace(";", ",").split(","):
@@ -53,23 +53,7 @@ def _configured_premium_override_user_ids() -> frozenset[UUID]:
 
 
 def is_premium_override_user_id(user_id: UUID) -> bool:
-    return user_id in _configured_premium_override_user_ids()
-
-
-def _premium_override_has_active_entitlements(user_id: UUID) -> bool:
-    from app.models.entitlement import Entitlement
-
-    premium_features = set(PLAN_FEATURES[_PREMIUM_PLAN_CODE])
-    now = utc_now_naive()
-    active_keys = {
-        row.feature_key
-        for row in Entitlement.query.filter(
-            Entitlement.user_id == user_id,
-            Entitlement.feature_key.in_(premium_features),
-            (Entitlement.expires_at.is_(None)) | (Entitlement.expires_at > now),
-        ).all()
-    }
-    return premium_features.issubset(active_keys)
+    return user_id in configured_premium_override_user_ids()
 
 
 def ensure_premium_override_subscription(
@@ -77,65 +61,35 @@ def ensure_premium_override_subscription(
     *,
     subscription: Subscription | None = None,
 ) -> Subscription | None:
-    """Promote configured internal accounts to premium for product validation.
+    """Migrate a configured legacy override without touching billing state.
 
-    The override is intentionally scoped to configured user IDs and is
-    idempotent: regular users keep their existing subscription state, while the
-    configured account gets a permanent premium subscription and matching feature
-    entitlements even when an older row still says ``free``.
+    The environment fallback remains temporarily available during rollout, but
+    its first use creates the same auditable ``premium_overrides`` record used by
+    the control plane. The user's subscription, plan and provider state are never
+    changed.
     """
     user = cast(User | None, db.session.get(User, user_id))
     if user is None or not is_premium_override_user_id(user_id):
         return None
+
+    from app.services.premium_override_service import (
+        get_active_premium_override,
+        grant_premium_override,
+    )
+
+    if get_active_premium_override(user_id) is None:
+        grant_premium_override(
+            user_id=user_id,
+            reason=_ENV_OVERRIDE_REASON,
+            granted_by=_ENV_OVERRIDE_ACTOR,
+        )
+        db.session.commit()
 
     if subscription is None:
         subscription = cast(
             Subscription | None,
             Subscription.query.filter_by(user_id=user_id).first(),
         )
-
-    changed = False
-    if subscription is None:
-        subscription = Subscription(user_id=user_id)
-        db.session.add(subscription)
-        changed = True
-
-    subscription.plan_code, did_change = _set_if_changed(
-        subscription.plan_code,
-        _PREMIUM_PLAN_CODE,
-    )
-    changed = changed or did_change
-    subscription.status, did_change = _set_if_changed(
-        subscription.status,
-        SubscriptionStatus.ACTIVE,
-    )
-    changed = changed or did_change
-    subscription.billing_cycle, did_change = _set_if_changed(
-        subscription.billing_cycle,
-        BillingCycle.MONTHLY,
-    )
-    changed = changed or did_change
-    subscription.trial_ends_at, did_change = _set_nullable_datetime_if_changed(
-        subscription.trial_ends_at,
-        None,
-    )
-    changed = changed or did_change
-    subscription.current_period_end, did_change = _set_nullable_datetime_if_changed(
-        subscription.current_period_end,
-        None,
-    )
-    changed = changed or did_change
-    subscription.canceled_at, did_change = _set_nullable_datetime_if_changed(
-        subscription.canceled_at,
-        None,
-    )
-    changed = changed or did_change
-
-    if changed or not _premium_override_has_active_entitlements(user_id):
-        sync_entitlements_from_subscription(subscription)
-        _bump_entitlements_version(user_id)
-        db.session.commit()
-
     return subscription
 
 

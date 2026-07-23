@@ -6,6 +6,7 @@ coexistence constrained to the adapter layer during the X3 migration.
 """
 
 from .identity import (
+    AccountBlockedError,
     AuthContext,
     AuthContextError,
     InvalidAuthContextError,
@@ -19,6 +20,7 @@ from .identity import (
 )
 
 __all__ = [
+    "AccountBlockedError",
     "AuthContext",
     "AuthContextError",
     "InvalidAuthContextError",

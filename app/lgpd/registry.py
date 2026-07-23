@@ -113,6 +113,7 @@ def _build_registry() -> list[EntityRule]:
     from app.models.goal_contribution import GoalContribution
     from app.models.investment_operation import InvestmentOperation
     from app.models.llm_audit_log import LLMAuditLog
+    from app.models.premium_override import PremiumOverride
     from app.models.push_subscription import PushSubscription
     from app.models.refresh_token import RefreshToken
     from app.models.shared_entry import Invitation, SharedEntry
@@ -404,6 +405,16 @@ def _build_registry() -> list[EntityRule]:
             retention_reason=RetentionReason.NONE,
             retention_days=None,
             description="Feature entitlements derived from subscription",
+        ),
+        EntityRule(
+            model=PremiumOverride,
+            user_id_field="user_id",
+            table_name="premium_overrides",
+            deletion_strategy=DeletionStrategy.DELETE,
+            export_included=True,
+            retention_reason=RetentionReason.NONE,
+            retention_days=None,
+            description="Auditable manual premium access override",
         ),
         # === Audit (anonymise but retain for incident response) =============
         EntityRule(

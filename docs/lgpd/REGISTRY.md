@@ -90,7 +90,10 @@ The test `test_retention_days_consistent_with_reason` enforces that
 
 Critical entities (`users`, `transactions`, `llm_audit_logs`, `ai_insights`,
 `refresh_tokens`, `push_subscriptions`, `shared_entries`, `fiscal_documents`,
-`subscriptions`) must always be present.
+`subscriptions`) must always be present. Manual premium overrides are exported
+with the data subject package and deleted with the account; their cross-system
+administrative audit remains in the v2 control plane under its own retention
+policy.
 
 ---
 

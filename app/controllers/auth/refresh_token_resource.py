@@ -86,6 +86,13 @@ class RefreshTokenResource(MethodResource):
                 message="User not found",
                 error_code="TOKEN_INVALID",
             )
+        if user.blocked_at is not None:
+            return compat_error(
+                legacy_payload={"message": "Account blocked"},
+                status_code=403,
+                message="Account blocked",
+                error_code="ACCOUNT_BLOCKED",
+            )
 
         # Replay attack guard: the incoming JTI must match the stored refresh JTI.
         if not incoming_jti or user.refresh_token_jti != incoming_jti:
