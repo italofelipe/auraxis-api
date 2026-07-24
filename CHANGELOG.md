@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.69.0](https://github.com/italofelipe/auraxis-api/compare/v1.68.0...v1.69.0) (2026-07-24)
+
+
+### Features
+
+* **nginx:** add v2.auraxis.com.br vhost for the api-v2 control plane ([47db5f1](https://github.com/italofelipe/auraxis-api/commit/47db5f13803660915d54e290a69847fb716a2b8a))
+* **nginx:** vhost v2.auraxis.com.br para o control plane api-v2 ([7a265a8](https://github.com/italofelipe/auraxis-api/commit/7a265a8f99ea77fe1fa91e5cda415fa18753a1d7))
+
 ## [1.68.0](https://github.com/italofelipe/auraxis-api/compare/v1.67.0...v1.68.0) (2026-07-23)
 
 
