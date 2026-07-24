@@ -115,6 +115,10 @@ services:
       - "443:443"
     volumes:
       - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # v2.auraxis.com.br → auraxis-api-v2 control plane (#1592). During cert
+      # bootstrap the host applies v2.http.conf in place of v2.conf — see the
+      # headers of both files under deploy/nginx/.
+      - ./deploy/nginx/v2.conf:/etc/nginx/conf.d/v2.conf:ro
       - certbot_challenge:/var/www/certbot
       - letsencrypt:/etc/letsencrypt
 
