@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.69.2](https://github.com/italofelipe/auraxis-api/compare/v1.69.1...v1.69.2) (2026-07-25)
+
+
+### Bug Fixes
+
+* **auth:** align reset/confirm frontend URL paths in env examples ([#1603](https://github.com/italofelipe/auraxis-api/issues/1603)) ([9d03757](https://github.com/italofelipe/auraxis-api/commit/9d03757dcd3986b3e59bab72cd9be198e95d943a))
+* **auth:** align reset/confirm frontend URL paths in env examples [[#1603](https://github.com/italofelipe/auraxis-api/issues/1603)] ([dfcecc4](https://github.com/italofelipe/auraxis-api/commit/dfcecc47deda7bd628449043581070a72b339ab7))
+
 ## [1.69.1](https://github.com/italofelipe/auraxis-api/compare/v1.69.0...v1.69.1) (2026-07-25)
 
 
