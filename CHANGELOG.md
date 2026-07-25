@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.69.3](https://github.com/italofelipe/auraxis-api/compare/v1.69.2...v1.69.3) (2026-07-25)
+
+
+### Bug Fixes
+
+* **radar:** mint token_use=service for the internal v2 call [[#1606](https://github.com/italofelipe/auraxis-api/issues/1606)] ([e150a46](https://github.com/italofelipe/auraxis-api/commit/e150a469d0c9cfc486f87f05c6638c07c4bedbe5))
+
 ## [1.69.2](https://github.com/italofelipe/auraxis-api/compare/v1.69.1...v1.69.2) (2026-07-25)
 
 
