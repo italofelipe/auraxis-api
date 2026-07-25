@@ -205,6 +205,32 @@ def _patch_v2(monkeypatch, *, status: int, body: dict) -> None:
     monkeypatch.setattr(sps_service, "call_v2_spending_patterns", _fake_call)
 
 
+def test_generate_mints_service_token(app, client, monkeypatch) -> None:
+    """The cron mints a token_use=service token so v2 skips per-user session
+    (active_jti) revocation for the internal call. Regression for #1596."""
+    from flask_jwt_extended import decode_token
+
+    token = _register_and_login(client)
+    user_id = _grant_premium(app, token)
+
+    captured: dict[str, str] = {}
+
+    def _capture(*, transactions, period_days, auth_header):  # noqa: ANN001
+        captured["auth_header"] = auth_header
+        return 200, {"patterns": []}
+
+    monkeypatch.setattr(sps_service, "call_v2_spending_patterns", _capture)
+
+    with app.app_context():
+        sps_service.generate_and_persist_spending_patterns(
+            user_id, anchor_date=date(2026, 6, 5)
+        )
+        service_token = captured["auth_header"].removeprefix("Bearer ")
+        decoded = decode_token(service_token)
+        assert decoded["token_use"] == "service"
+        assert decoded["sub"] == str(user_id)
+
+
 def test_generate_persists_insight(app, client, monkeypatch) -> None:
     token = _register_and_login(client)
     user_id = _grant_premium(app, token)

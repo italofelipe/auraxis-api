@@ -153,7 +153,14 @@ def generate_and_persist_spending_patterns(
     start = anchor_date - timedelta(days=_PERIOD_DAYS)
     transactions = _build_expense_payload(user_id=user_id, start=start, end=end)
 
-    auth_header = f"Bearer {create_access_token(str(user_id))}"
+    # Server-to-server token for the internal v2 call. The token_use=service
+    # claim tells v2 to skip its per-user session (active_jti) revocation — this
+    # cron token has no user session — while signature and account-block checks
+    # still apply on the v2 side. See auraxis-api-v2#97.
+    service_token = create_access_token(
+        str(user_id), additional_claims={"token_use": "service"}
+    )
+    auth_header = f"Bearer {service_token}"
     status_code, body = call_v2_spending_patterns(
         transactions=transactions,
         period_days=_PERIOD_DAYS,
