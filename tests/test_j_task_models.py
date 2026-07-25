@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions.database import db
@@ -442,6 +443,33 @@ def test_alert_persists_with_required_fields(app) -> None:
         assert stored.category == "due_soon"
         assert stored.status == AlertStatus.PENDING
         assert stored.sent_at is None
+
+
+def test_alert_status_persists_lowercase_enum_value(app) -> None:
+    """Regression for #989: the ``alertstatus`` Postgres enum only declares
+    lowercase labels, so the ORM must persist ``AlertStatus.value`` ("sent"),
+    not the member name ("SENT"). Without ``values_callable`` the INSERT sent
+    "SENT" and Postgres raised InvalidTextRepresentation — which broke every
+    reminder/dunning dispatch on days with real work. Asserted at the raw
+    column level because SQLite would otherwise round-trip either casing.
+    """
+    with app.app_context():
+        user = _make_user("-al-enum")
+        alert = Alert(
+            user_id=user.id,
+            category="due_soon",
+            triggered_at=datetime.utcnow(),
+            status=AlertStatus.SENT,
+        )
+        db.session.add(alert)
+        db.session.commit()
+
+        raw_status = db.session.execute(text("SELECT status FROM alerts")).scalar()
+        assert raw_status == "sent"
+
+        stored = Alert.query.filter_by(id=alert.id).first()
+        assert stored is not None
+        assert stored.status == AlertStatus.SENT
 
 
 def test_alert_repr(app) -> None:

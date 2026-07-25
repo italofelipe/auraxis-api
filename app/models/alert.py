@@ -19,6 +19,16 @@ class AlertStatus(enum.Enum):
     SKIPPED = "skipped"
 
 
+def _enum_values(enum_cls: type[enum.Enum]) -> list[str]:
+    """SQLAlchemy ``values_callable``: persist ``Enum.value`` (lowercase) and not
+    ``Enum.name`` (uppercase). The ``alertstatus`` Postgres enum (migration
+    ``j618``) only declares lowercase labels, so without this every Alert INSERT
+    sends ``"SENT"`` and Postgres raises InvalidTextRepresentation — the root
+    cause of the reminder-job failures (#989).
+    """
+    return [str(member.value) for member in enum_cls]
+
+
 class Alert(db.Model):
     """A single alert dispatch record for a user."""
 
@@ -31,7 +41,9 @@ class Alert(db.Model):
     # Valid values: due_soon | overdue | onboarding_pending | monthly_summary
     category = db.Column(db.String(40), nullable=False)
     status = db.Column(
-        db.Enum(AlertStatus), nullable=False, default=AlertStatus.PENDING
+        db.Enum(AlertStatus, values_callable=_enum_values),
+        nullable=False,
+        default=AlertStatus.PENDING,
     )
     entity_type = db.Column(db.String(40), nullable=True)
     entity_id = db.Column(UUID(as_uuid=True), nullable=True)

@@ -203,7 +203,11 @@ jobs:
           DELIM="DIAG_$(date +%s%N)"
           {
             echo "diagnostics_output<<${DELIM}"
-            echo "${DIAG}" | head -c 3000
+            # head -c can truncate mid-line without a trailing newline, which would
+            # leave the closing delimiter on the same line and break the heredoc
+            # ("Matching delimiter not found") — force a single trailing newline so
+            # the failure comment carries real diagnostics instead of the fallback.
+            printf '%s\n' "$(printf '%s' "${DIAG}" | head -c 3000)"
             echo "${DELIM}"
           } >> "${GITHUB_OUTPUT}"
 
