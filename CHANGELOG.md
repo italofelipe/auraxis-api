@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.69.1](https://github.com/italofelipe/auraxis-api/compare/v1.69.0...v1.69.1) (2026-07-25)
+
+
+### Bug Fixes
+
+* **alerts:** persist AlertStatus value not name (unblocks reminder-job + dunning) [[#989](https://github.com/italofelipe/auraxis-api/issues/989)] ([eee5896](https://github.com/italofelipe/auraxis-api/commit/eee5896cc447ef8236a60d43c13a1c55fdaaf117))
+* **alerts:** persist AlertStatus value not name to match Postgres enum ([d7c8fd6](https://github.com/italofelipe/auraxis-api/commit/d7c8fd65df46cb57de2a9b1505458e74a360bed3)), closes [#989](https://github.com/italofelipe/auraxis-api/issues/989)
+
 ## [1.69.0](https://github.com/italofelipe/auraxis-api/compare/v1.68.0...v1.69.0) (2026-07-24)
 
 
