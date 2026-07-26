@@ -147,6 +147,9 @@ class Config:
         os.getenv("EMAIL_VERIFICATION_GRACE_PERIOD_DAYS", "14")
     )
     EMAIL_VERIFICATION_ENFORCE = _read_bool_env("EMAIL_VERIFICATION_ENFORCE", True)
+    # Billing dunning grace window (#1599) — on payment_failed, premium stays on
+    # until now + N days; a daily job downgrades once the window lapses unpaid.
+    BILLING_GRACE_PERIOD_DAYS = int(os.getenv("BILLING_GRACE_PERIOD_DAYS", "5"))
     # URL base do frontend para o link de confirmação de email. Consumido por
     # email_confirmation_service. Quando vazio, o serviço faz fallback para
     # a URL canônica de prod com warning de log (PR #1335).
