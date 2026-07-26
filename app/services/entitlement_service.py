@@ -232,7 +232,32 @@ _DEGRADED_STATUSES = {
 }
 
 
-def _resolve_effective_plan(plan_slug: str, status: SubscriptionStatus | None) -> str:
+def _subscription_in_grace(
+    subscription: Subscription, *, now: datetime | None = None
+) -> bool:
+    """#1599: a PAST_DUE subscription still inside its dunning grace window.
+
+    Only PAST_DUE with an explicit ``grace_period_ends_at`` in the future counts —
+    a legacy PAST_DUE without a grace date keeps the old immediate-revoke
+    behaviour, so this change never silently re-grants premium.
+    """
+    if subscription.status != SubscriptionStatus.PAST_DUE:
+        return False
+    grace_end = subscription.grace_period_ends_at
+    if grace_end is None:
+        return False
+    return bool((now or utc_now_naive()) <= grace_end)
+
+
+def _resolve_effective_plan(
+    plan_slug: str,
+    status: SubscriptionStatus | None,
+    *,
+    in_grace: bool = False,
+) -> str:
+    # #1599: keep premium while a payment retry is still within the grace window.
+    if status == SubscriptionStatus.PAST_DUE and in_grace:
+        return plan_slug if plan_slug in PLAN_FEATURES else "free"
     if status in _DEGRADED_STATUSES:
         return "free"
     return plan_slug if plan_slug in PLAN_FEATURES else "free"
@@ -266,7 +291,9 @@ def sync_entitlements_from_subscription(
     plan_slug = subscription.plan_code or "free"
     status = subscription.status
 
-    effective_plan = _resolve_effective_plan(plan_slug, status)
+    effective_plan = _resolve_effective_plan(
+        plan_slug, status, in_grace=_subscription_in_grace(subscription)
+    )
     desired_features: set[str] = set(PLAN_FEATURES[effective_plan])
     source = _resolve_entitlement_source(effective_plan, status)
 

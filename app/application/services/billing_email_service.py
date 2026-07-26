@@ -134,3 +134,32 @@ def dispatch_trial_expired_email(*, user: User, subscription: Subscription) -> N
         ),
         tag=_TRIAL_EXPIRED_TAG,
     )
+
+
+def dispatch_billing_grace_expired_email(
+    *, user: User, subscription: Subscription
+) -> None:
+    """Notify that the dunning grace window lapsed unpaid and premium ended (#1599).
+
+    Called by ``scripts/process_grace_expirations.py`` after the PAST_DUE →
+    EXPIRED downgrade is committed.
+    """
+    from app.services.outbound_queue import get_default_outbound_queue
+
+    plan_label = _plan_label(subscription)
+    get_default_outbound_queue().enqueue_send_email(
+        to_email=str(user.email),
+        subject="Assinatura encerrada por falta de pagamento — Auraxis",
+        html=(
+            "<p>Não conseguimos confirmar o pagamento da sua assinatura dentro "
+            "do período de tolerância, então o acesso premium foi encerrado.</p>"
+            f"<p>Plano encerrado: <strong>{plan_label}</strong></p>"
+            "<p>Regularize o pagamento para reativar quando quiser.</p>"
+        ),
+        text=(
+            "Não conseguimos confirmar o pagamento da sua assinatura dentro do "
+            "período de tolerância, então o acesso premium foi encerrado. "
+            f"Plano encerrado: {plan_label}. Regularize o pagamento para reativar."
+        ),
+        tag="billing_grace_expired",
+    )

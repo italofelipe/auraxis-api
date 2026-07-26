@@ -169,6 +169,74 @@ jobs:
           echo "Timed out waiting for SSM command to complete."
           exit 1
 
+      # #1599: same daily cadence downgrades PAST_DUE subscriptions whose dunning
+      # grace window lapsed unpaid (payment_failed → grace → EXPIRED). Reuses the
+      # OIDC creds and container health check already established above.
+      - name: Expire lapsed grace windows via SSM
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          PROD_INSTANCE_ID: ${{ vars.AURAXIS_PROD_INSTANCE_ID }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          if [ "${DRY_RUN}" = "true" ]; then
+            FLAG=" --dry-run"
+          else
+            FLAG=""
+          fi
+          COMMAND_ID=$(aws ssm send-command \
+            --region "${AWS_REGION}" \
+            --instance-ids "${PROD_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[\"cd /opt/auraxis && docker compose exec -T web flask billing expire-grace${FLAG}\"]" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: ${COMMAND_ID}"
+
+          for i in $(seq 1 30); do
+            STATUS=$(aws ssm get-command-invocation \
+              --region "${AWS_REGION}" \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "${PROD_INSTANCE_ID}" \
+              --query "StatusDetails" \
+              --output text 2>/dev/null || echo "Pending")
+
+            echo "Attempt ${i}: ${STATUS}"
+
+            if [ "${STATUS}" = "Success" ]; then
+              echo "Grace expiry completed successfully."
+              aws ssm get-command-invocation \
+                --region "${AWS_REGION}" \
+                --command-id "${COMMAND_ID}" \
+                --instance-id "${PROD_INSTANCE_ID}" \
+                --query "StandardOutputContent" \
+                --output text 2>/dev/null || true
+              exit 0
+            elif [ "${STATUS}" = "Failed" ] || [ "${STATUS}" = "Cancelled" ] || [ "${STATUS}" = "TimedOut" ]; then
+              echo "Grace expiry failed with status: ${STATUS}"
+              echo "--- stdout ---"
+              aws ssm get-command-invocation \
+                --region "${AWS_REGION}" \
+                --command-id "${COMMAND_ID}" \
+                --instance-id "${PROD_INSTANCE_ID}" \
+                --query "StandardOutputContent" \
+                --output text 2>/dev/null || true
+              echo "--- stderr ---"
+              aws ssm get-command-invocation \
+                --region "${AWS_REGION}" \
+                --command-id "${COMMAND_ID}" \
+                --instance-id "${PROD_INSTANCE_ID}" \
+                --query "StandardErrorContent" \
+                --output text 2>/dev/null || true
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+          echo "Timed out waiting for SSM command to complete."
+          exit 1
+
       - name: Notify failure via GitHub Issue
         if: failure()
         uses: actions/github-script@v7
