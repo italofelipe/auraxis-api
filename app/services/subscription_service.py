@@ -14,12 +14,21 @@ from uuid import UUID
 
 from flask import current_app, has_app_context
 
-from app.config.billing_plans import parse_billing_cycle, resolve_checkout_plan_offer
+from app.config.billing_plans import (
+    BillingPlanOffer,
+    parse_billing_cycle,
+    resolve_checkout_plan_offer,
+)
 from app.config.plan_features import PLAN_FEATURES
 from app.extensions.database import db
 from app.models.subscription import BillingCycle, Subscription, SubscriptionStatus
 from app.models.user import User
-from app.services.billing_adapter import BillingProvider, BillingSubscriptionSnapshot
+from app.services.billing_adapter import (
+    BillingCheckoutCustomer,
+    BillingCheckoutSession,
+    BillingProvider,
+    BillingSubscriptionSnapshot,
+)
 from app.services.entitlement_service import sync_entitlements_from_subscription
 from app.utils.datetime_utils import utc_now_naive
 
@@ -344,6 +353,68 @@ def cancel_subscription(
     if not snapshot.provider_subscription_id:
         _dispatch_local_cancellation_email(snapshot)
     return snapshot
+
+
+def change_subscription_plan(
+    subscription: Subscription,
+    provider: BillingProvider,
+    new_offer: BillingPlanOffer,
+    customer: BillingCheckoutCustomer,
+) -> BillingCheckoutSession:
+    """Swap the active plan without ever double-charging (#1597).
+
+    Ordering is the safety guarantee: the current subscription is canceled at the
+    gateway **before** the new checkout is created, so there are never two active
+    subscriptions billing in parallel. If the cancel raises, the new checkout is
+    never created — no double charge.
+
+    Entitlements stay continuous: local ``status``, ``plan_code`` and
+    ``current_period_end`` are left untouched, so the user keeps premium on the
+    period they already paid for; the new plan lands when the gateway delivers the
+    ``subscription.completed`` webhook. The local record is pointed at the new
+    ``bill_`` placeholder so the reconciliation job (#1600) skips it until then.
+    If the user abandons the new checkout, entitlements simply expire at the old
+    period end — no indefinite free premium.
+
+    Returns the new checkout session (hosted URL for the user to pay).
+    """
+    from app.extensions.audit_trail import record_entity_change
+
+    old_provider_id = subscription.provider_subscription_id
+    # 1. Cancel the current subscription at the gateway FIRST. Only a real
+    #    ``subs_`` id has active billing — a ``bill_`` placeholder (an earlier
+    #    unpaid swap/checkout) has nothing to cancel.
+    if old_provider_id and not old_provider_id.startswith("bill_"):
+        provider.cancel_subscription(old_provider_id)
+
+    # 2. Only now create the new checkout. A failure here leaves the user on their
+    #    already-paid period (premium intact) and never double-charged.
+    result = provider.create_checkout_session(
+        customer=customer, plan_slug=new_offer.slug
+    )
+
+    # 3. Point the local record at the new bill_ placeholder; leave status/plan/
+    #    period untouched so premium is continuous and reconciliation skips it
+    #    until the completed webhook promotes the real subscription id + plan.
+    new_provider_id = result.get("provider_subscription_id")
+    if isinstance(new_provider_id, str) and new_provider_id.strip():
+        subscription.provider_subscription_id = new_provider_id.strip()
+    provider_name = str(result.get("provider") or "").strip()
+    if provider_name:
+        subscription.provider = provider_name
+    provider_customer_id = result.get("provider_customer_id")
+    if isinstance(provider_customer_id, str) and provider_customer_id.strip():
+        subscription.provider_customer_id = provider_customer_id.strip()
+    db.session.commit()
+
+    record_entity_change(
+        entity_type="subscription",
+        entity_id=str(subscription.id),
+        actor_id=str(subscription.user_id),
+        action="plan_change",
+        extra=f"to={new_offer.slug}",
+    )
+    return result
 
 
 def _dispatch_local_cancellation_email(subscription: Subscription) -> None:

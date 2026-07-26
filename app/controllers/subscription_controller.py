@@ -50,6 +50,7 @@ from app.services.billing_adapter import (
 from app.services.premium_override_service import has_active_premium_override
 from app.services.subscription_service import (
     cancel_subscription,
+    change_subscription_plan,
     get_or_create_subscription,
     sync_subscription_from_provider,
 )
@@ -214,6 +215,75 @@ def cancel_my_subscription() -> ResponseReturnValue:
         return _err("Failed to cancel subscription", "INTERNAL_ERROR", 500)
 
     return _ok({"subscription": serialize_subscription(sub)})
+
+
+# ---------------------------------------------------------------------------
+# POST /subscriptions/change-plan
+# ---------------------------------------------------------------------------
+
+
+@subscription_bp.post("/change-plan")
+def change_my_plan() -> ResponseReturnValue:
+    """Swap the authenticated user's plan without double-charging (#1597).
+
+    Cancels the current gateway subscription before issuing the new checkout, so
+    a monthly↔annual switch never leaves two active subscriptions billing.
+    """
+    auth, user = get_active_user()
+
+    body: dict[str, Any] = request.get_json(silent=True) or {}
+    plan_slug: str | None = body.get("plan_slug")
+    if not plan_slug:
+        return _err("plan_slug is required", "VALIDATION_ERROR", 400)
+
+    billing_cycle_raw: str | None = (
+        str(body.get("billing_cycle") or "").strip().lower() or None
+    )
+    if billing_cycle_raw:
+        offer = resolve_checkout_plan_offer(
+            f"{plan_slug}_{billing_cycle_raw}"
+        ) or resolve_checkout_plan_offer(plan_slug)
+    else:
+        offer = resolve_checkout_plan_offer(plan_slug)
+
+    if offer is None:
+        return _err("Unsupported plan_slug", "VALIDATION_ERROR", 400)
+
+    sub = get_or_create_subscription(UUID(auth.subject))
+    if sub.plan_code == offer.plan_code and sub.billing_cycle == offer.billing_cycle:
+        return _err("Already on this plan", "ALREADY_ON_PLAN", 409)
+
+    provider = _get_provider()
+    try:
+        result = change_subscription_plan(
+            sub,
+            provider,
+            offer,
+            BillingCheckoutCustomer(
+                user_id=str(UUID(auth.subject)),
+                name=str(user.name),
+                email=str(user.email),
+            ),
+        )
+    except BillingProviderError:
+        current_app.logger.exception("Failed to change plan")
+        return _err("Failed to change plan", "UPSTREAM_ERROR", 502)
+    except Exception:
+        current_app.logger.exception("Failed to change plan")
+        return _err("Failed to change plan", "INTERNAL_ERROR", 500)
+
+    return _ok(
+        {
+            "plan_slug": offer.slug,
+            "plan_code": offer.plan_code,
+            "billing_cycle": (
+                offer.billing_cycle.value if offer.billing_cycle else None
+            ),
+            "checkout_url": result.get("checkout_url"),
+            "provider": result.get("provider"),
+        },
+        201,
+    )
 
 
 # ---------------------------------------------------------------------------

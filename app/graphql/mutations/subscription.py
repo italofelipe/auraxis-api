@@ -34,6 +34,7 @@ from app.services.billing_adapter import (
 )
 from app.services.subscription_service import (
     cancel_subscription,
+    change_subscription_plan,
     get_or_create_subscription,
 )
 
@@ -138,4 +139,78 @@ class CancelSubscriptionMutation(graphene.Mutation):
             ok=True,
             message="Assinatura cancelada com sucesso",
             subscription=_to_subscription_type(_serialize_subscription(sub)),
+        )
+
+
+class ChangeSubscriptionPlanMutation(graphene.Mutation):
+    """Swap plan without double-charging (#1597); mirrors REST /change-plan."""
+
+    class Arguments:
+        plan_slug = graphene.String(required=True)
+        billing_cycle = SubscriptionBillingCycleEnum()
+
+    message = graphene.String(required=True)
+    checkout = graphene.Field(CheckoutSessionType, required=True)
+
+    @log_graphql_resolver("changeSubscriptionPlan")
+    def mutate(
+        self,
+        info: graphene.ResolveInfo,
+        plan_slug: str,
+        billing_cycle: object | None = None,
+    ) -> "ChangeSubscriptionPlanMutation":
+        user = get_current_user_required()
+        billing_cycle_value = coerce_enum_value(billing_cycle)
+        billing_cycle = (
+            str(billing_cycle_value) if billing_cycle_value is not None else None
+        )
+
+        if billing_cycle:
+            composed = f"{plan_slug}_{billing_cycle.strip().lower()}"
+            offer = resolve_checkout_plan_offer(
+                composed
+            ) or resolve_checkout_plan_offer(plan_slug)
+        else:
+            offer = resolve_checkout_plan_offer(plan_slug)
+
+        if offer is None:
+            raise build_public_graphql_error(
+                "plan_slug inválido", code=GRAPHQL_ERROR_CODE_VALIDATION
+            )
+
+        sub = get_or_create_subscription(UUID(str(user.id)))
+        if (
+            sub.plan_code == offer.plan_code
+            and sub.billing_cycle == offer.billing_cycle
+        ):
+            raise build_public_graphql_error(
+                "Você já está neste plano", code=GRAPHQL_ERROR_CODE_CONFLICT
+            )
+
+        provider = get_default_billing_provider()
+        try:
+            result = change_subscription_plan(
+                sub,
+                provider,
+                offer,
+                BillingCheckoutCustomer(
+                    user_id=str(UUID(str(user.id))),
+                    name=str(user.name),
+                    email=str(user.email),
+                ),
+            )
+        except BillingProviderError as exc:
+            raise build_public_graphql_error(
+                str(exc) or "Erro ao trocar de plano",
+                code=GRAPHQL_ERROR_CODE_VALIDATION,
+            ) from exc
+
+        return ChangeSubscriptionPlanMutation(
+            message="Troca de plano iniciada com sucesso",
+            checkout=CheckoutSessionType(
+                checkout_url=result.get("checkout_url") or "",
+                provider=result.get("provider") or "",
+                provider_customer_id=result.get("provider_customer_id"),
+                provider_subscription_id=result.get("provider_subscription_id"),
+            ),
         )
