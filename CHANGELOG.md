@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.70.0](https://github.com/italofelipe/auraxis-api/compare/v1.69.3...v1.70.0) (2026-07-26)
+
+
+### Features
+
+* **billing:** dunning com carência antes de revogar premium em payment_failed ([#1599](https://github.com/italofelipe/auraxis-api/issues/1599)) ([#1610](https://github.com/italofelipe/auraxis-api/issues/1610)) ([f2ba456](https://github.com/italofelipe/auraxis-api/commit/f2ba45639308755d248127adf5f71ef6304d56cd))
+* **billing:** job de reconciliação de assinaturas vs gateway (drift de webhook perdido) ([#1600](https://github.com/italofelipe/auraxis-api/issues/1600)) ([#1612](https://github.com/italofelipe/auraxis-api/issues/1612)) ([0248305](https://github.com/italofelipe/auraxis-api/commit/02483058b021c58ae440e14b8798b340b8168f1c))
+* **billing:** revogar entitlements em refund/chargeback do AbacatePay ([#1598](https://github.com/italofelipe/auraxis-api/issues/1598)) ([#1609](https://github.com/italofelipe/auraxis-api/issues/1609)) ([275b1a9](https://github.com/italofelipe/auraxis-api/commit/275b1a9606f614d63101e4e040db3d010700fdea))
+
 ## [1.69.3](https://github.com/italofelipe/auraxis-api/compare/v1.69.2...v1.69.3) (2026-07-25)
 
 
