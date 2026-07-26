@@ -60,6 +60,7 @@ from app.graphql.mutations.simulation import (
 )
 from app.graphql.mutations.subscription import (
     CancelSubscriptionMutation,
+    ChangeSubscriptionPlanMutation,
     CreateCheckoutSessionMutation,
 )
 from app.graphql.mutations.tag import (
@@ -170,6 +171,9 @@ class Mutation(graphene.ObjectType):
     )
     cancel_subscription = CancelSubscriptionMutation.Field(
         deprecation_reason="ADR-0004: use POST /subscription/cancel"
+    )
+    change_subscription_plan = ChangeSubscriptionPlanMutation.Field(
+        deprecation_reason="ADR-0004: use POST /subscription/change-plan"
     )
     update_notification_preferences = UpdateNotificationPreferencesMutation.Field()
     revoke_session = RevokeSessionMutation.Field()

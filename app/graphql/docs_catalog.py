@@ -614,6 +614,15 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         summary="Cancela a assinatura ativa do usuário autenticado.",
         source_module=MUTATION_SUBSCRIPTION_MODULE,
     ),
+    GraphQLOperationDoc(
+        name="changeSubscriptionPlan",
+        operation_type="mutation",
+        domain="billing",
+        access="auth_required",
+        summary="Troca o plano da assinatura sem cobrança dupla (cancela o atual "
+        "antes de criar o novo checkout).",
+        source_module=MUTATION_SUBSCRIPTION_MODULE,
+    ),
     # Notification preferences
     GraphQLOperationDoc(
         name="notificationPreferences",

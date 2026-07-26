@@ -161,6 +161,44 @@ def record_entity_delete(
         )
 
 
+def record_entity_change(
+    *,
+    entity_type: str,
+    entity_id: str,
+    actor_id: str | None,
+    action: str,
+    extra: str | None = None,
+) -> None:
+    """Persist a state-change audit event for a domain entity.
+
+    Sibling of :func:`record_entity_delete` for non-delete mutations (e.g. a
+    billing plan change), so the audit trail records the real ``action`` instead
+    of mislabelling it as a delete.
+    """
+    if not _is_audit_persistence_enabled():
+        return
+    try:
+        event = AuditEvent(
+            method="SYSTEM",
+            path="",
+            status=0,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            action=action,
+            actor_id=actor_id,
+            extra=extra,
+        )
+        db.session.add(event)
+        db.session.flush()
+    except Exception:
+        current_app.logger.exception(
+            "audit_entity_change_failed entity_type=%s entity_id=%s action=%s",
+            entity_type,
+            _safe_log_id(entity_id),
+            action,
+        )
+
+
 def register_audit_trail(app: Flask) -> None:
     if not _is_audit_trail_enabled():
         return

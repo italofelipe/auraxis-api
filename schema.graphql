@@ -891,6 +891,9 @@ type Mutation {
   deleteBudget(budgetId: UUID!): DeleteBudgetMutation @deprecated(reason: "ADR-0002: use DELETE /budgets/{id}")
   createCheckoutSession(billingCycle: BillingCycle, planSlug: String!): CreateCheckoutSessionMutation @deprecated(reason: "ADR-0004: use POST /subscription/checkout")
   cancelSubscription: CancelSubscriptionMutation @deprecated(reason: "ADR-0004: use POST /subscription/cancel")
+
+  """Swap plan without double-charging (#1597); mirrors REST /change-plan."""
+  changeSubscriptionPlan(billingCycle: BillingCycle, planSlug: String!): ChangeSubscriptionPlanMutation @deprecated(reason: "ADR-0004: use POST /subscription/change-plan")
   updateNotificationPreferences(preferences: [PreferenceInput!]!): UpdateNotificationPreferencesPayload
 
   """Revoke a specific session by ID (multi-device, #1028)."""
@@ -1266,6 +1269,12 @@ type CancelSubscriptionMutation {
   ok: Boolean!
   message: String!
   subscription: SubscriptionType!
+}
+
+"""Swap plan without double-charging (#1597); mirrors REST /change-plan."""
+type ChangeSubscriptionPlanMutation {
+  message: String!
+  checkout: CheckoutSessionType!
 }
 
 """Canonical payload for updateNotificationPreferences mutation."""

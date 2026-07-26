@@ -13589,6 +13589,47 @@
                   "deprecationReason": null,
                   "description": null,
                   "isDeprecated": false,
+                  "name": "billingCycle",
+                  "type": {
+                    "kind": "ENUM",
+                    "name": "BillingCycle",
+                    "ofType": null
+                  }
+                },
+                {
+                  "defaultValue": null,
+                  "deprecationReason": null,
+                  "description": null,
+                  "isDeprecated": false,
+                  "name": "planSlug",
+                  "type": {
+                    "kind": "NON_NULL",
+                    "name": null,
+                    "ofType": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                    }
+                  }
+                }
+              ],
+              "deprecationReason": "ADR-0004: use POST /subscription/change-plan",
+              "description": "Swap plan without double-charging (#1597); mirrors REST /change-plan.",
+              "isDeprecated": true,
+              "name": "changeSubscriptionPlan",
+              "type": {
+                "kind": "OBJECT",
+                "name": "ChangeSubscriptionPlanMutation",
+                "ofType": null
+              }
+            },
+            {
+              "args": [
+                {
+                  "defaultValue": null,
+                  "deprecationReason": null,
+                  "description": null,
+                  "isDeprecated": false,
                   "name": "preferences",
                   "type": {
                     "kind": "NON_NULL",
@@ -16194,6 +16235,50 @@
           "interfaces": [],
           "kind": "OBJECT",
           "name": "CancelSubscriptionMutation",
+          "possibleTypes": null,
+          "specifiedByURL": null
+        },
+        {
+          "description": "Swap plan without double-charging (#1597); mirrors REST /change-plan.",
+          "enumValues": null,
+          "fields": [
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "message",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "checkout",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "OBJECT",
+                  "name": "CheckoutSessionType",
+                  "ofType": null
+                }
+              }
+            }
+          ],
+          "inputFields": null,
+          "interfaces": [],
+          "kind": "OBJECT",
+          "name": "ChangeSubscriptionPlanMutation",
           "possibleTypes": null,
           "specifiedByURL": null
         },

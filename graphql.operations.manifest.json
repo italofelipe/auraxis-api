@@ -520,6 +520,14 @@
   },
   {
     "access": "auth_required",
+    "domain": "billing",
+    "name": "changeSubscriptionPlan",
+    "operation_type": "mutation",
+    "source_module": "app.graphql.mutations.subscription",
+    "summary": "Troca o plano da assinatura sem cobrança dupla (cancela o atual antes de criar o novo checkout)."
+  },
+  {
+    "access": "auth_required",
     "domain": "notifications",
     "name": "notificationPreferences",
     "operation_type": "query",
