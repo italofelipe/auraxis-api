@@ -38,6 +38,24 @@ def expire_trials(dry_run: bool) -> None:
         raise SystemExit(0)
 
 
+@billing_cli.command("expire-grace")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Print which subscriptions would be downgraded without writing to DB.",
+)
+def expire_grace(dry_run: bool) -> None:
+    """Downgrade PAST_DUE subscriptions whose dunning grace window lapsed (#1599)."""
+    from scripts.process_grace_expirations import process_grace_expirations
+
+    count = process_grace_expirations(dry_run=dry_run)
+    if dry_run:
+        click.echo(f"[dry-run] {count} subscription(s) would be downgraded.")
+    else:
+        click.echo(f"{count} subscription(s) downgraded.")
+
+
 @billing_cli.command("reconcile-subscriptions")
 @click.option(
     "--dry-run",

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import cast
 from uuid import UUID
 
@@ -21,6 +21,7 @@ from app.models.subscription import BillingCycle, Subscription, SubscriptionStat
 from app.models.user import User
 from app.services.billing_adapter import BillingProvider, BillingSubscriptionSnapshot
 from app.services.entitlement_service import sync_entitlements_from_subscription
+from app.utils.datetime_utils import utc_now_naive
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,37 @@ def _set_nullable_datetime_if_changed(
     return next_value, True
 
 
+def _grace_period_days() -> int:
+    """Dunning grace window (#1599). Configurable; defaults to 5 days."""
+    default = 5
+    if has_app_context():
+        return int(current_app.config.get("BILLING_GRACE_PERIOD_DAYS", default))
+    return int(os.getenv("BILLING_GRACE_PERIOD_DAYS", str(default)))
+
+
+def _apply_grace_transition(
+    subscription: Subscription,
+    *,
+    status_changed: bool,
+    next_status: SubscriptionStatus | None,
+) -> None:
+    """#1599: manage the dunning grace window on status transitions.
+
+    Entering PAST_DUE opens a grace window so premium stays on during payment
+    retries; entering ACTIVE clears it (a renewal keeps premium continuous). A
+    repeated payment_failed does not extend an already-open window.
+    """
+    if not status_changed or next_status is None:
+        return
+    if next_status == SubscriptionStatus.PAST_DUE:
+        if subscription.grace_period_ends_at is None:
+            subscription.grace_period_ends_at = utc_now_naive() + timedelta(
+                days=_grace_period_days()
+            )
+    elif next_status == SubscriptionStatus.ACTIVE:
+        subscription.grace_period_ends_at = None
+
+
 def apply_subscription_snapshot(
     subscription: Subscription,
     snapshot: BillingSubscriptionSnapshot,
@@ -180,8 +212,10 @@ def apply_subscription_snapshot(
         next_status = SubscriptionStatus(str(raw_status))
     except ValueError:
         next_status = None
-    subscription.status, did_change = _set_if_changed(subscription.status, next_status)
-    changed = changed or did_change
+    subscription.status, status_changed = _set_if_changed(
+        subscription.status, next_status
+    )
+    changed = changed or status_changed
 
     normalized_plan = _normalize_plan_snapshot(
         raw_plan_code=snapshot.get("plan_code"),
@@ -237,6 +271,9 @@ def apply_subscription_snapshot(
         )
         changed = changed or did_change
 
+    _apply_grace_transition(
+        subscription, status_changed=status_changed, next_status=next_status
+    )
     _sync_access_if_needed(subscription, changed=changed)
     db.session.commit()
     return subscription
