@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from app.application.services.billing_email_service import (
+    _REFUND_EVENTS,
     build_trial_ending_email,
     dispatch_billing_email,
     dispatch_trial_expired_email,
 )
+from app.controllers.billing_webhook_parsers import ABACATEPAY_REVOCATION_EVENTS
 from app.models.subscription import BillingCycle, Subscription, SubscriptionStatus
 from app.models.user import User
 from app.services.email_provider import EmailMessage, get_email_outbox
@@ -89,6 +93,40 @@ def test_billing_email_service_sends_subscription_canceled_email(app) -> None:
         outbox = get_email_outbox()
         assert len(outbox) == 1
         assert outbox[0]["tag"] == "billing_subscription_canceled"
+
+
+@pytest.mark.parametrize("event_type", sorted(ABACATEPAY_REVOCATION_EVENTS))
+def test_billing_email_service_sends_refund_email(app, event_type: str) -> None:
+    """#1598: a refund/chargeback dispatches a distinct 'estorno' notice."""
+    with app.app_context():
+        user = User(
+            id=uuid.uuid4(),
+            name="Auraxis User",
+            email="billing@email.com",
+            password="hash",
+        )
+        subscription = Subscription(
+            user_id=user.id,
+            plan_code="premium",
+            status=SubscriptionStatus.CANCELED,
+            billing_cycle=BillingCycle.MONTHLY,
+        )
+
+        dispatch_billing_email(
+            user=user,
+            subscription=subscription,
+            event_type=event_type,
+        )
+
+        outbox = get_email_outbox()
+        assert len(outbox) == 1
+        assert outbox[0]["tag"] == "billing_refund"
+
+
+def test_refund_email_events_match_parser_revocation_events() -> None:
+    """Drift guard: the email set must equal the parser's revocation set so a
+    new refund event can never revoke access without also notifying the user."""
+    assert _REFUND_EVENTS == ABACATEPAY_REVOCATION_EVENTS
 
 
 def test_build_trial_ending_email_returns_ready_message(app) -> None:

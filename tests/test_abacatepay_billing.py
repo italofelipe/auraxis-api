@@ -16,6 +16,7 @@ import pytest
 
 from app.controllers.billing_webhook_parsers import (
     ABACATEPAY_PROVIDER,
+    ABACATEPAY_REVOCATION_EVENTS,
     AbacatePayWebhookParser,
     BillingWebhookParser,
     resolve_webhook_parser,
@@ -408,7 +409,38 @@ class TestWebhookParser:
         assert "plan_code" not in snapshot
 
     def test_ignores_unknown_event(self) -> None:
-        assert AbacatePayWebhookParser().parse(_webhook("checkout.refunded")) is None
+        assert (
+            AbacatePayWebhookParser().parse(_webhook("subscription.frobnicated"))
+            is None
+        )
+
+    @pytest.mark.parametrize("event", sorted(ABACATEPAY_REVOCATION_EVENTS))
+    def test_refund_and_chargeback_events_revoke(self, event: str) -> None:
+        """#1598: a refund/chargeback degrades to CANCELED, which the
+        _DEGRADED_STATUSES machinery turns into an entitlement revocation."""
+        snapshot = AbacatePayWebhookParser().parse(_webhook(event))
+        assert snapshot is not None
+        assert snapshot["status"] == "canceled"
+
+    def test_refund_without_subscription_block_resolves_via_customer(self) -> None:
+        """Refund payloads may omit the subscription object (they reference the
+        checkout/customer). The event must still resolve so premium is revoked."""
+        payload = _webhook("checkout.refunded")
+        del payload["data"]["subscription"]
+
+        snapshot = AbacatePayWebhookParser().parse(payload)
+
+        assert snapshot is not None
+        assert snapshot["status"] == "canceled"
+        assert snapshot["provider_customer_id"] == "cust_def456"
+
+    def test_non_revocation_event_still_requires_subscription_block(self) -> None:
+        """The relaxed subscription-object rule is scoped to revocation events;
+        a completed event without a subscription block must still be rejected."""
+        payload = _webhook("subscription.completed")
+        del payload["data"]["subscription"]
+
+        assert AbacatePayWebhookParser().parse(payload) is None
 
     def test_sandbox_traffic_rejected_in_production(
         self, monkeypatch: pytest.MonkeyPatch
@@ -515,3 +547,104 @@ class TestWebhookVerification:
         assert not parser.verify(
             body, {"X-Webhook-Signature": "bogus"}, {"webhookSecret": "s3cr3t"}
         )
+
+
+class TestRefundWebhookFlow:
+    """End-to-end: a refund webhook revokes premium and is idempotent (#1598)."""
+
+    def _make_active_premium_sub(self, app: Any, client: Any) -> tuple[str, str]:
+        import uuid
+
+        from app.extensions.database import db
+        from app.models.subscription import (
+            BillingCycle,
+            Subscription,
+            SubscriptionStatus,
+        )
+        from app.models.user import User
+        from app.services.entitlement_service import (
+            sync_entitlements_from_subscription,
+        )
+
+        suffix = uuid.uuid4().hex[:8]
+        email = f"refund-{suffix}@email.com"
+        resp = client.post(
+            "/auth/register",
+            json={
+                "name": f"u-{suffix}",
+                "email": email,
+                "password": "StrongPass@123",
+            },
+        )
+        assert resp.status_code == 201
+
+        with app.app_context():
+            user = User.query.filter_by(email=email).first()
+            assert user is not None
+            sub = Subscription.query.filter_by(user_id=user.id).first()
+            if sub is None:
+                sub = Subscription(
+                    user_id=user.id,
+                    plan_code="premium",
+                    status=SubscriptionStatus.FREE,
+                )
+                db.session.add(sub)
+            sub.status = SubscriptionStatus.ACTIVE
+            sub.plan_code = "premium"
+            sub.billing_cycle = BillingCycle.MONTHLY
+            sub.provider = "abacatepay"
+            sub.provider_customer_id = "cust_def456"
+            db.session.commit()
+            sync_entitlements_from_subscription(sub)
+            db.session.commit()
+            return str(user.id), str(sub.id)
+
+    def test_refund_webhook_revokes_and_is_idempotent(
+        self, app: Any, client: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import uuid
+
+        from app.config.plan_features import PREMIUM_FEATURES
+        from app.models.entitlement import Entitlement
+        from app.models.subscription import Subscription, SubscriptionStatus
+
+        monkeypatch.setenv("BILLING_ABACATEPAY_WEBHOOK_SECRET", "s3cr3t")
+        monkeypatch.delenv("BILLING_ABACATEPAY_SIGNING_KEY", raising=False)
+
+        user_id, sub_id = self._make_active_premium_sub(app, client)
+        premium_feature = next(iter(PREMIUM_FEATURES))
+
+        with app.app_context():
+            assert (
+                Entitlement.query.filter_by(
+                    user_id=uuid.UUID(user_id), feature_key=premium_feature
+                ).first()
+                is not None
+            )
+
+        payload = _webhook("subscription.refunded")
+        resp = client.post(
+            "/subscriptions/webhook/abacatepay?webhookSecret=s3cr3t", json=payload
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["processed"] is True
+
+        with app.app_context():
+            sub = Subscription.query.filter_by(id=uuid.UUID(sub_id)).first()
+            assert sub is not None
+            assert sub.status == SubscriptionStatus.CANCELED
+            assert (
+                Entitlement.query.filter_by(
+                    user_id=uuid.UUID(user_id), feature_key=premium_feature
+                ).first()
+                is None
+            )
+
+        # Replaying the same event id must be a deduped no-op.
+        resp2 = client.post(
+            "/subscriptions/webhook/abacatepay?webhookSecret=s3cr3t", json=payload
+        )
+        assert resp2.status_code == 200
+        body2 = resp2.get_json()["data"]
+        assert body2["processed"] is False
+        assert body2.get("reason") == "duplicate"
