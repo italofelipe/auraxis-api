@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from app.controllers.billing_webhook_parsers import (
+    ABACATEPAY_CHARGEBACK_EVENTS,
+    ABACATEPAY_REFUND_EVENTS,
+)
 from app.services.email_provider import EmailMessage
 
 if TYPE_CHECKING:
@@ -11,6 +15,9 @@ if TYPE_CHECKING:
 _PAYMENT_CONFIRMED_EVENTS = {"PAYMENT_RECEIVED", "PAYMENT_CONFIRMED"}
 _PAYMENT_FAILED_EVENTS = {"PAYMENT_OVERDUE", "subscription.past_due"}
 _CANCELED_EVENTS = {"subscription.canceled", "SUBSCRIPTION_DELETED"}
+# #1598 — refund/chargeback notice; event strings owned by
+# billing_webhook_parsers (single source of truth, guarded by a parity test).
+_REFUND_EVENTS = ABACATEPAY_REFUND_EVENTS | ABACATEPAY_CHARGEBACK_EVENTS
 
 _TRIAL_ENDING_TAG_TEMPLATE = "billing_trial_ending_{days}d"
 _TRIAL_EXPIRED_TAG = "billing_trial_expired"
@@ -58,6 +65,22 @@ def dispatch_billing_email(
                 f"Plano impactado: {plan_label}."
             ),
             tag="billing_payment_failed",
+        )
+        return
+
+    if event_type in _REFUND_EVENTS:
+        get_default_outbound_queue().enqueue_send_email(
+            to_email=to_email,
+            subject="Estorno processado — Auraxis",
+            html=(
+                "<p>Um estorno foi processado e o acesso premium foi encerrado.</p>"
+                f"<p>Plano encerrado: <strong>{plan_label}</strong></p>"
+            ),
+            text=(
+                "Um estorno foi processado e o acesso premium foi encerrado. "
+                f"Plano encerrado: {plan_label}."
+            ),
+            tag="billing_refund",
         )
         return
 

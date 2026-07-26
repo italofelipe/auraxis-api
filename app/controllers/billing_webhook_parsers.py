@@ -293,6 +293,19 @@ def _build_abacatepay_snapshot(
     return snapshot
 
 
+# #1598 — refund/chargeback events. AbacatePay's exact event strings for these
+# are not yet documented (pending support confirmation tracked in platform#891);
+# we map the plausible variants. Every one revokes access, so over-inclusion is
+# safe: an unexpected-but-refund-shaped event simply degrades the subscription.
+ABACATEPAY_REFUND_EVENTS = frozenset(
+    {"subscription.refunded", "checkout.refunded", "payment.refunded"}
+)
+ABACATEPAY_CHARGEBACK_EVENTS = frozenset(
+    {"subscription.chargeback", "payment.chargeback", "chargeback.created"}
+)
+ABACATEPAY_REVOCATION_EVENTS = ABACATEPAY_REFUND_EVENTS | ABACATEPAY_CHARGEBACK_EVENTS
+
+
 class AbacatePayWebhookParser:
     """AbacatePay webhooks (API v2 envelope).
 
@@ -316,6 +329,13 @@ class AbacatePayWebhookParser:
         "subscription.renewed": SubscriptionStatus.ACTIVE.value,
         "subscription.cancelled": SubscriptionStatus.CANCELED.value,
         "subscription.payment_failed": SubscriptionStatus.PAST_DUE.value,
+        # #1598: refund/chargeback degrade to CANCELED, so the existing
+        # _DEGRADED_STATUSES machinery revokes premium entitlements with no
+        # further wiring. Without this a refund in the gateway dashboard leaves
+        # premium active — a revenue leak.
+        **dict.fromkeys(
+            ABACATEPAY_REVOCATION_EVENTS, SubscriptionStatus.CANCELED.value
+        ),
     }
 
     @property
@@ -375,7 +395,13 @@ class AbacatePayWebhookParser:
             return None
         subscription_object = data.get("subscription")
         if not isinstance(subscription_object, dict):
-            return None
+            # #1598: refund/chargeback payloads may omit the subscription block
+            # (they reference the checkout/customer instead). Those events still
+            # need to revoke, so resolve them via the customer id below. Every
+            # other event keeps requiring an explicit subscription object.
+            if event_type not in ABACATEPAY_REVOCATION_EVENTS:
+                return None
+            subscription_object = {}
 
         provider_subscription_id = _clean(subscription_object.get("id"))
         provider_customer_id = _resolve_abacatepay_customer_id(data)
