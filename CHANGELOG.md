@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.71.0](https://github.com/italofelipe/auraxis-api/compare/v1.70.0...v1.71.0) (2026-07-26)
+
+
+### Features
+
+* **billing:** troca de plano sem cobrança dupla — REST + GraphQL ([#1597](https://github.com/italofelipe/auraxis-api/issues/1597)) ([#1613](https://github.com/italofelipe/auraxis-api/issues/1613)) ([72ac483](https://github.com/italofelipe/auraxis-api/commit/72ac483d31036d916e4ac93cf46ab99770a385cb))
+
 ## [1.70.0](https://github.com/italofelipe/auraxis-api/compare/v1.69.3...v1.70.0) (2026-07-26)
 
 
