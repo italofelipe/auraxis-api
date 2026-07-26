@@ -38,6 +38,25 @@ def expire_trials(dry_run: bool) -> None:
         raise SystemExit(0)
 
 
+@billing_cli.command("reconcile-subscriptions")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Report drift without writing changes.",
+)
+def reconcile_subscriptions_command(dry_run: bool) -> None:
+    """Realign subscriptions that drifted from the gateway (lost webhook) (#1600)."""
+    from scripts.reconcile_subscriptions import reconcile_subscriptions
+
+    summary = reconcile_subscriptions(dry_run=dry_run)
+    prefix = "[dry-run] " if dry_run else ""
+    click.echo(
+        f"{prefix}checked={summary['checked']} "
+        f"reconciled={summary['reconciled']} errors={summary['errors']}"
+    )
+
+
 def register_trial_expiry_cli(app: Flask) -> None:
     """Register the ``billing`` CLI group on *app*."""
     app.cli.add_command(billing_cli)
