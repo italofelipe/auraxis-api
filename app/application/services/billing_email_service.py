@@ -7,6 +7,15 @@ from app.controllers.billing_webhook_parsers import (
     ABACATEPAY_REFUND_EVENTS,
 )
 from app.services.email_provider import EmailMessage
+from app.services.email_templates.base import (
+    render_billing_canceled_email,
+    render_billing_grace_expired_email,
+    render_billing_payment_confirmed_email,
+    render_billing_payment_failed_email,
+    render_billing_refund_email,
+    render_billing_trial_ending_email,
+    render_billing_trial_expired_email,
+)
 
 if TYPE_CHECKING:
     from app.models.subscription import Subscription
@@ -32,69 +41,37 @@ def _plan_label(subscription: Subscription) -> str:
 def dispatch_billing_email(
     *, user: User, subscription: Subscription, event_type: str
 ) -> None:
+    """Route a billing webhook event to its branded transactional email."""
     from app.services.outbound_queue import get_default_outbound_queue
 
     plan_label = _plan_label(subscription)
-    to_email = str(user.email)
 
     if event_type in _PAYMENT_CONFIRMED_EVENTS:
-        get_default_outbound_queue().enqueue_send_email(
-            to_email=to_email,
-            subject="Pagamento confirmado na Auraxis",
-            html=(
-                "<p>Seu pagamento foi confirmado com sucesso.</p>"
-                f"<p>Plano ativo: <strong>{plan_label}</strong></p>"
-            ),
-            text=(
-                f"Seu pagamento foi confirmado com sucesso. Plano ativo: {plan_label}."
-            ),
-            tag="billing_payment_confirmed",
-        )
+        html, text = render_billing_payment_confirmed_email(plan_label=plan_label)
+        tag = "billing_payment_confirmed"
+        subject = "Pagamento confirmado na Auraxis"
+    elif event_type in _PAYMENT_FAILED_EVENTS:
+        html, text = render_billing_payment_failed_email(plan_label=plan_label)
+        tag = "billing_payment_failed"
+        subject = "Pagamento pendente na Auraxis"
+    elif event_type in _REFUND_EVENTS:
+        html, text = render_billing_refund_email(plan_label=plan_label)
+        tag = "billing_refund"
+        subject = "Estorno processado — Auraxis"
+    elif event_type in _CANCELED_EVENTS:
+        html, text = render_billing_canceled_email(plan_label=plan_label)
+        tag = "billing_subscription_canceled"
+        subject = "Assinatura cancelada na Auraxis"
+    else:
         return
 
-    if event_type in _PAYMENT_FAILED_EVENTS:
-        get_default_outbound_queue().enqueue_send_email(
-            to_email=to_email,
-            subject="Pagamento pendente na Auraxis",
-            html=(
-                "<p>Identificamos uma pendencia no pagamento da sua assinatura.</p>"
-                f"<p>Plano impactado: <strong>{plan_label}</strong></p>"
-            ),
-            text=(
-                "Identificamos uma pendencia no pagamento da sua assinatura. "
-                f"Plano impactado: {plan_label}."
-            ),
-            tag="billing_payment_failed",
-        )
-        return
-
-    if event_type in _REFUND_EVENTS:
-        get_default_outbound_queue().enqueue_send_email(
-            to_email=to_email,
-            subject="Estorno processado — Auraxis",
-            html=(
-                "<p>Um estorno foi processado e o acesso premium foi encerrado.</p>"
-                f"<p>Plano encerrado: <strong>{plan_label}</strong></p>"
-            ),
-            text=(
-                "Um estorno foi processado e o acesso premium foi encerrado. "
-                f"Plano encerrado: {plan_label}."
-            ),
-            tag="billing_refund",
-        )
-        return
-
-    if event_type in _CANCELED_EVENTS:
-        get_default_outbound_queue().enqueue_send_email(
-            to_email=to_email,
-            subject="Assinatura cancelada na Auraxis",
-            html=(
-                "<p>Sua assinatura foi cancelada.</p>"
-                f"<p>Plano anterior: <strong>{plan_label}</strong></p>"
-            ),
-            text=(f"Sua assinatura foi cancelada. Plano anterior: {plan_label}."),
-            tag="billing_subscription_canceled",
-        )
+    get_default_outbound_queue().enqueue_send_email(
+        to_email=str(user.email),
+        subject=subject,
+        html=html,
+        text=text,
+        tag=tag,
+    )
 
 
 def build_trial_ending_email(
@@ -113,21 +90,14 @@ def build_trial_ending_email(
         if subscription.trial_ends_at is not None
         else None
     )
-    ends_sentence = f" Ele termina em {trial_ends_label}." if trial_ends_label else ""
+    html, text = render_billing_trial_ending_email(
+        days_label=days_label, trial_ends_label=trial_ends_label
+    )
     return EmailMessage(
         to_email=str(user.email),
         subject=f"Seu período de teste termina em {days_label} — Auraxis",
-        html=(
-            f"<p>Seu período de teste da Auraxis termina em "
-            f"<strong>{days_label}</strong>.{ends_sentence}</p>"
-            "<p>Assine um plano para continuar com acesso aos recursos "
-            "premium — exportação em PDF, simulações avançadas e mais.</p>"
-        ),
-        text=(
-            f"Seu período de teste da Auraxis termina em {days_label}."
-            f"{ends_sentence} "
-            "Assine um plano para continuar com acesso aos recursos premium."
-        ),
+        html=html,
+        text=text,
         tag=_TRIAL_ENDING_TAG_TEMPLATE.format(days=days_until_trial_end),
     )
 
@@ -140,21 +110,14 @@ def dispatch_trial_expired_email(*, user: User, subscription: Subscription) -> N
     """
     from app.services.outbound_queue import get_default_outbound_queue
 
-    plan_label = _plan_label(subscription)
+    html, text = render_billing_trial_expired_email(
+        plan_label=_plan_label(subscription)
+    )
     get_default_outbound_queue().enqueue_send_email(
         to_email=str(user.email),
         subject="Seu período de teste terminou — Auraxis",
-        html=(
-            "<p>Seu período de teste da Auraxis terminou e sua conta voltou "
-            f"para o plano <strong>{plan_label}</strong>.</p>"
-            "<p>Você pode assinar a qualquer momento para recuperar o acesso "
-            "aos recursos premium.</p>"
-        ),
-        text=(
-            "Seu período de teste da Auraxis terminou e sua conta voltou para "
-            f"o plano {plan_label}. Assine a qualquer momento para recuperar "
-            "o acesso aos recursos premium."
-        ),
+        html=html,
+        text=text,
         tag=_TRIAL_EXPIRED_TAG,
     )
 
@@ -169,20 +132,13 @@ def dispatch_billing_grace_expired_email(
     """
     from app.services.outbound_queue import get_default_outbound_queue
 
-    plan_label = _plan_label(subscription)
+    html, text = render_billing_grace_expired_email(
+        plan_label=_plan_label(subscription)
+    )
     get_default_outbound_queue().enqueue_send_email(
         to_email=str(user.email),
         subject="Assinatura encerrada por falta de pagamento — Auraxis",
-        html=(
-            "<p>Não conseguimos confirmar o pagamento da sua assinatura dentro "
-            "do período de tolerância, então o acesso premium foi encerrado.</p>"
-            f"<p>Plano encerrado: <strong>{plan_label}</strong></p>"
-            "<p>Regularize o pagamento para reativar quando quiser.</p>"
-        ),
-        text=(
-            "Não conseguimos confirmar o pagamento da sua assinatura dentro do "
-            "período de tolerância, então o acesso premium foi encerrado. "
-            f"Plano encerrado: {plan_label}. Regularize o pagamento para reativar."
-        ),
+        html=html,
+        text=text,
         tag="billing_grace_expired",
     )
