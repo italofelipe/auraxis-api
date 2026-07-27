@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.74.0](https://github.com/italofelipe/auraxis-api/compare/v1.73.0...v1.74.0) (2026-07-27)
+
+
+### Features
+
+* **billing:** retorno do checkout na superfície de origem (landing ou app) ([#1626](https://github.com/italofelipe/auraxis-api/issues/1626)) ([8c11446](https://github.com/italofelipe/auraxis-api/commit/8c11446f6084ddbd05f916d219dd918d8010a5e5)), closes [#1620](https://github.com/italofelipe/auraxis-api/issues/1620)
+
 ## [1.73.0](https://github.com/italofelipe/auraxis-api/compare/v1.72.0...v1.73.0) (2026-07-27)
 
 
