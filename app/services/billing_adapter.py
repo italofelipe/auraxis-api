@@ -120,11 +120,16 @@ class BillingProvider(Protocol):
         ...
 
     def create_checkout_session(
-        self, customer: BillingCheckoutCustomer, plan_slug: str
+        self,
+        customer: BillingCheckoutCustomer,
+        plan_slug: str,
+        return_surface: str | None = None,
     ) -> BillingCheckoutSession:
         """Create a hosted checkout session for the given plan.
 
-        Returns a dict with at least a ``checkout_url`` key.
+        ``return_surface`` selects which configured return URLs the provider
+        sends the buyer back to (#1620). Returns a dict with at least a
+        ``checkout_url`` key.
         """
         ...
 
@@ -156,7 +161,10 @@ class StubBillingProvider:
         }
 
     def create_checkout_session(
-        self, customer: BillingCheckoutCustomer, plan_slug: str
+        self,
+        customer: BillingCheckoutCustomer,
+        plan_slug: str,
+        return_surface: str | None = None,
     ) -> BillingCheckoutSession:
         return {
             "checkout_url": (
@@ -169,6 +177,43 @@ class StubBillingProvider:
 
 def _env(name: str, default: str = "") -> str:
     return str(os.getenv(name, default)).strip()
+
+
+# Surfaces a checkout can start from, mapped to the env vars holding their
+# return URLs. This is an allowlist on purpose: the caller picks a *key*, never
+# a URL, so a client can never turn the completion URL into an open redirect.
+_CHECKOUT_RETURN_ENVS: dict[str, tuple[str, str]] = {
+    "app": ("BILLING_CHECKOUT_SUCCESS_URL", "BILLING_CHECKOUT_CANCEL_URL"),
+    "landing": (
+        "BILLING_CHECKOUT_LANDING_SUCCESS_URL",
+        "BILLING_CHECKOUT_LANDING_CANCEL_URL",
+    ),
+}
+
+_DEFAULT_CHECKOUT_SURFACE = "app"
+
+
+def resolve_checkout_return_urls(surface: str | None) -> tuple[str, str]:
+    """Resolve the ``(success_url, cancel_url)`` pair for a checkout surface.
+
+    Buyers coming from the landing have no session on the app domain, so they
+    must return to the landing after paying (#1620).
+
+    Unknown surfaces — including anything that looks like a client-supplied
+    URL — fall back to the app pair, as does a surface whose own URLs are not
+    fully configured. Callers are responsible for rejecting an empty pair.
+
+    :param surface: Surface key (``app`` or ``landing``); case-insensitive.
+    :returns: The success and cancel URLs, possibly empty when unconfigured.
+    """
+    normalized = str(surface or "").strip().lower()
+    default = tuple(_env(name) for name in _CHECKOUT_RETURN_ENVS["app"])
+    if normalized in _CHECKOUT_RETURN_ENVS and normalized != _DEFAULT_CHECKOUT_SURFACE:
+        success_env, cancel_env = _CHECKOUT_RETURN_ENVS[normalized]
+        success, cancel = _env(success_env), _env(cancel_env)
+        if success and cancel:
+            return success, cancel
+    return default[0], default[1]
 
 
 def _parse_datetime(value: object) -> datetime | None:
@@ -278,9 +323,10 @@ class AsaasBillingProvider:
             raise BillingProviderError("Asaas customer response did not include an id")
         return customer_id
 
-    def _checkout_callback_payload(self) -> dict[str, str]:
-        success_url = _env("BILLING_CHECKOUT_SUCCESS_URL")
-        cancel_url = _env("BILLING_CHECKOUT_CANCEL_URL")
+    def _checkout_callback_payload(
+        self, return_surface: str | None = None
+    ) -> dict[str, str]:
+        success_url, cancel_url = resolve_checkout_return_urls(return_surface)
         expired_url = _env("BILLING_CHECKOUT_EXPIRED_URL", cancel_url)
         callback: dict[str, str] = {}
         if success_url:
@@ -292,10 +338,14 @@ class AsaasBillingProvider:
         return callback
 
     def _checkout_payload(
-        self, offer: BillingPlanOffer, customer_id: str, user_id: str
+        self,
+        offer: BillingPlanOffer,
+        customer_id: str,
+        user_id: str,
+        return_surface: str | None = None,
     ) -> dict[str, object]:
         cycle = "YEARLY" if offer.billing_cycle == BillingCycle.ANNUAL else "MONTHLY"
-        callback = self._checkout_callback_payload()
+        callback = self._checkout_callback_payload(return_surface)
         if not callback:
             raise BillingProviderError(
                 "BILLING_CHECKOUT_SUCCESS_URL and "
@@ -353,7 +403,10 @@ class AsaasBillingProvider:
         }
 
     def create_checkout_session(
-        self, customer: BillingCheckoutCustomer, plan_slug: str
+        self,
+        customer: BillingCheckoutCustomer,
+        plan_slug: str,
+        return_surface: str | None = None,
     ) -> BillingCheckoutSession:
         offer = resolve_checkout_plan_offer(plan_slug)
         if offer is None:
@@ -362,7 +415,9 @@ class AsaasBillingProvider:
         payload = self._request(
             "POST",
             "/checkouts",
-            json_payload=self._checkout_payload(offer, customer_id, customer.user_id),
+            json_payload=self._checkout_payload(
+                offer, customer_id, customer.user_id, return_surface
+            ),
         )
         checkout_id = str(payload.get("id") or "").strip()
         if not checkout_id:
@@ -511,14 +566,16 @@ class AbacatePayBillingProvider:
         }
 
     def create_checkout_session(
-        self, customer: BillingCheckoutCustomer, plan_slug: str
+        self,
+        customer: BillingCheckoutCustomer,
+        plan_slug: str,
+        return_surface: str | None = None,
     ) -> BillingCheckoutSession:
         offer = resolve_checkout_plan_offer(plan_slug)
         if offer is None:
             raise BillingProviderError(f"Unsupported plan slug: {plan_slug}")
 
-        success_url = _env("BILLING_CHECKOUT_SUCCESS_URL")
-        cancel_url = _env("BILLING_CHECKOUT_CANCEL_URL")
+        success_url, cancel_url = resolve_checkout_return_urls(return_surface)
         if not success_url or not cancel_url:
             raise BillingProviderError(
                 "BILLING_CHECKOUT_SUCCESS_URL and "
