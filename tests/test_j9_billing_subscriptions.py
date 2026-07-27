@@ -513,7 +513,10 @@ class TestCreateCheckoutSession:
 
         class _FakeProvider:
             def create_checkout_session(
-                self, customer: BillingCheckoutCustomer, plan_slug: str
+                self,
+                customer: BillingCheckoutCustomer,
+                plan_slug: str,
+                return_surface: str | None = None,
             ) -> dict[str, str]:
                 assert customer.email.endswith("@email.com")
                 assert plan_slug == "premium_monthly"

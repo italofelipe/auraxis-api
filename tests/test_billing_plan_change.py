@@ -44,7 +44,11 @@ class _FakeProvider:
         return {"status": "canceled"}
 
     def create_checkout_session(
-        self, *, customer: BillingCheckoutCustomer, plan_slug: str
+        self,
+        *,
+        customer: BillingCheckoutCustomer,
+        plan_slug: str,
+        return_surface: str | None = None,
     ) -> dict[str, Any]:
         self.calls.append(("checkout", plan_slug))
         return self._checkout

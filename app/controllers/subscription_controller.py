@@ -153,6 +153,13 @@ def create_checkout_session() -> ResponseReturnValue:
     if offer is None:
         return _err("Unsupported plan_slug", "VALIDATION_ERROR", 400)
 
+    # #1620: the buyer returns to the surface the checkout started from. This
+    # is a key into an allowlist of configured URLs — a URL sent here is
+    # ignored, so it can never become an open redirect.
+    return_surface: str | None = (
+        str(body.get("return_surface") or "").strip().lower() or None
+    )
+
     provider = _get_provider()
     try:
         result = provider.create_checkout_session(
@@ -162,6 +169,7 @@ def create_checkout_session() -> ResponseReturnValue:
                 email=str(user.email),
             ),
             plan_slug=offer.slug,
+            return_surface=return_surface,
         )
     except BillingProviderError:
         current_app.logger.exception(_CHECKOUT_SESSION_FAILURE_MESSAGE)
