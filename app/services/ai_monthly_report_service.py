@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Mapping
 from datetime import date
 from typing import Any, cast
 from uuid import UUID
@@ -33,6 +34,7 @@ from app.services.ai_insight_audit import (
 from app.services.ai_insight_runs import create_ai_insight_run
 from app.services.ai_lgpd import minimize_prompt_data, minimize_text
 from app.services.email_templates.base import render_monthly_analysis_ready_email
+from app.services.email_templates.insight_content import insight_email_content
 from app.services.financial_insight_context_builder import truncate_snapshot
 from app.services.insight_fluida_builder import enrich_insight_payload
 from app.services.llm_provider import LLMProvider
@@ -355,12 +357,16 @@ def _send_monthly_report_email(
     user: User,
     insight_id: UUID,
     summary: object,
+    insight_payload: Mapping[str, Any] | None = None,
 ) -> str | None:
     deep_link = _app_deep_link(insight_id)
+    content = insight_email_content(insight_payload)
     html, text = render_monthly_analysis_ready_email(
         first_name=_first_name(user),
         summary_preview=_summary_preview(summary),
         insight_url=deep_link,
+        items=content.items,
+        suggestion=content.suggestion,
     )
     job_id = get_default_outbound_queue().enqueue_send_email(
         to_email=user.email,
@@ -408,6 +414,7 @@ def process_monthly_report_run(
                 user=user,
                 insight_id=run.ai_insight_id,
                 summary=result.get("summary"),
+                insight_payload=result,
             )
         else:
             email_job_id = None
