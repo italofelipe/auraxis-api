@@ -96,6 +96,77 @@ def test_dispatch_analysis_ready_sends_email_to_premium_user(app) -> None:
         assert "Premium User".split()[0] in sent["subject"]
 
 
+def test_dispatch_analysis_ready_embeds_the_insight_content(app) -> None:
+    """#1617 — the email carries the insight items, not only the summary."""
+    with app.app_context():
+        user = User(
+            id=uuid.uuid4(),
+            name="Content User",
+            email=f"content-{uuid.uuid4()}@test.com",
+            password="hash",
+        )
+        db.session.add(user)
+        db.session.commit()
+        activate_premium(user.id, expires_at=None)
+
+        outbox = get_email_outbox()
+        result = dispatch_analysis_ready_notification(
+            user_id=user.id,
+            summary_preview="Seus gastos subiram 10% este mês.",
+            insight_payload={
+                "items": [
+                    {
+                        "type": "gasto_elevado",
+                        "title": "Delivery subiu 34%",
+                        "message": "Você gastou R$ 620 com delivery no mês.",
+                        "evidence": ["spending.by_category.delivery"],
+                    },
+                    {
+                        "type": "oportunidade_economia",
+                        "title": "Teto de delivery",
+                        "message": "Definir um teto de R$ 480 devolve R$ 140 por mês.",
+                        "evidence": ["spending.by_category.delivery"],
+                    },
+                ]
+            },
+        )
+
+        assert result.email_sent is True
+        sent = outbox[-1]
+        assert "Delivery subiu 34%" in sent["html"]
+        assert "Você gastou R$ 620 com delivery no mês." in sent["html"]
+        assert "Delivery subiu 34%" in sent["text"]
+        # the actionable item is promoted to the highlighted suggestion
+        assert "Definir um teto de R$ 480 devolve R$ 140 por mês." in sent["html"]
+        assert "Sugestão" in sent["text"]
+
+
+def test_dispatch_analysis_ready_tolerates_malformed_insight_payload(app) -> None:
+    """A broken payload must not stop the email — just drop the extra section."""
+    with app.app_context():
+        user = User(
+            id=uuid.uuid4(),
+            name="Broken User",
+            email=f"broken-{uuid.uuid4()}@test.com",
+            password="hash",
+        )
+        db.session.add(user)
+        db.session.commit()
+        activate_premium(user.id, expires_at=None)
+
+        outbox = get_email_outbox()
+        before = len(outbox)
+        result = dispatch_analysis_ready_notification(
+            user_id=user.id,
+            summary_preview="Resumo.",
+            insight_payload={"items": "not-a-list"},
+        )
+
+        assert result.email_sent is True
+        assert len(outbox) == before + 1
+        assert "Sugestão" not in outbox[-1]["html"]
+
+
 def test_dispatch_analysis_ready_skips_nonexistent_user(app) -> None:
     # A non-existent user has no entitlement rows, so the gate fires first.
     with app.app_context():

@@ -285,6 +285,13 @@ class TestMonthlyReportService:
             assert outbox[-1]["tag"] == "monthly_ai_insight_ready"
             assert str(run.ai_insight_id) in outbox[-1]["html"]
             assert str(run.ai_insight_id) in outbox[-1]["text"]
+            # #1617 — the report body embeds the insight items, not only the summary
+            assert "Panorama mensal" in outbox[-1]["html"]
+            assert (
+                "O mês foi consolidado com base nos insights diários."
+                in (outbox[-1]["html"])
+            )
+            assert "Panorama mensal" in outbox[-1]["text"]
 
             try:
                 process_monthly_report_run(run_id=uuid.uuid4())

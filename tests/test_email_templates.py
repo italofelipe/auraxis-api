@@ -113,14 +113,50 @@ class TestInsightEmails:
             first_name="Italo",
             summary_preview="Seus gastos com delivery subiram 34%.",
             insight_url=url,
-            detail_rows=[("Delivery", "R$ 620", "#c2414d")],
+            items=[("Delivery subiu 34%", "Você gastou R$ 620 com delivery.")],
             suggestion="definir um teto mensal de R$ 480.",
         )
         _is_email((html, text))
         assert "Abrir no Auraxis" in html
         assert url in html
-        assert "Delivery" in html and "620" in html  # full insight embedded
         assert "Sugestão" in html
+
+    def test_weekly_embeds_the_full_insight(self) -> None:
+        html, text = render_analysis_ready_email(
+            first_name="Italo",
+            summary_preview="Resumo.",
+            items=[
+                ("Delivery subiu 34%", "Você gastou R$ 620 com delivery."),
+                ("Assinaturas paradas", "R$ 89 em serviços sem uso há 60 dias."),
+            ],
+        )
+        # Both the HTML body and the plain-text fallback carry every item
+        for title, message in (
+            ("Delivery subiu 34%", "Você gastou R$ 620 com delivery."),
+            ("Assinaturas paradas", "R$ 89 em serviços sem uso há 60 dias."),
+        ):
+            assert title in html and message in html
+            assert title in text and message in text
+
+    def test_llm_content_is_escaped_in_html(self) -> None:
+        html, text = render_analysis_ready_email(
+            first_name="Italo",
+            summary_preview="Resumo.",
+            items=[("<b>Alerta</b>", "Gasto & receita <script>alert(1)</script>")],
+        )
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+        assert "&amp;" in html
+        # the plain-text part carries the raw content — no HTML entities there
+        assert "&lt;" not in text and "&amp;" not in text
+
+    def test_weekly_without_items_still_renders(self) -> None:
+        html, text = render_analysis_ready_email(
+            first_name="Italo", summary_preview="Resumo sem itens."
+        )
+        _is_email((html, text))
+        assert "Resumo sem itens." in html
+        assert "Sugestão" not in html
 
     def test_weekly_without_insight_id_falls_back(self) -> None:
         html, _ = render_analysis_ready_email(
@@ -138,6 +174,19 @@ class TestInsightEmails:
         _is_email((html, text))
         assert url in html
         assert "Abrir relatório" in html
+
+    def test_monthly_embeds_the_full_insight(self) -> None:
+        html, text = render_monthly_analysis_ready_email(
+            first_name="Italo",
+            summary_preview="Consolidado do mês.",
+            insight_url="https://app.auraxis.com.br/insights?open=month-3",
+            items=[("Mercado estável", "R$ 1.240 no mês, em linha com a média.")],
+            suggestion="manter o teto de R$ 1.300 para o próximo mês.",
+        )
+        assert "Mercado estável" in html
+        assert "R$ 1.240 no mês, em linha com a média." in html
+        assert "Mercado estável" in text
+        assert "Sugestão" in html and "Sugestão" in text
 
 
 class TestVerificationReminderEmail:

@@ -178,6 +178,45 @@ class TestWeeklyInsightsCLI:
             == "Sua semana foi positiva."
         )
 
+    def test_notification_receives_the_full_insight_payload(self, app) -> None:
+        """#1617 — the email embeds the insight items, so the batch forwards them."""
+        user_id = _create_user(app)
+        _grant_advanced_simulations(app, user_id)
+        payload = {
+            "id": "ins-42",
+            "summary": "Sua semana foi positiva.",
+            "items": [
+                {
+                    "type": "gasto_elevado",
+                    "dimension": "spending",
+                    "title": "Delivery subiu 34%",
+                    "message": "Você gastou R$ 620 com delivery.",
+                    "evidence": ["spending.by_category.delivery"],
+                }
+            ],
+            "period_type": "weekly",
+            "tokens_used": 150,
+            "cost_usd": 0.00002,
+            "model": "stub",
+            "cached": False,
+        }
+
+        with (
+            patch(
+                "app.services.ai_advisory_service.AIAdvisoryService"
+                ".generate_financial_insights",
+                return_value=payload,
+            ),
+            patch(
+                "app.cli.ai_insights_cli.dispatch_analysis_ready_notification"
+            ) as mock_notify,
+        ):
+            result = self._invoke(app)
+
+        assert result.exit_code == 0
+        assert mock_notify.call_args.kwargs["insight_payload"] == payload
+        assert mock_notify.call_args.kwargs["insight_id"] == "ins-42"
+
     def test_cached_generation_does_not_dispatch_notification(self, app) -> None:
         user_id = _create_user(app)
         _grant_advanced_simulations(app, user_id)
