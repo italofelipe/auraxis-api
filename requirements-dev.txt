@@ -1,6 +1,6 @@
 ruff==0.15.22
 mypy==1.20.2
-pre-commit==4.6.0
+pre-commit==4.6.1
 bandit==1.9.4
 cosmic-ray==8.4.6
 pip-audit==2.10.1
