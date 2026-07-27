@@ -28,7 +28,10 @@ from app.extensions.database import db
 from app.models.push_subscription import PushSubscription, PushTransport
 from app.models.user import User
 from app.services.email_provider import EmailMessage, get_default_email_provider
-from app.services.email_templates.base import render_analysis_ready_email
+from app.services.email_templates.base import (
+    render_analysis_ready_email,
+    web_base_url,
+)
 from app.services.entitlement_service import has_entitlement
 
 log = logging.getLogger(__name__)
@@ -52,6 +55,7 @@ def dispatch_analysis_ready_notification(
     *,
     user_id: UUID,
     summary_preview: str = _DEFAULT_SUMMARY,
+    insight_id: UUID | str | None = None,
 ) -> AnalysisNotificationResult:
     """Send 'analysis ready' notification to a premium user.
 
@@ -89,10 +93,16 @@ def dispatch_analysis_ready_notification(
         )
 
     first_name = _extract_first_name(user)
+    insight_url = (
+        f"{web_base_url()}/insights?open={insight_id}"
+        if insight_id
+        else f"{web_base_url()}/insights"
+    )
     email_sent = _send_email(
         to_email=str(user.email),
         first_name=first_name,
         summary_preview=summary_preview,
+        insight_url=insight_url,
     )
     push_sent = _send_expo_push(
         user_id=user_id,
@@ -116,12 +126,14 @@ def _send_email(
     to_email: str,
     first_name: str,
     summary_preview: str,
+    insight_url: str | None = None,
 ) -> bool:
     """Send the analysis-ready email. Returns True on success, False on failure."""
     try:
         html, text = render_analysis_ready_email(
             first_name=first_name,
             summary_preview=summary_preview,
+            insight_url=insight_url,
         )
         provider = get_default_email_provider()
         provider.send(

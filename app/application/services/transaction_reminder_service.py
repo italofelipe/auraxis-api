@@ -17,7 +17,7 @@ from app.services.email_provider import (
     EmailProviderError,
     get_default_email_provider,
 )
-from app.services.email_templates.base import render_due_soon_email
+from app.services.email_templates.base import render_due_soon_email, web_base_url
 from app.services.entitlement_service import has_entitlement
 from app.utils.datetime_utils import utc_now_naive
 
@@ -139,10 +139,19 @@ def dispatch_due_transaction_reminders(
             continue
 
         amount_str = _serialize_amount(transaction.amount)
+        # #emails: deep-link the CTA straight to the expiring transaction.
+        transaction_url = f"{web_base_url()}/transactions?open={transaction.id}"
+        due_date_label = (
+            transaction.due_date.strftime("%d/%m/%Y")
+            if transaction.due_date is not None
+            else ""
+        )
         email_html, email_text = render_due_soon_email(
             title=transaction.title,
             amount_formatted=amount_str,
             days_before_due=days_before_due,
+            due_date_label=due_date_label,
+            transaction_url=transaction_url,
         )
         subject = _build_subject(
             days_before_due=days_before_due,

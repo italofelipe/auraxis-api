@@ -240,6 +240,7 @@ def _run_batch(
                     dispatch_analysis_ready_notification(
                         user_id=user_id,
                         summary_preview=_notification_preview(result),
+                        insight_id=result.get("id"),
                     )
                 except Exception as exc:  # noqa: BLE001
                     click.echo(

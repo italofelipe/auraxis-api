@@ -78,10 +78,14 @@ def _create_user(app) -> uuid.UUID:
 def _log_weekly_summary_today(app, user_id: uuid.UUID) -> None:
     """Simulate that a weekly summary was already generated today."""
     with app.app_context():
+        from app.cli.ai_insights_cli import _brt_today
         from app.extensions.database import db
         from app.models.ai_insight import AIInsight, InsightType
 
-        today = date.today()
+        # Use the same BRT "today" the CLI anchors on — a bare date.today()
+        # (UTC in CI) drifts a day across the 00:00–03:00 UTC window and made the
+        # ISO-week period_label mismatch, so the idempotency skip flaked.
+        today = _brt_today()
         iso = today.isocalendar()
         insight = AIInsight(
             user_id=user_id,
