@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.74.1](https://github.com/italofelipe/auraxis-api/compare/v1.74.0...v1.74.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* **auth:** manter a sessão quando o navegador é fechado ([7725ad9](https://github.com/italofelipe/auraxis-api/commit/7725ad920751c02f25d5da6afffb81788c25fd9a))
+* **auth:** manter a sessão quando o navegador é fechado ([405e29b](https://github.com/italofelipe/auraxis-api/commit/405e29bcdadd0bb2ce98dbfa7bc725c8505dd7b0)), closes [#1628](https://github.com/italofelipe/auraxis-api/issues/1628)
+
 ## [1.74.0](https://github.com/italofelipe/auraxis-api/compare/v1.73.0...v1.74.0) (2026-07-27)
 
 
