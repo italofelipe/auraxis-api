@@ -16,6 +16,7 @@ Usage::
 from __future__ import annotations
 
 import os
+from html import escape
 
 # ---------------------------------------------------------------------------
 # Brand tokens (light — mirrored from auraxis-web app/assets/css/main.css)
@@ -428,25 +429,58 @@ def render_due_soon_email(
 # ---------------------------------------------------------------------------
 
 
+def _insight_items(items: list[tuple[str, str]]) -> str:
+    """A card listing the insight's items as ``(title, message)`` blocks.
+
+    Unlike :func:`_detail_card` (label/value pairs, right-aligned amounts),
+    each entry here is a short paragraph: a bold title with the analysis text
+    underneath. Content comes from the LLM, so it is HTML-escaped.
+    """
+    blocks = []
+    for index, (title, message) in enumerate(items):
+        top = f"border-top:1px solid {_COLOR_BORDER};" if index else ""
+        blocks.append(
+            f'<tr><td style="padding:14px 0;{top}">'
+            f'<p style="font-family:{_FONT};font-size:14px;font-weight:600;'
+            f'color:{_COLOR_INK};margin:0 0 4px;">{escape(title)}</p>'
+            f'<p style="font-family:{_FONT};font-size:14px;line-height:1.6;'
+            f'color:{_COLOR_INK_SOFT};margin:0;">{escape(message)}</p>'
+            f"</td></tr>"
+        )
+    return (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        f'style="background:{_COLOR_SURFACE};border-radius:12px;margin:20px 0 0;">'
+        f'<tr><td style="padding:2px 20px;">'
+        f'<table role="presentation" width="100%">{"".join(blocks)}</table>'
+        f"</td></tr></table>"
+    )
+
+
+def _insight_items_text(items: list[tuple[str, str]]) -> str:
+    """Plain-text counterpart of :func:`_insight_items`."""
+    return "".join(f"- {title}: {message}\n" for title, message in items)
+
+
 def _insight_body(
     *,
     eyebrow_badge: str,
     heading: str,
     intro: str,
-    detail_rows: list[tuple[str, str, str]] | None,
+    items: list[tuple[str, str]] | None,
     suggestion: str,
     cta_url: str,
     cta_label: str,
     cta_hint: str,
 ) -> str:
     parts = [_badge(eyebrow_badge, "accent"), _heading(heading), _para(intro)]
-    if detail_rows:
-        parts.append(_detail_card(detail_rows))
+    if items:
+        parts.append(_insight_items(items))
     if suggestion:
         parts.append(
             f'<p style="font-family:{_FONT};font-size:14px;line-height:1.6;'
             f'color:{_COLOR_INK_SOFT};margin:16px 0 0;">'
-            f'<strong style="color:{_COLOR_GREEN};">Sugestão:</strong> {suggestion}</p>'
+            f'<strong style="color:{_COLOR_GREEN};">Sugestão:</strong> '
+            f"{escape(suggestion)}</p>"
         )
     parts.append(_button(cta_url, cta_label))
     parts.append(_hint(cta_hint))
@@ -458,20 +492,20 @@ def render_analysis_ready_email(
     first_name: str,
     summary_preview: str,
     insight_url: str | None = None,
-    detail_rows: list[tuple[str, str, str]] | None = None,
+    items: list[tuple[str, str]] | None = None,
     suggestion: str = "",
 ) -> tuple[str, str]:
     """Render the weekly 'AI analysis ready' email.
 
     When ``insight_url`` is given the CTA deep-links to that insight; when
-    ``detail_rows`` is given the full insight is embedded in the email.
+    ``items`` is given the full insight is embedded in the email (#1617).
     """
     cta_url = insight_url or f"{web_base_url()}/insights"
     body_html = _insight_body(
         eyebrow_badge="✨ Insight de gastos",
         heading=f"{first_name}, seu insight da semana está pronto",
         intro=summary_preview,
-        detail_rows=detail_rows,
+        items=items,
         suggestion=suggestion,
         cta_url=cta_url,
         cta_label="Abrir no Auraxis →",
@@ -486,6 +520,7 @@ def render_analysis_ready_email(
     text = (
         f"{first_name}, seu insight da semana está pronto\n\n"
         f"{summary_preview}\n\n"
+        + (_insight_items_text(items) + "\n" if items else "")
         + (f"Sugestão: {suggestion}\n\n" if suggestion else "")
         + f"Abrir no Auraxis: {cta_url}\n\n"
         + "Gerado pela IA da Auraxis a partir das suas transações — sem "
@@ -499,7 +534,7 @@ def render_monthly_analysis_ready_email(
     first_name: str,
     summary_preview: str,
     insight_url: str,
-    detail_rows: list[tuple[str, str, str]] | None = None,
+    items: list[tuple[str, str]] | None = None,
     suggestion: str = "",
 ) -> tuple[str, str]:
     """Render the monthly AI report email with a deep link + embedded insight."""
@@ -507,7 +542,7 @@ def render_monthly_analysis_ready_email(
         eyebrow_badge="📊 Relatório mensal",
         heading=f"{first_name}, seu resumo do mês chegou",
         intro=summary_preview,
-        detail_rows=detail_rows,
+        items=items,
         suggestion=suggestion,
         cta_url=insight_url,
         cta_label="Abrir relatório completo →",
@@ -522,6 +557,7 @@ def render_monthly_analysis_ready_email(
     text = (
         f"{first_name}, seu resumo do mês chegou\n\n"
         f"{summary_preview}\n\n"
+        + (_insight_items_text(items) + "\n" if items else "")
         + (f"Sugestão: {suggestion}\n\n" if suggestion else "")
         + f"Abrir relatório completo: {insight_url}\n\n"
         + _SIGNATURE
