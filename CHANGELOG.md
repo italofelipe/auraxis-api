@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.73.0](https://github.com/italofelipe/auraxis-api/compare/v1.72.0...v1.73.0) (2026-07-27)
+
+
+### Features
+
+* **emails:** embutir o conteúdo real do insight nos emails semanal e mensal ([#1618](https://github.com/italofelipe/auraxis-api/issues/1618)) ([9f1a090](https://github.com/italofelipe/auraxis-api/commit/9f1a09092dd921708df5f03f9c3fa8f313ffde02)), closes [#1617](https://github.com/italofelipe/auraxis-api/issues/1617)
+
 ## [1.72.0](https://github.com/italofelipe/auraxis-api/compare/v1.71.0...v1.72.0) (2026-07-27)
 
 
