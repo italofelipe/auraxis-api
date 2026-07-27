@@ -43,6 +43,9 @@ class CreateCheckoutSessionMutation(graphene.Mutation):
     class Arguments:
         plan_slug = graphene.String(required=True)
         billing_cycle = SubscriptionBillingCycleEnum()
+        # #1620: which configured return URLs the buyer comes back to. A key
+        # into an allowlist — never a URL, so it cannot become a redirect.
+        return_surface = graphene.String()
 
     message = graphene.String(required=True)
     checkout = graphene.Field(CheckoutSessionType, required=True)
@@ -52,6 +55,7 @@ class CreateCheckoutSessionMutation(graphene.Mutation):
         info: graphene.ResolveInfo,
         plan_slug: str,
         billing_cycle: object | None = None,
+        return_surface: str | None = None,
     ) -> "CreateCheckoutSessionMutation":
         user = get_current_user_required()
         billing_cycle_value = coerce_enum_value(billing_cycle)
@@ -82,6 +86,7 @@ class CreateCheckoutSessionMutation(graphene.Mutation):
                     email=str(user.email),
                 ),
                 plan_slug=offer.slug,
+                return_surface=str(return_surface or "").strip().lower() or None,
             )
         except BillingProviderError as exc:
             raise build_public_graphql_error(

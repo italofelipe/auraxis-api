@@ -889,7 +889,7 @@ type Mutation {
   createBudget(amount: String!, endDate: String, isActive: Boolean, name: String!, period: String!, startDate: String, tagId: String): CreateBudgetMutation @deprecated(reason: "ADR-0002: use POST /budgets")
   updateBudget(amount: String, budgetId: UUID!, endDate: String, isActive: Boolean, name: String, period: String, startDate: String, tagId: String): UpdateBudgetMutation @deprecated(reason: "ADR-0002: use PATCH /budgets/{id}")
   deleteBudget(budgetId: UUID!): DeleteBudgetMutation @deprecated(reason: "ADR-0002: use DELETE /budgets/{id}")
-  createCheckoutSession(billingCycle: BillingCycle, planSlug: String!): CreateCheckoutSessionMutation @deprecated(reason: "ADR-0004: use POST /subscription/checkout")
+  createCheckoutSession(billingCycle: BillingCycle, planSlug: String!, returnSurface: String): CreateCheckoutSessionMutation @deprecated(reason: "ADR-0004: use POST /subscription/checkout")
   cancelSubscription: CancelSubscriptionMutation @deprecated(reason: "ADR-0004: use POST /subscription/cancel")
 
   """Swap plan without double-charging (#1597); mirrors REST /change-plan."""
