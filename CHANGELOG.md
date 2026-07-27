@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.72.0](https://github.com/italofelipe/auraxis-api/compare/v1.71.0...v1.72.0) (2026-07-27)
+
+
+### Features
+
+* **emails:** identidade visual nova + copy + CTAs com deep-link (transação e insight) ([#1615](https://github.com/italofelipe/auraxis-api/issues/1615)) ([9bb819f](https://github.com/italofelipe/auraxis-api/commit/9bb819ffdc9b692ba8f111d96821cc4b6a913e64))
+
 ## [1.71.0](https://github.com/italofelipe/auraxis-api/compare/v1.70.0...v1.71.0) (2026-07-26)
 
 
