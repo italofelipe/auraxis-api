@@ -241,6 +241,7 @@ def _run_batch(
                         user_id=user_id,
                         summary_preview=_notification_preview(result),
                         insight_id=result.get("id"),
+                        insight_payload=result,
                     )
                 except Exception as exc:  # noqa: BLE001
                     click.echo(

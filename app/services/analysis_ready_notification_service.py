@@ -18,8 +18,9 @@ Usage::
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 import requests as http_client
@@ -32,6 +33,7 @@ from app.services.email_templates.base import (
     render_analysis_ready_email,
     web_base_url,
 )
+from app.services.email_templates.insight_content import insight_email_content
 from app.services.entitlement_service import has_entitlement
 
 log = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ def dispatch_analysis_ready_notification(
     user_id: UUID,
     summary_preview: str = _DEFAULT_SUMMARY,
     insight_id: UUID | str | None = None,
+    insight_payload: Mapping[str, Any] | None = None,
 ) -> AnalysisNotificationResult:
     """Send 'analysis ready' notification to a premium user.
 
@@ -65,6 +68,10 @@ def dispatch_analysis_ready_notification(
     Args:
         user_id: The user to notify.
         summary_preview: A 1-2 sentence AI-generated preview included in the email.
+        insight_id: Deep-links the CTA straight to this insight.
+        insight_payload: The full insight generation result — its items are
+            embedded in the email body (#1617). Malformed payloads simply
+            yield no embedded section.
 
     Returns:
         AnalysisNotificationResult with flags indicating what was sent.
@@ -98,11 +105,14 @@ def dispatch_analysis_ready_notification(
         if insight_id
         else f"{web_base_url()}/insights"
     )
+    content = insight_email_content(insight_payload)
     email_sent = _send_email(
         to_email=str(user.email),
         first_name=first_name,
         summary_preview=summary_preview,
         insight_url=insight_url,
+        items=content.items,
+        suggestion=content.suggestion,
     )
     push_sent = _send_expo_push(
         user_id=user_id,
@@ -127,6 +137,8 @@ def _send_email(
     first_name: str,
     summary_preview: str,
     insight_url: str | None = None,
+    items: list[tuple[str, str]] | None = None,
+    suggestion: str = "",
 ) -> bool:
     """Send the analysis-ready email. Returns True on success, False on failure."""
     try:
@@ -134,6 +146,8 @@ def _send_email(
             first_name=first_name,
             summary_preview=summary_preview,
             insight_url=insight_url,
+            items=items,
+            suggestion=suggestion,
         )
         provider = get_default_email_provider()
         provider.send(
