@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import timedelta
 
 
 def _read_bool_env(name: str, default: bool) -> bool:
@@ -7,6 +8,25 @@ def _read_bool_env(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _read_int_env(name: str, default: int) -> int:
+    """Read a positive integer env var, falling back on anything unusable.
+
+    A malformed value must not take the service down at import time — the
+    default is the documented behaviour, so we log and move on.
+    """
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        logging.getLogger(__name__).warning(
+            "Invalid %s=%r — falling back to %d", name, raw, default
+        )
+        return default
+    return value if value > 0 else default
 
 
 def _is_secret_weak(secret: str) -> bool:
@@ -116,6 +136,19 @@ class Config:
         and not _read_bool_env("FLASK_TESTING", False),
     )
     JWT_COOKIE_SAMESITE = os.getenv("JWT_COOKIE_SAMESITE", "Lax")
+    # Refresh cookie must OUTLIVE the browser window. flask-jwt-extended
+    # defaults JWT_SESSION_COOKIE to True, which emits the cookie without
+    # Max-Age/Expires — the browser then drops it on close and the user is back
+    # at /login on the next visit, even though the refresh token itself is still
+    # valid for days. That silently cancelled the whole "stay signed in" design
+    # (#1628 — same symptom as #1528 and #1436, different cause).
+    JWT_SESSION_COOKIE = False
+    # Explicit instead of inheriting the library default (30 days): the cookie
+    # Max-Age is derived from this, so the value is now a deliberate product
+    # decision rather than a hidden default.
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(
+        days=_read_int_env("JWT_REFRESH_TOKEN_EXPIRES_DAYS", 30)
+    )
     # SEC-AUD-03 — Double-submit CSRF token for the refresh cookie.
     # Gated behind AURAXIS_CSRF_ENFORCE so web/app clients can migrate first:
     # while OFF, the CSRF cookie is NOT set and refresh works without the header
