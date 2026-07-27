@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -86,6 +87,52 @@ class TestLoginEmitsRefreshCookie:
         assert "Path=/auth/refresh" in raw, (
             "refresh cookie must be scoped to /auth/refresh"
         )
+
+    def test_refresh_cookie_survives_browser_close(self, app, client):
+        """Cookie must carry Max-Age — without it the browser drops it on close.
+
+        flask-jwt-extended defaults JWT_SESSION_COOKIE to True, which emits a
+        session cookie: the refresh token stays valid for days but the user is
+        sent back to /login as soon as the browser is reopened (#1628).
+        """
+        _create_user(app)
+        resp = _login(client)
+        raw = _find_set_cookie(resp, REFRESH_COOKIE_NAME) or ""
+        assert "Max-Age=" in raw, (
+            "refresh cookie must be persistent (Max-Age), not a session cookie"
+        )
+
+    def test_refresh_cookie_max_age_outlives_the_token(self, app, client):
+        """Max-Age must comfortably outlive the refresh token itself.
+
+        flask-jwt-extended writes a fixed one-year Max-Age for non-session
+        cookies, so the effective session length is governed by
+        JWT_REFRESH_TOKEN_EXPIRES: the cookie survives restarts and the token
+        inside it decides when the user really has to sign in again.
+        """
+        _create_user(app)
+        resp = _login(client)
+        raw = _find_set_cookie(resp, REFRESH_COOKIE_NAME) or ""
+        match = re.search(r"Max-Age=(\d+)", raw)
+        assert match is not None, raw
+        token_lifetime = int(app.config["JWT_REFRESH_TOKEN_EXPIRES"].total_seconds())
+        assert int(match.group(1)) >= token_lifetime
+
+    def test_rotated_cookie_is_also_persistent(self, app, client):
+        """The cookie re-emitted by /auth/refresh must persist too.
+
+        Otherwise the session would survive the first browser restart and die
+        on the next one, right after any refresh.
+        """
+        _create_user(app)
+        # The Flask test client keeps cookies between requests, so the login
+        # above already leaves the refresh cookie in place.
+        _login(client)
+
+        resp = client.post("/auth/refresh", headers={"X-API-Contract": "v2"})
+        assert resp.status_code == 200, resp.get_json()
+        raw = _find_set_cookie(resp, REFRESH_COOKIE_NAME) or ""
+        assert "Max-Age=" in raw, "rotated refresh cookie must be persistent too"
 
     def test_login_body_still_contains_refresh_token_for_legacy_clients(
         self, app, client
