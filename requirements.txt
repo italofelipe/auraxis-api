@@ -17,7 +17,7 @@ Flask-Migrate==4.1.0
 Flask-SQLAlchemy==3.1.1
 graphene==3.4.3
 graphql-core==3.2.11
-greenlet==3.5.3
+greenlet==3.5.4
 iniconfig==2.3.0
 itsdangerous==2.2.0
 Jinja2==3.1.6
@@ -50,7 +50,7 @@ Werkzeug==3.1.8
 types-python-dateutil==2.9.0.20260518
 types-requests==2.33.0.20260518
 reportlab==4.5.1
-boto3==1.43.51
+boto3==1.43.56
 pywebpush==2.3.0
 py-vapid==1.9.4
 http-ece==1.2.1
