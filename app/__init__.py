@@ -86,6 +86,7 @@ from app.models.ai_insight import AIInsight  # noqa: F401
 from app.models.ai_insight_run import AIInsightRun  # noqa: F401
 from app.models.audit_event import AuditEvent  # noqa: F401
 from app.models.budget import Budget  # noqa: F401
+from app.models.checkout_attempt import CheckoutAttempt  # noqa: F401
 from app.models.consent import Consent  # noqa: F401
 from app.models.credit_card import CreditCard  # noqa: F401
 from app.models.entitlement import Entitlement  # noqa: F401

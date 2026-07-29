@@ -18,6 +18,9 @@ from flask import request
 from flask.typing import ResponseReturnValue
 
 from app.application.services.billing_email_service import dispatch_billing_email
+from app.application.services.checkout_funnel_service import (
+    complete_attempt_for_subscription,
+)
 from app.controllers.billing_webhook_parsers import (
     BillingWebhookParser,
     default_webhook_parser,
@@ -39,6 +42,11 @@ from app.utils.datetime_utils import utc_now_naive
 from app.utils.response_builder import json_response
 
 logger = logging.getLogger(__name__)
+
+# States that mean "a checkout just converted". Trial counts: the buyer handed
+# over a card and the subscription exists — that is the sale, even though the
+# first charge is still days away.
+_CONVERTING_STATUSES = frozenset({"active", "trialing"})
 
 
 def _ok(data: dict[str, Any], status: int = 200) -> ResponseReturnValue:
@@ -88,6 +96,17 @@ def _process_webhook_snapshot(
 
     webhook_ev.mark_processed(now=utc_now_naive())
     apply_subscription_snapshot(subscription, snapshot)
+
+    # #1634: close the checkout attempt this payment belongs to, so the funnel
+    # has a numerator. Only paying states count — a cancellation or past-due
+    # event is about an existing subscription, not about a checkout converting.
+    if str(snapshot.get("status") or "") in _CONVERTING_STATUSES:
+        complete_attempt_for_subscription(
+            provider=webhook_ev.provider,
+            provider_customer_id=subscription.provider_customer_id,
+            provider_subscription_id=subscription.provider_subscription_id,
+            user_id=subscription.user_id,
+        )
 
     user = User.query.filter_by(id=subscription.user_id).first()
     if user is not None:
@@ -182,12 +201,20 @@ def handle_webhook_request(
 
     snapshot = parser.parse(payload)
     if snapshot is None:
-        webhook_ev.mark_skipped(reason="unresolvable_subscription")
+        # Ask the parser why before falling back to the generic reason: it is the
+        # only thing that knows the difference between "this payload is from the
+        # sandbox" and "I could not find a subscription in it".
+        reason = (
+            getattr(parser, "skip_reason", lambda _payload: None)(payload)
+            or "unresolvable_subscription"
+        )
+        webhook_ev.mark_skipped(reason=reason)
         db.session.commit()
         return _err(
             "Unable to resolve subscription from webhook payload",
             "VALIDATION_ERROR",
             400,
+            details={"reason": reason},
         )
 
     try:

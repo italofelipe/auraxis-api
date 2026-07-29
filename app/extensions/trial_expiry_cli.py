@@ -38,6 +38,50 @@ def expire_trials(dry_run: bool) -> None:
         raise SystemExit(0)
 
 
+@billing_cli.command("checkout-funnel")
+@click.option(
+    "--days",
+    type=int,
+    default=7,
+    help="Window in days to report (0 = since the beginning).",
+)
+@click.option(
+    "--abandon-after",
+    type=int,
+    default=45,
+    help="Minutes a started checkout waits before counting as abandoned.",
+)
+@click.option(
+    "--surface",
+    type=str,
+    default=None,
+    help="Restrict to one origin surface (landing, app).",
+)
+def checkout_funnel(days: int, abandon_after: int, surface: str | None) -> None:
+    """Report started / completed / abandoned checkouts for a window."""
+    from datetime import timedelta
+
+    from app.application.services.checkout_funnel_service import summarize_funnel
+    from app.utils.datetime_utils import utc_now_naive
+
+    since = None if days <= 0 else utc_now_naive() - timedelta(days=days)
+    funnel = summarize_funnel(
+        since=since,
+        abandon_after=timedelta(minutes=abandon_after),
+        return_surface=surface,
+    )
+
+    window = "desde o início" if since is None else f"últimos {days} dia(s)"
+    scope = f" · superfície {surface}" if surface else ""
+    click.echo(f"Funil de checkout — {window}{scope}")
+    click.echo(f"  iniciados   {funnel.started}")
+    click.echo(f"  concluídos  {funnel.completed}")
+    click.echo(f"  abandonados {funnel.abandoned}  (sem pagar após {abandon_after}min)")
+    click.echo(f"  falharam    {funnel.failed}  (gateway recusou criar o checkout)")
+    click.echo(f"  em aberto   {funnel.pending}  (ainda dentro da janela)")
+    click.echo(f"  conversão   {funnel.conversion_rate}%  (dos resolvidos)")
+
+
 @billing_cli.command("expire-grace")
 @click.option(
     "--dry-run",

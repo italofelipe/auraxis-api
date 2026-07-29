@@ -376,6 +376,17 @@ class AbacatePayWebhookParser:
         if not (payload.get("devMode") is True and _is_production_runtime()):
             return False
         if not _devmode_allowed_in_production():
+            # #1634: this used to return silently, and the caller then recorded
+            # the drop as "unresolvable_subscription". Production spent ten days
+            # selling into the sandbox without a single honest signal — the one
+            # log line lived in the branch below, which is the branch that does
+            # NOT drop anything.
+            logger.error(
+                "event=billing_webhook_sandbox_in_production provider=%s "
+                "reason=devmode_payload_dropped — production is configured with "
+                "sandbox credentials, so no payment can complete",
+                self.provider,
+            )
             return True
         logger.warning(
             "Accepting AbacatePay devMode webhook in production because "
@@ -383,6 +394,22 @@ class AbacatePayWebhookParser:
             _ABACATEPAY_ALLOW_DEVMODE_ENV,
         )
         return False
+
+    def skip_reason(self, payload: dict[str, Any]) -> str | None:
+        """Why ``parse`` returned nothing, when the reason is known.
+
+        ``parse`` collapses every refusal into ``None``, which left the audit row
+        blaming an unresolvable subscription for what was really a sandbox
+        payload. Naming the cause is the difference between a trail that explains
+        an outage and one that hides it.
+
+        :param payload: Raw webhook body.
+        :returns: Stable reason slug, or ``None`` when no specific cause applies.
+        """
+        if payload.get("devMode") is True and _is_production_runtime():
+            if not _devmode_allowed_in_production():
+                return "sandbox_payload_in_production"
+        return None
 
     def parse(self, payload: dict[str, Any]) -> BillingSubscriptionSnapshot | None:
         event_type = str(payload.get("event") or "").strip()
