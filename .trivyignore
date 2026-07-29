@@ -1,0 +1,24 @@
+# Waivers do Trivy — cada linha precisa de justificativa e data de revisão.
+#
+# O inventário canônico de exceções (config/security_exception_allowlist.json)
+# só alimenta pip-audit e osv-scanner: SUPPORTED_TOOLS não inclui trivy. Unificar
+# exigiria estender o script e gerar este arquivo a partir dele — vale fazer se a
+# lista abaixo crescer. Com um item, o custo não se paga.
+
+# GHSA-6v7p-g79w-8964 — msgpack 1.1.2, out-of-bounds read no reuso de Unpacker.
+#
+# Não é dependência da aplicação: não está no requirements.txt e nada em app/
+# importa msgpack. O que o Trivy encontra é a cópia **vendorada pelo pip**, em
+# pip/_vendor/msgpack, usada apenas pelo próprio pip durante instalação.
+#
+# Não é corrigível por upgrade: pip 26.2 (mais recente em 2026-07-29) ainda
+# vendora 1.1.2 — verificado dentro da imagem. Atualizar o pip resolveu o
+# setuptools (70.3.0 → 83.0.0, CVE-2025-47273) mas não este.
+#
+# Alternativa mais forte, deixada como follow-up: remover o pip da imagem de
+# runtime. O container roda `flask run` e os crons usam `docker exec ... flask`,
+# então pip não é necessário em execução — só some a possibilidade de instalar
+# algo ao depurar dentro do container.
+#
+# Revisar em: 2026-10-29 (ou quando o pip bumpar o msgpack vendorado).
+GHSA-6v7p-g79w-8964
