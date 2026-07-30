@@ -20,6 +20,10 @@ from uuid import UUID
 from flask import Blueprint, current_app, request
 from flask.typing import ResponseReturnValue
 
+from app.application.services.checkout_funnel_service import (
+    record_checkout_failed,
+    record_checkout_started,
+)
 from app.auth import get_active_auth_context, get_active_user
 from app.config.billing_plans import (
     list_public_billing_plans,
@@ -66,6 +70,44 @@ def _get_provider() -> BillingProvider:
 
 
 _CHECKOUT_SESSION_FAILURE_MESSAGE = "Failed to create checkout session"
+
+
+def _clean_str(value: Any) -> str | None:  # noqa: ANN401
+    """Normalise a provider field to a non-empty string, or ``None``.
+
+    :param value: Raw value from the provider response.
+    :returns: Trimmed string, or ``None`` when absent or blank.
+    """
+    if not isinstance(value, str):
+        return None
+    return value.strip() or None
+
+
+def _record_failed_checkout(user_id: UUID, plan_slug: str, reason: str) -> None:
+    """Persist a refused checkout without masking the original failure.
+
+    The response to the buyer is already decided by the caller; bookkeeping must
+    never turn a 502 into a 500, so anything raised here is swallowed after the
+    exception log the caller already emitted.
+
+    :param user_id: Buyer.
+    :param plan_slug: Offer slug requested.
+    :param reason: Short description of the refusal.
+    """
+    try:
+        db.session.rollback()
+        record_checkout_failed(
+            user_id=user_id,
+            plan_slug=plan_slug,
+            # The provider never answered, so its slug comes from configuration
+            # rather than from a response.
+            provider=str(getattr(_get_provider(), "provider", "unknown")),
+            reason=reason,
+        )
+        db.session.commit()
+    except Exception:  # pragma: no cover - bookkeeping must not mask the failure
+        db.session.rollback()
+        current_app.logger.exception("Failed to record checkout attempt")
 
 
 def _ok(data: dict[str, Any], status: int = 200) -> ResponseReturnValue:
@@ -161,30 +203,47 @@ def create_checkout_session() -> ResponseReturnValue:
     )
 
     provider = _get_provider()
+    user_uuid = UUID(auth.subject)
     try:
         result = provider.create_checkout_session(
             customer=BillingCheckoutCustomer(
-                user_id=str(UUID(auth.subject)),
+                user_id=str(user_uuid),
                 name=str(user.name),
                 email=str(user.email),
             ),
             plan_slug=offer.slug,
             return_surface=return_surface,
         )
-    except BillingProviderError:
+    except BillingProviderError as exc:
         current_app.logger.exception(_CHECKOUT_SESSION_FAILURE_MESSAGE)
+        _record_failed_checkout(user_uuid, offer.slug, str(exc) or "provider_error")
         return _err(_CHECKOUT_SESSION_FAILURE_MESSAGE, "UPSTREAM_ERROR", 502)
-    except Exception:
+    except Exception as exc:
         current_app.logger.exception(_CHECKOUT_SESSION_FAILURE_MESSAGE)
+        _record_failed_checkout(user_uuid, offer.slug, type(exc).__name__)
         return _err(_CHECKOUT_SESSION_FAILURE_MESSAGE, "INTERNAL_ERROR", 500)
 
-    subscription = get_or_create_subscription(UUID(auth.subject))
+    subscription = get_or_create_subscription(user_uuid)
     provider_name = str(result.get("provider") or "").strip()
     provider_customer_id = result.get("provider_customer_id")
     if provider_name:
         subscription.provider = provider_name
     if isinstance(provider_customer_id, str) and provider_customer_id.strip():
         subscription.provider_customer_id = provider_customer_id.strip()
+
+    # #1634: the attempt is what makes abandonment countable. It shares this
+    # request's transaction with the subscription row above, so a rollback never
+    # leaves a phantom attempt behind.
+    record_checkout_started(
+        user_id=user_uuid,
+        plan_slug=offer.slug,
+        plan_code=offer.plan_code,
+        billing_cycle=offer.billing_cycle.value if offer.billing_cycle else None,
+        provider=provider_name or "unknown",
+        provider_checkout_id=_clean_str(result.get("provider_subscription_id")),
+        provider_customer_id=_clean_str(provider_customer_id),
+        return_surface=return_surface,
+    )
     db.session.commit()
 
     return _ok(

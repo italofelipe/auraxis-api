@@ -1,0 +1,38 @@
+# Waivers do Trivy — cada linha precisa de justificativa e data de revisão.
+#
+# O inventário canônico de exceções (config/security_exception_allowlist.json)
+# só alimenta pip-audit e osv-scanner: SUPPORTED_TOOLS não inclui trivy. Unificar
+# exigiria estender o script e gerar este arquivo a partir dele — vale fazer se a
+# lista abaixo crescer. Com um item, o custo não se paga.
+
+# Os dois waivers abaixo têm a MESMA origem, confirmada dentro da imagem:
+#
+#   /usr/local/lib/python3.13/site-packages/pip/_vendor/vendor.txt
+#
+# O Trivy lê esse manifesto de dependências vendoradas do pip e reporta cada
+# versão pinada ali como se fosse um pacote instalado. É por isso que os dois
+# achados vêm **sem `PkgPath`** — não existe dist-info nem arquivo instalado
+# correspondente. Verificado: uma busca exaustiva na imagem por `setuptools*`
+# fora do venv não encontra nada além dessa linha de texto.
+#
+# Nenhum dos dois é dependência da aplicação (não estão no requirements.txt,
+# nada em app/ os importa) e nenhum é corrigível por upgrade: o pip 26.x, mais
+# recente em 2026-07-29, ainda pina essas versões no próprio vendor.txt.
+#
+# O que **foi** corrigido de verdade, e é independente destes waivers: o
+# setuptools do venv em /opt/venv, que era 70.3.0 e passou a 83.0.0 via
+# `pip install --upgrade pip setuptools` no Dockerfile.prod. Esse é o setuptools
+# que a aplicação poderia efetivamente usar.
+#
+# Alternativa que eliminaria os dois sem waiver: remover o pip da imagem de
+# runtime, levando o vendor.txt com ele. O container roda gunicorn e os crons
+# usam `docker exec ... flask`, então pip não é necessário em execução — o custo
+# é perder a possibilidade de instalar algo ao depurar dentro do container.
+#
+# Revisar ambos em: 2026-10-29 (ou quando o pip bumpar o que vendora).
+
+# msgpack 1.1.2 — out-of-bounds read no reuso de Unpacker.
+GHSA-6v7p-g79w-8964
+
+# setuptools 70.3.0 — path traversal no PackageIndex.
+CVE-2025-47273

@@ -670,6 +670,7 @@ jobs:
           vuln-type: os,library
           severity: HIGH,CRITICAL
           exit-code: 1
+          trivyignores: .trivyignore
 
       - name: Reset Docker auth for public pulls
         run: |
@@ -696,6 +697,7 @@ jobs:
           vuln-type: os,library
           severity: HIGH,CRITICAL
           exit-code: 1
+          trivyignores: .trivyignore
 
   osv-scanner:
     name: Dependency Security (OSV-Scanner)

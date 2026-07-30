@@ -100,6 +100,7 @@ def _build_registry() -> list[EntityRule]:
     from app.models.alert import Alert, AlertPreference
     from app.models.audit_event import AuditEvent
     from app.models.budget import Budget
+    from app.models.checkout_attempt import CheckoutAttempt
     from app.models.consent import Consent
     from app.models.credit_card import CreditCard
     from app.models.entitlement import Entitlement
@@ -386,6 +387,20 @@ def _build_registry() -> list[EntityRule]:
             description="Web Push subscription endpoints",
         ),
         # === Subscription / Billing =========================================
+        EntityRule(
+            model=CheckoutAttempt,
+            user_id_field="user_id",
+            table_name="checkout_attempts",
+            # Hard delete, unlike ``subscriptions``: an attempt that never became
+            # a payment carries no fiscal obligation — the subscription row is
+            # what a tax authority would ask for. Anonymising is not an option
+            # either, since ``user_id`` is NOT NULL.
+            deletion_strategy=DeletionStrategy.DELETE,
+            export_included=True,
+            retention_reason=RetentionReason.NONE,
+            retention_days=None,
+            description="Attempts to open a paid checkout (funnel telemetry)",
+        ),
         EntityRule(
             model=Subscription,
             user_id_field="user_id",

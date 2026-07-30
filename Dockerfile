@@ -5,7 +5,13 @@ WORKDIR /app
 
 COPY requirements.txt .
 
+# O tooling que vem na imagem base envelhece por conta própria e o Trivy acusa
+# como HIGH sem que nada no requirements.txt mude: setuptools 70.3.0
+# (CVE-2025-47273) e o msgpack vendorado pelo pip (GHSA-6v7p-g79w-8964).
+# Nenhum dos dois é dependência da aplicação — atualizar aqui remove o achado na
+# origem, em vez de silenciá-lo com exceção a cada nova advisory.
 RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir --upgrade pip setuptools && \
     pip install --no-cache-dir -r requirements.txt
 
 COPY . .
