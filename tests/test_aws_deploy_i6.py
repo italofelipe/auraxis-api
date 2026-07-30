@@ -144,6 +144,54 @@ def test_build_script_writes_schema_version_to_deploy_state() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Sentry release attribution (#1637)
+# ---------------------------------------------------------------------------
+
+
+def test_build_script_writes_sentry_release_before_recreating_web() -> None:
+    """SENTRY_RELEASE must land in the env file BEFORE the container swap.
+
+    Written after the swap it would only take effect on the *next* deploy, so
+    every error in Sentry would be attributed to the previous commit — worse
+    than having no release at all.
+    """
+    script = aws_deploy_i6._build_script(
+        env_name="prod",
+        aws_region="us-east-1",
+        git_ref="origin/master",
+        mode="deploy",
+        web_image="ghcr.io/italofelipe/auraxis-api:deadbeef",
+    )
+
+    write_idx = script.find("SENTRY_RELEASE=$SENTRY_RELEASE_VALUE")
+    swap_idx = script.find("swapping web container")
+
+    assert write_idx != -1, "expected SENTRY_RELEASE to be written to the env file"
+    assert swap_idx != -1, "expected web container swap section"
+    assert write_idx < swap_idx, (
+        "SENTRY_RELEASE must be written before the web container is recreated"
+    )
+
+
+def test_build_script_derives_sentry_release_from_image_tag() -> None:
+    """The release value comes from the image tag, with $GIT_REF as fallback.
+
+    The image tag is always the commit SHA; git_ref may be a branch name such
+    as 'origin/master', which would make every deploy share one release.
+    """
+    script = aws_deploy_i6._build_script(
+        env_name="prod",
+        aws_region="us-east-1",
+        git_ref="origin/master",
+        mode="deploy",
+        web_image="ghcr.io/italofelipe/auraxis-api:deadbeef",
+    )
+
+    assert 'SENTRY_RELEASE_VALUE="$(echo "$WEB_IMAGE" | sed -n \'s/.*://p\')"' in script
+    assert 'SENTRY_RELEASE_VALUE="$GIT_REF"' in script
+
+
+# ---------------------------------------------------------------------------
 # Migration step on deploy (#1252)
 # ---------------------------------------------------------------------------
 

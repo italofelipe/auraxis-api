@@ -148,6 +148,36 @@ def test_sentry_init_traces_sample_rate_from_env(
         assert kwargs.get("traces_sample_rate") == pytest.approx(0.25)
 
 
+def test_sentry_init_release_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """release must carry SENTRY_RELEASE so events map to the deployed commit."""
+    monkeypatch.setenv("SENTRY_DSN", "https://public@sentry.example.io/56")
+    monkeypatch.setenv("SENTRY_RELEASE", "e623e673a2fb94f5371a896889c9eb0e5bdac77a")
+
+    with patch("sentry_sdk.init") as mock_init:
+        mod = _reload_sentry()
+        mod.init_sentry()
+        _, kwargs = mock_init.call_args
+        assert kwargs.get("release") == "e623e673a2fb94f5371a896889c9eb0e5bdac77a"
+
+
+def test_sentry_init_release_is_none_when_env_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An absent SENTRY_RELEASE must become None, never the empty string.
+
+    Sentry treats "" as a release literally named empty, which silently splits
+    the issue stream instead of leaving events unversioned.
+    """
+    monkeypatch.setenv("SENTRY_DSN", "https://public@sentry.example.io/57")
+    monkeypatch.delenv("SENTRY_RELEASE", raising=False)
+
+    with patch("sentry_sdk.init") as mock_init:
+        mod = _reload_sentry()
+        mod.init_sentry()
+        _, kwargs = mock_init.call_args
+        assert kwargs.get("release") is None
+
+
 def test_sentry_init_registers_before_send(monkeypatch: pytest.MonkeyPatch) -> None:
     """before_send must be passed to sentry_sdk.init for quota protection."""
     monkeypatch.setenv("SENTRY_DSN", "https://public@sentry.example.io/11")

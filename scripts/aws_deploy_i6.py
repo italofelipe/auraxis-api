@@ -1025,6 +1025,22 @@ else
 fi
 echo "[i6] WEB_IMAGE=$WEB_IMAGE written to $ENV_FILE"
 
+# Write SENTRY_RELEASE so every event in Sentry is attributable to the exact
+# deployed commit (without it, sentry_sdk.init(release=None) and Release Health
+# is unavailable — see auraxis-api#1637). Derived from the image tag, which is
+# always the commit SHA; $GIT_REF is only a fallback because it may be a branch
+# name such as "master".
+SENTRY_RELEASE_VALUE="$(echo "$WEB_IMAGE" | sed -n 's/.*://p')"
+case "$SENTRY_RELEASE_VALUE" in
+  ""|*/*) SENTRY_RELEASE_VALUE="$GIT_REF" ;;
+esac
+if grep -q "^SENTRY_RELEASE=" "$ENV_FILE"; then
+  sed -i "s|^SENTRY_RELEASE=.*|SENTRY_RELEASE=$SENTRY_RELEASE_VALUE|" "$ENV_FILE"
+else
+  echo "SENTRY_RELEASE=$SENTRY_RELEASE_VALUE" >> "$ENV_FILE"
+fi
+echo "[i6] SENTRY_RELEASE=$SENTRY_RELEASE_VALUE written to $ENV_FILE"
+
 # Phase 4: Swap web container only.
 # --no-deps: do not touch db or redis.
 # --force-recreate: ensure the new image is used even if compose thinks nothing changed.
