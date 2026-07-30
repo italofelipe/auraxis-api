@@ -17,7 +17,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 
 COPY requirements.txt .
-RUN pip install --upgrade pip \
+# `python -m venv` semeia o venv com o pip e o setuptools que vêm no ensurepip da
+# imagem base, e ambos envelhecem sozinhos. O `--upgrade pip` sem `setuptools`
+# deixava 70.3.0 dentro do venv, que o Trivy acusa como HIGH (CVE-2025-47273)
+# sem que nada no requirements.txt mude.
+RUN pip install --upgrade pip setuptools \
     && pip install -r requirements.txt gunicorn
 
 
