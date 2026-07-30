@@ -144,6 +144,14 @@ class RateLimiterService:
             ("/auth/login", "auth"),
             ("/auth/register", "auth"),
             ("/auth/password", "auth"),
+            # ── billing checkout (IP-keyed) ──────────────────────────────
+            # Each request holds one of the 4 gunicorn threads on a blocking
+            # HTTP call to the PSP, so the lenient `default` tier (300/window)
+            # made this a cheap way to starve the whole API. Capped at 10 —
+            # a human subscribes once, and even an indecisive one does not
+            # open ten checkouts a minute. Must stay above the webhook entry's
+            # sibling prefix so neither shadows the other (#1632).
+            ("/subscriptions/checkout", "checkout"),
             # ── billing webhook (IP-keyed) ───────────────────────────────
             # Provider callback — no JWT. Capped at 60/min per IP to absorb
             # legitimate retry bursts while blocking automated abuse.
@@ -204,6 +212,21 @@ class RateLimiterService:
                 limit=_read_int_env("RATE_LIMIT_TOKEN_REFRESH_LIMIT", 10),
                 window_seconds=_read_int_env(
                     "RATE_LIMIT_TOKEN_REFRESH_WINDOW_SECONDS", default_window
+                ),
+                key_scope=KEY_SCOPE_IP,
+            ),
+            # Billing checkout: IP-keyed on purpose, even though the endpoint
+            # requires a JWT. Keying by user would let one attacker rotate
+            # accounts to keep every gunicorn thread parked on the PSP call;
+            # keying by IP caps the whole origin. Safe because
+            # RATE_LIMIT_TRUST_PROXY_HEADERS=true in prod and nginx forwards
+            # X-Forwarded-For — without that, every request would share the
+            # proxy's address and 10/window would be a global cap (#1632).
+            "checkout": RateLimitRule(
+                name="checkout",
+                limit=_read_int_env("RATE_LIMIT_CHECKOUT_LIMIT", 10),
+                window_seconds=_read_int_env(
+                    "RATE_LIMIT_CHECKOUT_WINDOW_SECONDS", default_window
                 ),
                 key_scope=KEY_SCOPE_IP,
             ),

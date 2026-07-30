@@ -143,3 +143,53 @@ def test_graphql_query_does_not_use_mutation_rule(client: Any) -> None:
         resp = client.post("/graphql", json=query_payload)
         assert resp.status_code == 200
         assert resp.headers.get("X-RateLimit-Rule") == "graphql"
+
+
+def test_checkout_uses_dedicated_tier_not_the_lenient_default(client: Any) -> None:
+    """POST /subscriptions/checkout must resolve to the `checkout` tier.
+
+    Before #1632 it fell through to `default` (300/window). Each checkout holds
+    one of the four gunicorn threads on a blocking call to the PSP, so the
+    lenient tier made it a cheap way to starve the whole API.
+    """
+    limiter = _rate_limiter(client)
+    limiter.set_rule("checkout", limit=10, window_seconds=60)
+
+    response = client.post("/subscriptions/checkout", json={})
+
+    assert response.headers.get("X-RateLimit-Rule") == "checkout"
+
+
+def test_checkout_blocks_after_threshold(client: Any) -> None:
+    """The 11th call in the window is refused — the AC of #1632."""
+    limiter = _rate_limiter(client)
+    limiter.set_rule("checkout", limit=10, window_seconds=60)
+
+    statuses = [
+        client.post("/subscriptions/checkout", json={}).status_code for _ in range(10)
+    ]
+    blocked = client.post("/subscriptions/checkout", json={})
+
+    assert 429 not in statuses
+    assert blocked.status_code == 429
+    assert blocked.get_json()["details"]["rule"] == "checkout"
+
+
+def test_checkout_tier_does_not_shadow_the_webhook_tier(client: Any) -> None:
+    """Sibling prefixes under /subscriptions must keep separate buckets.
+
+    A regression here is silent and expensive: the provider's retries would be
+    refused by a budget spent on checkouts, and a refused webhook means someone
+    paid without receiving Premium.
+    """
+    limiter = _rate_limiter(client)
+    limiter.set_rule("checkout", limit=1, window_seconds=60)
+    limiter.set_rule("webhook", limit=60, window_seconds=60)
+
+    client.post("/subscriptions/checkout", json={})
+    exhausted = client.post("/subscriptions/checkout", json={})
+    webhook = client.post("/subscriptions/webhook/abacatepay", json={})
+
+    assert exhausted.status_code == 429
+    assert webhook.status_code != 429
+    assert webhook.headers.get("X-RateLimit-Rule") == "webhook"
