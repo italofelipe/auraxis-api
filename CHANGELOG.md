@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.75.0](https://github.com/italofelipe/auraxis-api/compare/v1.74.1...v1.75.0) (2026-07-30)
+
+
+### Features
+
+* **billing:** dar visibilidade ao funil de checkout ([#1635](https://github.com/italofelipe/auraxis-api/issues/1635)) ([e623e67](https://github.com/italofelipe/auraxis-api/commit/e623e673a2fb94f5371a896889c9eb0e5bdac77a)), closes [#1634](https://github.com/italofelipe/auraxis-api/issues/1634)
+
 ## [1.74.1](https://github.com/italofelipe/auraxis-api/compare/v1.74.0...v1.74.1) (2026-07-27)
 
 
