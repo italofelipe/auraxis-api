@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.76.0](https://github.com/italofelipe/auraxis-api/compare/v1.75.0...v1.76.0) (2026-07-30)
+
+
+### Features
+
+* **billing:** dar teto próprio ao checkout e frear no proxy o auth que faz hash de senha ([#1640](https://github.com/italofelipe/auraxis-api/issues/1640)) ([480cdae](https://github.com/italofelipe/auraxis-api/commit/480cdae6420dc298a35c484959295a0b843c2766)), closes [#1632](https://github.com/italofelipe/auraxis-api/issues/1632)
+
+
+### Bug Fixes
+
+* **deploy:** atribuir cada erro do Sentry ao commit implantado ([#1638](https://github.com/italofelipe/auraxis-api/issues/1638)) ([419167e](https://github.com/italofelipe/auraxis-api/commit/419167ee0798403c33149129d2983d1e357bbd0c)), closes [#1637](https://github.com/italofelipe/auraxis-api/issues/1637)
+
 ## [1.75.0](https://github.com/italofelipe/auraxis-api/compare/v1.74.1...v1.75.0) (2026-07-30)
 
 
