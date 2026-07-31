@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.77.0](https://github.com/italofelipe/auraxis-api/compare/v1.76.0...v1.77.0) (2026-07-31)
+
+
+### Features
+
+* **nginx:** expor /v2/* no vhost api.auraxis.com.br ([5330ed8](https://github.com/italofelipe/auraxis-api/commit/5330ed84e7ceec5575ffce9a31baaf652b9f3d8c))
+* **nginx:** serve /v2/* from the v1 hostname ([00046a1](https://github.com/italofelipe/auraxis-api/commit/00046a118ad7da75b732d627d81757934949066d))
+
 ## [1.76.0](https://github.com/italofelipe/auraxis-api/compare/v1.75.0...v1.76.0) (2026-07-30)
 
 
