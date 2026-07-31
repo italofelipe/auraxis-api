@@ -187,6 +187,12 @@ class Config:
     # email_confirmation_service. Quando vazio, o serviço faz fallback para
     # a URL canônica de prod com warning de log (PR #1335).
     EMAIL_CONFIRMATION_FRONTEND_URL = os.getenv("EMAIL_CONFIRMATION_FRONTEND_URL", "")
+    # Par da chave acima, para o link de redefinição de senha. Faltava aqui, e
+    # como password_reset_service lê via runtime_config (que consulta
+    # current_app.config, não os.getenv), a variável existia no container mas
+    # nunca chegava ao serviço — todo e-mail de recuperação saía com o link
+    # literal "n/a" (#1650). tests/test_frontend_url_config.py trava o par.
+    PASSWORD_RESET_FRONTEND_URL = os.getenv("PASSWORD_RESET_FRONTEND_URL", "")
 
     DEBUG = _read_bool_env("FLASK_DEBUG", False)
 
