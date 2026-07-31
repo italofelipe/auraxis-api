@@ -14,6 +14,7 @@ Covers the systemic fixes for unwanted/duplicated LLM generation:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Generator
 from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
@@ -21,6 +22,10 @@ from unittest.mock import patch
 import pytest
 
 from app.services.llm_provider import StubLLMProvider
+
+# Mid-month, so the service's daily-vs-recap branch is deterministic regardless
+# of when CI runs. See ``TestReadSpendingInsights._freeze_today_midmonth``.
+_FROZEN_TODAY = date(2026, 5, 15)
 
 # ---------------------------------------------------------------------------
 # Helpers (same pattern as test_ai_chat.py)
@@ -510,6 +515,27 @@ class TestStableContextHash:
 
 
 class TestReadSpendingInsights:
+    @pytest.fixture(autouse=True)
+    def _freeze_today_midmonth(self) -> Generator[None, None, None]:
+        """Pin the service's ``date.today()`` to a deterministic mid-month day.
+
+        On the last calendar day of the month the service reads (and writes) an
+        ``InsightType.recap`` under a ``YYYY-MM-recap`` label instead of a daily
+        one under ``YYYY-MM-DD`` (``is_recap = today == end``). CI runs in UTC,
+        so every month-end run made ``test_returns_persisted_insight_of_the_day``
+        store a daily insight and then look for a recap — a calendar-driven
+        failure with nothing to do with the diff under test.
+
+        Tests that assert against "today" must use ``_FROZEN_TODAY``, not
+        ``date.today()``: this patches the symbol inside the service module, so
+        the test module's own ``date`` still resolves to the real clock. Same
+        trap and same fix as ``tests/test_ai_insight_persistence.py``.
+        """
+        with patch("app.services.ai_advisory_service.date") as mock_date:
+            mock_date.today.return_value = _FROZEN_TODAY
+            mock_date.side_effect = lambda *args, **kwargs: date(*args, **kwargs)
+            yield
+
     def setup_method(self) -> None:
         _reset_ai_counter()
 
@@ -537,7 +563,7 @@ class TestReadSpendingInsights:
             from app.models.ai_insight import InsightType
             from app.services.ai_advisory_service import _save_insight
 
-            today = date.today()
+            today = _FROZEN_TODAY
             _save_insight(
                 user_id=user_id,
                 content='[{"type":"resumo","title":"T","message":"M"}]',
