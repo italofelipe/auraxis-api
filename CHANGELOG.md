@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.78.1](https://github.com/italofelipe/auraxis-api/compare/v1.78.0...v1.78.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* **radar:** não falhar o cron quando não há despesa e nomear o erro da v2 ([#1657](https://github.com/italofelipe/auraxis-api/issues/1657)) ([3087bc9](https://github.com/italofelipe/auraxis-api/commit/3087bc976df5602e273ac5ed17145b2958c43384))
+
 ## [1.78.0](https://github.com/italofelipe/auraxis-api/compare/v1.77.0...v1.78.0) (2026-08-02)
 
 
