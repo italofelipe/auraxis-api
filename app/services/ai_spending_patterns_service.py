@@ -41,6 +41,10 @@ _TIMEOUT_SECONDS = 30.0
 _PERIOD_DAYS = 90
 _DEFAULT_MODEL = "v2-spending-patterns"
 _EXPENSE_PAGE_SIZE = 500
+# Longest upstream description kept in the exception message / cron log.
+_MAX_UPSTREAM_DETAIL_CHARS = 200
+# Validation errors reported per failure — enough to diagnose, not a dump.
+_MAX_VALIDATION_ERRORS = 3
 
 
 class SpendingPatternsUpstreamError(RuntimeError):
@@ -153,6 +157,17 @@ def generate_and_persist_spending_patterns(
     start = anchor_date - timedelta(days=_PERIOD_DAYS)
     transactions = _build_expense_payload(user_id=user_id, start=start, end=end)
 
+    if not transactions:
+        # v2 requires at least one transaction (``min_length=1``); posting an
+        # empty list earns a 422 that used to surface as a generic domain error
+        # and turned "nothing to analyse" into a failed weekly job (#1596).
+        log.info(
+            "spending_patterns.no_expenses user=%s period=%s",
+            user_id,
+            anchor_date.isoformat(),
+        )
+        return _no_analysis_result()
+
     # Server-to-server token for the internal v2 call. The token_use=service
     # claim tells v2 to skip its per-user session (active_jti) revocation — this
     # cron token has no user session — while signature and account-block checks
@@ -168,21 +183,21 @@ def generate_and_persist_spending_patterns(
     )
 
     if status_code >= 400:
+        # The cron's only trace of this failure is the exception message, so it
+        # has to name the cause. #1596 stayed open for eight days because a 401
+        # "Token revoked." from v2 looked exactly like a 422 or a 500 in the job
+        # log, in the diagnostics artifact and in the auto-opened issue.
+        summary = _describe_upstream_failure(status_code, body)
+        log.warning("spending_patterns.v2_rejected %s", summary)
         raise SpendingPatternsUpstreamError(
-            "Falha ao gerar o radar de gastos.",
+            f"Falha ao gerar o radar de gastos ({summary}).",
             status_code=status_code,
         )
 
     patterns = body.get("patterns")
     if not isinstance(patterns, list) or not patterns:
         # Nothing actionable returned — do not persist an empty analysis.
-        return {
-            "patterns": [],
-            "cost_usd": 0.0,
-            "tokens_used": 0,
-            "cached": False,
-            "persisted": False,
-        }
+        return _no_analysis_result()
 
     cost_usd = _safe_float(body.get("cost_usd"))
     tokens_used = _safe_int(body.get("tokens_used") or body.get("tokens_total"))
@@ -213,6 +228,53 @@ def generate_and_persist_spending_patterns(
 # ---------------------------------------------------------------------------
 
 
+def _no_analysis_result() -> dict[str, Any]:
+    """Result for "there is nothing to cache" — not an error, nothing persisted."""
+    return {
+        "patterns": [],
+        "cost_usd": 0.0,
+        "tokens_used": 0,
+        "cached": False,
+        "persisted": False,
+    }
+
+
+def _describe_upstream_failure(status_code: int, body: dict[str, Any]) -> str:
+    """Summarise a v2 rejection for the cron log — never echoing request data.
+
+    FastAPI's 422 body repeats the rejected ``input`` (transaction amounts), so
+    only the error ``type`` and the field ``loc`` are reported; a plain string
+    ``detail`` (``"Token revoked."``) is safe and is the most useful signal.
+    """
+    detail = body.get("detail")
+    summary = ""
+
+    if isinstance(detail, str):
+        summary = detail.strip()
+    elif isinstance(detail, list):
+        summary = "; ".join(
+            described
+            for item in detail[:_MAX_VALIDATION_ERRORS]
+            if (described := _describe_validation_error(item))
+        )
+
+    if not summary:
+        return f"HTTP {status_code}"
+    return f"HTTP {status_code}: {summary[:_MAX_UPSTREAM_DETAIL_CHARS]}"
+
+
+def _describe_validation_error(item: object) -> str:
+    """Render one pydantic error as ``field.path: error_type`` (no values)."""
+    if not isinstance(item, dict):
+        return ""
+    location = item.get("loc")
+    error_type = str(item.get("type") or "invalid")
+    if not isinstance(location, list | tuple) or not location:
+        return error_type
+    parts = [str(part) for part in location if str(part) != "body"]
+    return f"{'.'.join(parts)}: {error_type}" if parts else error_type
+
+
 def _build_expense_payload(
     *,
     user_id: UUID,
@@ -222,7 +284,9 @@ def _build_expense_payload(
     """Return an LGPD-safe list of expense rows for the v2 detector.
 
     Only the fields v2 needs are forwarded: amount, occurred_on, category. No
-    titles, descriptions or free-text are sent.
+    titles, descriptions or free-text are sent. Rows v2 would reject (it declares
+    ``amount: float = Field(gt=0)``) are dropped here — otherwise a single zeroed
+    expense 422s the whole user's radar.
     """
     from sqlalchemy import desc
 
@@ -239,15 +303,27 @@ def _build_expense_payload(
 
     payload: list[dict[str, Any]] = []
     for expense in result["expenses"]:
+        amount = _positive_amount(expense["amount"])
+        if amount is None:
+            continue
         payload.append(
             {
-                "amount": expense["amount"],
+                "amount": amount,
                 "occurred_on": expense["due_date"],
                 "category": expense.get("category"),
                 "kind": "expense",
             }
         )
     return payload
+
+
+def _positive_amount(value: object) -> float | None:
+    """Coerce to a strictly positive float, or ``None`` when v2 would reject it."""
+    try:
+        amount = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return amount if amount > 0 else None
 
 
 def _persist(

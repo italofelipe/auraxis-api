@@ -65,6 +65,38 @@ def _grant_premium(app, token: str) -> _uuid.UUID:
     return user_id
 
 
+def _seed_expense(
+    app,
+    user_id: _uuid.UUID,
+    *,
+    amount: str = "42.90",
+    due_date: date | None = None,
+    category: str | None = "alimentacao",
+) -> None:
+    """Insert one EXPENSE inside the radar's 90-day window."""
+    from decimal import Decimal
+
+    from app.extensions.database import db
+    from app.models.transaction import (
+        Transaction,
+        TransactionCategory,
+        TransactionType,
+    )
+
+    with app.app_context():
+        db.session.add(
+            Transaction(
+                user_id=user_id,
+                title="Cafeteria",
+                amount=Decimal(amount),
+                type=TransactionType.EXPENSE,
+                due_date=due_date or (date(2026, 6, 5) - timedelta(days=3)),
+                category=TransactionCategory(category) if category else None,
+            )
+        )
+        db.session.commit()
+
+
 def _seed_cached_radar(app, user_id: _uuid.UUID, *, period_label: str) -> None:
     from app.extensions.database import db
     from app.models.ai_insight import AIInsight, InsightType
@@ -212,6 +244,7 @@ def test_generate_mints_service_token(app, client, monkeypatch) -> None:
 
     token = _register_and_login(client)
     user_id = _grant_premium(app, token)
+    _seed_expense(app, user_id)
 
     captured: dict[str, str] = {}
 
@@ -234,6 +267,7 @@ def test_generate_mints_service_token(app, client, monkeypatch) -> None:
 def test_generate_persists_insight(app, client, monkeypatch) -> None:
     token = _register_and_login(client)
     user_id = _grant_premium(app, token)
+    _seed_expense(app, user_id)
 
     _patch_v2(
         monkeypatch,
@@ -263,6 +297,7 @@ def test_generate_persists_insight(app, client, monkeypatch) -> None:
 def test_generate_does_not_persist_when_empty(app, client, monkeypatch) -> None:
     token = _register_and_login(client)
     user_id = _grant_premium(app, token)
+    _seed_expense(app, user_id)
 
     _patch_v2(monkeypatch, status=200, body={"patterns": []})
 
@@ -278,6 +313,7 @@ def test_generate_does_not_persist_when_empty(app, client, monkeypatch) -> None:
 def test_generate_raises_on_upstream_error(app, client, monkeypatch) -> None:
     token = _register_and_login(client)
     user_id = _grant_premium(app, token)
+    _seed_expense(app, user_id)
 
     _patch_v2(monkeypatch, status=502, body={"error": "boom"})
 
@@ -293,8 +329,164 @@ def test_generate_raises_on_upstream_error(app, client, monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# #1596 — the weekly cron failed for 8 days with an unreadable error
+# ---------------------------------------------------------------------------
+
+
+def test_generate_skips_v2_when_user_has_no_expenses(app, client, monkeypatch) -> None:
+    """A Premium user with no expenses in the window must not hit v2.
+
+    v2 declares ``transactions: min_length=1``; posting an empty list earns a
+    422 that v1 used to surface as a generic "Falha ao gerar o radar de gastos.",
+    turning "nothing to analyse" into a red weekly job. Regression for #1596.
+    """
+    token = _register_and_login(client)
+    user_id = _grant_premium(app, token)
+
+    def _boom(**_kwargs):  # noqa: ANN003
+        raise AssertionError("v2 must not be called with an empty payload")
+
+    monkeypatch.setattr(sps_service, "call_v2_spending_patterns", _boom)
+
+    with app.app_context():
+        result = sps_service.generate_and_persist_spending_patterns(
+            user_id, anchor_date=date(2026, 6, 5)
+        )
+
+    assert result["persisted"] is False
+    assert result["patterns"] == []
+
+
+def test_generate_drops_amounts_v2_would_reject(app, client, monkeypatch) -> None:
+    """v2 declares ``amount: float = Field(gt=0)``.
+
+    One zeroed row used to 422 the whole user; filter it out instead.
+    """
+    token = _register_and_login(client)
+    user_id = _grant_premium(app, token)
+    _seed_expense(app, user_id, amount="0.00")
+    _seed_expense(app, user_id, amount="42.90")
+
+    captured: dict[str, object] = {}
+
+    def _capture(*, transactions, period_days, auth_header):  # noqa: ANN001
+        captured["transactions"] = transactions
+        return 200, {"patterns": []}
+
+    monkeypatch.setattr(sps_service, "call_v2_spending_patterns", _capture)
+
+    with app.app_context():
+        sps_service.generate_and_persist_spending_patterns(
+            user_id, anchor_date=date(2026, 6, 5)
+        )
+
+    forwarded = captured["transactions"]
+    assert [row["amount"] for row in forwarded] == [42.90]
+
+
+def test_upstream_error_names_the_status_and_detail(app, client, monkeypatch) -> None:
+    """The cron's only output is ``error={exc}`` — it must name the cause.
+
+    #1596 stayed open for 8 days because a 401 ``Token revoked.`` from v2 was
+    indistinguishable from a 422 or a 500 in the job log and in the auto-opened
+    issue.
+    """
+    token = _register_and_login(client)
+    user_id = _grant_premium(app, token)
+    _seed_expense(app, user_id)
+
+    _patch_v2(monkeypatch, status=401, body={"detail": "Token revoked."})
+
+    with app.app_context():
+        try:
+            sps_service.generate_and_persist_spending_patterns(
+                user_id, anchor_date=date(2026, 6, 5)
+            )
+        except sps_service.SpendingPatternsUpstreamError as exc:
+            assert exc.status_code == 401
+            assert "401" in str(exc)
+            assert "Token revoked." in str(exc)
+        else:  # pragma: no cover - guard
+            raise AssertionError("expected SpendingPatternsUpstreamError")
+
+
+def test_upstream_error_never_echoes_validation_input(app, client, monkeypatch) -> None:
+    """A 422 body carries the rejected ``input`` — amounts are user data (LGPD).
+
+    Report the field location and the error type, never the value.
+    """
+    token = _register_and_login(client)
+    user_id = _grant_premium(app, token)
+    _seed_expense(app, user_id)
+
+    _patch_v2(
+        monkeypatch,
+        status=422,
+        body={
+            "detail": [
+                {
+                    "type": "greater_than",
+                    "loc": ["body", "transactions", 0, "amount"],
+                    "msg": "Input should be greater than 0",
+                    "input": "1234.56",
+                }
+            ]
+        },
+    )
+
+    with app.app_context():
+        try:
+            sps_service.generate_and_persist_spending_patterns(
+                user_id, anchor_date=date(2026, 6, 5)
+            )
+        except sps_service.SpendingPatternsUpstreamError as exc:
+            message = str(exc)
+            assert "422" in message
+            assert "greater_than" in message
+            assert "transactions.0.amount" in message
+            assert "1234.56" not in message
+        else:  # pragma: no cover - guard
+            raise AssertionError("expected SpendingPatternsUpstreamError")
+
+
+def test_describe_upstream_failure_degrades_to_the_status_alone() -> None:
+    """An unparseable body must still yield a message that names the status."""
+    describe = sps_service._describe_upstream_failure
+
+    assert describe(502, {}) == "HTTP 502"
+    assert describe(500, {"error": "boom"}) == "HTTP 500"
+    assert describe(422, {"detail": ["not-a-dict"]}) == "HTTP 422"
+    assert describe(422, {"detail": [{"loc": [], "type": "missing"}]}) == (
+        "HTTP 422: missing"
+    )
+    assert describe(422, {"detail": [{"loc": ["body"]}]}) == "HTTP 422: invalid"
+
+
+def test_cli_counts_user_without_expenses_as_skipped(app, client, monkeypatch) -> None:
+    """No expenses is not a failure — the weekly job must stay green."""
+    token = _register_and_login(client)
+    _grant_premium(app, token)
+
+    def _boom(**_kwargs):  # noqa: ANN003
+        raise AssertionError("v2 must not be called with an empty payload")
+
+    monkeypatch.setattr(sps_service, "call_v2_spending_patterns", _boom)
+
+    result = _invoke_cli(app)
+    assert result.exit_code == 0, result.output
+    assert "failures=0" in result.output
+    assert "skipped=1" in result.output
+
+
+# ---------------------------------------------------------------------------
 # CLI — flask ai spending-patterns
 # ---------------------------------------------------------------------------
+
+
+def _brt_today() -> date:
+    from app.cli.ai_insights_cli import _brt_today as _impl
+
+    return _impl()
 
 
 def _invoke_cli(app, *args: str) -> object:
@@ -326,6 +518,7 @@ def test_cli_dry_run_does_not_call_v2(app, client, monkeypatch) -> None:
 def test_cli_generates_for_premium_user(app, client, monkeypatch) -> None:
     token = _register_and_login(client)
     user_id = _grant_premium(app, token)
+    _seed_expense(app, user_id, due_date=_brt_today() - timedelta(days=3))
 
     _patch_v2(
         monkeypatch,
