@@ -56,14 +56,17 @@ def _financial_llm_response(*, summary: str = "Resumo.") -> LLMResponse:
 
 
 class TestDepthPrompt:
-    def test_daily_prompt_targets_3_min_reading(self) -> None:
+    def test_daily_prompt_targets_8_min_reading(self) -> None:
         from app.services.ai_advisory_service import _build_financial_insight_prompt
 
         prompt = _build_financial_insight_prompt(
             {"schema_version": "v1", "data_quality": {}, "insight_contract": {}},
             period_type="daily",
         )
-        assert "3 minutos de leitura" in prompt
+        # #1654 took the daily reading from a 3-minute extraction to an
+        # 8-minute analysis with mandatory comparisons.
+        assert "8 minutos de leitura" in prompt
+        assert "COMPARATIVOS OBRIGATÓRIOS" in prompt
 
     def test_long_prompts_target_15_min_reading(self) -> None:
         from app.services.ai_advisory_service import _build_financial_insight_prompt
@@ -80,7 +83,7 @@ class TestPeriodMaxTokens:
     def test_daily_default_budget(self) -> None:
         from app.services.ai_advisory_service import _period_max_tokens
 
-        assert _period_max_tokens("daily") == 1500
+        assert _period_max_tokens("daily") == 2800
 
     def test_long_default_budget(self) -> None:
         from app.services.ai_advisory_service import _period_max_tokens
@@ -111,7 +114,7 @@ class TestPeriodMaxTokens:
             service.generate_financial_insights(
                 period_type="daily", anchor_date=date(2026, 5, 17)
             )
-            assert provider.generate_with_usage.call_args.kwargs["max_tokens"] == 1500
+            assert provider.generate_with_usage.call_args.kwargs["max_tokens"] == 2800
 
     def test_generate_passes_long_budget_to_provider(self, app) -> None:
         with app.app_context():
@@ -141,7 +144,7 @@ class TestDepthGate:
             from app.services.ai_advisory_service import AIAdvisoryService
 
             provider = MagicMock()
-            # Short canned response → far below the daily 450-word target.
+            # Short canned response → far below the daily 950-word target.
             provider.generate_with_usage.return_value = _financial_llm_response()
             service = AIAdvisoryService(user_id=uuid.uuid4(), llm_provider=provider)
             with patch(

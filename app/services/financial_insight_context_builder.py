@@ -71,7 +71,10 @@ _GOAL_PACE_WINDOW_DAYS = 90
 # When exceeded, `truncate_snapshot()` reduces large lists deterministically
 # while preserving the structural backbone (schema_version, current_period,
 # comparisons). Override via AI_SNAPSHOT_MAX_BYTES env for cost experiments.
-DEFAULT_MAX_SNAPSHOT_BYTES = 12 * 1024
+# #1654: the daily reading now demands comparisons against yesterday, the same
+# day last month, the daily series and the month's extremes — 12 KiB truncated
+# the very blocks those comparisons read from.
+DEFAULT_MAX_SNAPSHOT_BYTES = 16 * 1024
 DEFAULT_MAX_SNAPSHOT_BYTES_LONG = 24 * 1024
 MAX_SNAPSHOT_BYTES = int(
     os.getenv("AI_SNAPSHOT_MAX_BYTES", str(DEFAULT_MAX_SNAPSHOT_BYTES))
