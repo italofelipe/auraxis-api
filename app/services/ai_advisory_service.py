@@ -69,6 +69,7 @@ from app.services.financial_insight_context_builder import (
     truncate_snapshot,
 )
 from app.services.goal_projection_service import GoalProjectionService
+from app.services.insight_angle_rotation import InsightAngle, resolve_daily_angle
 from app.services.insight_evidence_validator import filter_valid_items
 from app.services.insight_fluida_builder import enrich_insight_payload
 from app.services.llm_provider import (
@@ -1648,10 +1649,21 @@ class AIAdvisoryService:
         # snapshot's transactions are scheduled commitments/income — recurring
         # occurrences materialised ahead of time — not realised history.
         forecast = period_start > timezone_utils.local_today(timezone_resolution)
+
+        # Daily readings rotate an editorial lens and carry a short memory of
+        # what was already written, so two quiet days in a row stop coming out
+        # as the same text (#1654).
+        angle, recent_titles, angle_metadata = _resolve_daily_variety(
+            user_id=self._user_id,
+            period_type=normalized_period_type,
+            anchor=period_start,
+        )
         prompt = _build_financial_insight_prompt(
             prompt_snapshot,
             period_type=normalized_period_type,
             forecast=forecast,
+            angle=angle,
+            recent_titles=recent_titles,
         )
 
         try:
@@ -1706,6 +1718,7 @@ class AIAdvisoryService:
             "snapshot_bytes_original": truncation_info["snapshot_bytes_original"],
             "snapshot_bytes_final": truncation_info["snapshot_bytes_final"],
             "truncated": bool(truncation_info["truncated"]),
+            **angle_metadata,
         }
         if truncation_info["dropped_sections"]:
             persist_metadata["dropped_sections"] = list(
@@ -2864,12 +2877,17 @@ def _build_monthly_budget_by_category(
 # lean (~3 min); weekly/monthly are deep reports (~15 min).
 _DEPTH_INSTRUCTIONS: dict[str, str] = {
     "daily": (
-        "PROFUNDIDADE ALVO: aproximadamente 3 minutos de leitura (cerca de 500 a "
-        "700 palavras no total da resposta). Vá além de uma frase por dimensão: "
+        "PROFUNDIDADE ALVO: aproximadamente 8 minutos de leitura (cerca de 1100 a "
+        "1500 palavras no total da resposta). Vá além de uma frase por dimensão: "
         "para cada dimensão com dados, escreva itens substantivos com 'message' "
-        "denso (2 a 4 frases), trazendo números concretos do snapshot, ao menos "
-        "uma comparação e uma recomendação acionável. Use markdown leve (negrito "
-        "em valores) quando ajudar a leitura. Não seja telegráfico nem repita."
+        "denso (3 a 6 frases), trazendo números concretos do snapshot. "
+        "COMPARATIVOS OBRIGATÓRIOS sempre que os dados existirem: hoje contra "
+        "ontem ('comparisons.yesterday'), contra o mesmo dia do mês anterior "
+        "('comparisons.same_day_previous_month'), contra a média do período "
+        "('daily_series') e contra os extremos do mês ('extremes'). Toda dica "
+        "precisa vir ancorada num número e apontar uma ação concreta. Use markdown "
+        "leve (negrito em valores) quando ajudar a leitura. Não seja telegráfico "
+        "nem repita."
     ),
     "weekly": (
         "PROFUNDIDADE ALVO: aproximadamente 15 minutos de leitura (cerca de 2500 a "
@@ -2890,7 +2908,7 @@ _DEPTH_INSTRUCTIONS: dict[str, str] = {
 }
 
 # Approximate reading-time word targets used by the advisory depth gate (#1481).
-_DEPTH_WORD_TARGETS: dict[str, int] = {"daily": 450, "weekly": 2200, "monthly": 2200}
+_DEPTH_WORD_TARGETS: dict[str, int] = {"daily": 950, "weekly": 2200, "monthly": 2200}
 
 
 def _snapshot_max_bytes(period_type: str) -> int:
@@ -2923,14 +2941,18 @@ def _period_model(period_type: str) -> str | None:
     Returns None to use the provider's default model.
     """
     if period_type == "daily":
-        return os.getenv("OPENAI_ADVISORY_MODEL_DAILY", "gpt-4o-mini") or None
+        # #1654: the daily reading went from a 3-minute extraction to an
+        # 8-minute analysis with mandatory comparisons, which mini could not
+        # sustain. Cost implication is in the issue — the per-user ceiling must
+        # be raised BEFORE this ships.
+        return os.getenv("OPENAI_ADVISORY_MODEL_DAILY", "gpt-4o") or None
     return None
 
 
 def _period_max_tokens(period_type: str) -> int:
     """Output token budget per period — deep reports need a much larger budget."""
     if period_type == "daily":
-        env_key, default = "AI_INSIGHT_MAX_TOKENS_DAILY", 1500
+        env_key, default = "AI_INSIGHT_MAX_TOKENS_DAILY", 2800
     else:
         env_key, default = "AI_INSIGHT_MAX_TOKENS_LONG", 6000
     try:
@@ -3012,11 +3034,158 @@ def _build_chat_prompt(
     )
 
 
+def _resolve_daily_variety(
+    *,
+    user_id: UUID,
+    period_type: str,
+    anchor: date,
+) -> tuple[InsightAngle | None, list[str], dict[str, Any]]:
+    """Resolve the lens and the short memory that keep dailies from repeating.
+
+    Weekly and monthly readings are long-form and already vary by construction,
+    so the rotation is a daily-only device.
+
+    Returns the metadata fragment ready to merge rather than a value the caller
+    has to branch on — the generator is already at the complexity ceiling.
+
+    :param user_id: Owner of the insight.
+    :param period_type: Normalized period being generated.
+    :param anchor: First day of the period.
+    :returns: The lens, the recently used titles and the metadata to persist.
+    """
+    if period_type != "daily":
+        return None, [], {}
+    angle = resolve_daily_angle(user_id, anchor)
+    # Persisted so the next generation can steer away from the same lens and so
+    # support can explain why a given day read the way it did.
+    return angle, _recent_daily_insight_titles(user_id), {"angle": angle.key}
+
+
+def _recent_daily_insight_titles(user_id: UUID, *, limit: int = 7) -> list[str]:
+    """Titles the user already read in the last few daily insights.
+
+    Fed to the prompt as a ban list, not as context: the model must not treat
+    any of it as fact. Only titles travel — the bodies would cost far more
+    tokens than the variety is worth.
+
+    :param user_id: Owner of the insights.
+    :param limit: How many previous days to look back on.
+    :returns: Titles, newest first, without duplicates or blanks.
+    """
+    rows: list[AIInsight] = (
+        db.session.query(AIInsight)
+        .filter(AIInsight.user_id == user_id)
+        .filter(AIInsight.insight_type == InsightType.daily)
+        .order_by(AIInsight.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    titles: list[str] = []
+    for row in rows:
+        payload = _safe_json_loads_for_titles(row.content)
+        for item in payload.get("items", []) if isinstance(payload, dict) else []:
+            if not isinstance(item, dict):
+                continue
+            title = item.get("title")
+            if isinstance(title, str) and title.strip() and title not in titles:
+                titles.append(title.strip())
+    return titles
+
+
+def _safe_json_loads_for_titles(raw: str | None) -> dict[str, Any]:
+    """Parse persisted insight content, tolerating anything unparseable.
+
+    :param raw: Serialized insight content.
+    :returns: The decoded object, or an empty dict.
+    """
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _has_no_new_activity(snapshot: dict[str, Any]) -> bool:
+    """True when the day brought nothing new to write about.
+
+    Deterministic on purpose: the model is told to switch register, but the
+    decision of *when* stays in our code so it can be tested.
+
+    :param snapshot: The financial snapshot handed to the model.
+    :returns: Whether nothing changed since the previous generation.
+    """
+    transactions = snapshot.get("transactions")
+    changes = (
+        transactions.get("changes_since_last_generation")
+        if isinstance(transactions, dict)
+        else None
+    )
+    if changes:
+        return False
+
+    current = snapshot.get("current_period")
+    created = current.get("created_today") if isinstance(current, dict) else None
+    count = created.get("transaction_count") if isinstance(created, dict) else None
+    return not count
+
+
+def _build_variety_instruction(
+    *,
+    angle: InsightAngle | None,
+    recent_titles: list[str],
+    no_new_activity: bool,
+) -> str:
+    """Assemble the anti-repetition block for the daily prompt (#1654).
+
+    Three layers, none of which touches the cache: the cache is already scoped
+    by ``period_label`` and never serves one day's text on another. What repeats
+    is the *writing* — same prompt over an almost identical snapshot.
+    """
+    if angle is None:
+        return ""
+
+    parts = [
+        f"LENTE DE HOJE: {angle.instruction}. Aprofunde ESTA frente com 2 ou 3 "
+        "itens extras e trate as demais dimensões obrigatórias de forma mais "
+        "concisa. A lente muda a cada dia — não escreva como se ela fosse o "
+        "assunto de sempre.\n"
+    ]
+
+    if recent_titles:
+        listed = "; ".join(f'"{title}"' for title in recent_titles)
+        parts.append(
+            "TÍTULOS JÁ USADOS NOS ÚLTIMOS DIAS: "
+            f"{listed}. É PROIBIDO repetir esses títulos ou reciclar a mesma "
+            "abertura. Esta lista serve APENAS como proibição — não é fonte "
+            "factual e nada nela deve ser citado como dado.\n"
+        )
+
+    if no_new_activity:
+        parts.append(
+            "MODO SEM MOVIMENTO: hoje não houve lançamento novo. NÃO se limite a "
+            "dizer que nada mudou — isso não ajuda ninguém. Entregue valor a "
+            "partir do que já existe no snapshot: (a) o que a ausência de gastos "
+            "faz com 'month_summary.burn_rate_daily' e "
+            "'month_summary.projected_eom_balance'; (b) a revisão de uma meta com "
+            "base em 'goals' e 'projections'; (c) a folga restante de um envelope "
+            "em 'budgets'; (d) um comparativo histórico via 'daily_series', "
+            "'extremes' ou 'comparisons'. Continua PROIBIDO inventar transações, "
+            "valores ou datas.\n"
+        )
+
+    return "".join(parts)
+
+
 def _build_financial_insight_prompt(
     snapshot: dict[str, Any],
     *,
     period_type: str,
     forecast: bool = False,
+    angle: InsightAngle | None = None,
+    recent_titles: list[str] | None = None,
 ) -> str:
     context = json.dumps(snapshot, ensure_ascii=False, default=str)
     if forecast:
@@ -3057,6 +3226,12 @@ def _build_financial_insight_prompt(
         period_type, _DEPTH_INSTRUCTIONS["daily"]
     )
 
+    variety_instruction = _build_variety_instruction(
+        angle=angle,
+        recent_titles=recent_titles or [],
+        no_new_activity=_has_no_new_activity(snapshot),
+    )
+
     insight_types = ", ".join(_SPENDING_INSIGHT_TYPES)
     contract = snapshot.get("insight_contract")
     required_dimensions_raw = (
@@ -3095,6 +3270,7 @@ def _build_financial_insight_prompt(
         "objetivos, personalizados e acionáveis.\n"
         f"{period_instruction}\n"
         f"{depth_instruction}\n"
+        f"{variety_instruction}"
         f"{coverage_instruction}"
         f"Presença de dados por domínio: {domain_presence_json}.\n"
         "Use somente os dados do snapshot fornecido. Não invente transações, metas, "

@@ -274,7 +274,8 @@ class TestPerPeriodCapsAndTrim:
 
         monkeypatch.delenv("AI_SNAPSHOT_MAX_BYTES", raising=False)
         monkeypatch.delenv("AI_SNAPSHOT_MAX_BYTES_LONG", raising=False)
-        assert _snapshot_max_bytes("daily") == 12 * 1024
+        # #1654: the daily reading needs the comparison blocks intact.
+        assert _snapshot_max_bytes("daily") == 16 * 1024
         assert _snapshot_max_bytes("weekly") == 24 * 1024
         assert _snapshot_max_bytes("monthly") == 24 * 1024
 
@@ -311,7 +312,14 @@ class TestPerPeriodModelMix:
             latency_ms=10,
         )
 
-    def test_daily_manual_generation_uses_mini_model(self, app, monkeypatch) -> None:
+    def test_daily_manual_generation_uses_the_strong_model(
+        self, app, monkeypatch
+    ) -> None:
+        """#1654 moved the daily reading off mini.
+
+        The 8-minute analysis with mandatory comparisons is not something mini
+        sustains; the per-user cost ceiling was raised to match.
+        """
         monkeypatch.delenv("OPENAI_ADVISORY_MODEL_DAILY", raising=False)
         with app.app_context():
             from app.services.ai_advisory_service import AIAdvisoryService
@@ -324,9 +332,7 @@ class TestPerPeriodModelMix:
                 period_type="daily", anchor_date=_ANCHOR
             )
 
-            assert provider.generate_with_usage.call_args.kwargs["model"] == (
-                "gpt-4o-mini"
-            )
+            assert provider.generate_with_usage.call_args.kwargs["model"] == "gpt-4o"
 
     def test_weekly_generation_uses_provider_default_model(self, app) -> None:
         with app.app_context():
