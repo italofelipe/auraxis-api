@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.78.0](https://github.com/italofelipe/auraxis-api/compare/v1.77.0...v1.78.0) (2026-08-02)
+
+
+### Features
+
+* **ai:** aprofundar o insight diário e impedir que ele se repita ([#1655](https://github.com/italofelipe/auraxis-api/issues/1655)) ([ed2d814](https://github.com/italofelipe/auraxis-api/commit/ed2d81488d83b6ca827fcb0002be6509691597b6)), closes [#1654](https://github.com/italofelipe/auraxis-api/issues/1654)
+
+
+### Bug Fixes
+
+* **auth:** load PASSWORD_RESET_FRONTEND_URL into the Flask config ([#1651](https://github.com/italofelipe/auraxis-api/issues/1651)) ([283dcc5](https://github.com/italofelipe/auraxis-api/commit/283dcc5a4782d360b3cbd7f99b0ae1de61ef9b3c))
+
 ## [1.77.0](https://github.com/italofelipe/auraxis-api/compare/v1.76.0...v1.77.0) (2026-07-31)
 
 
