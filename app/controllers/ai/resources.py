@@ -54,6 +54,10 @@ from app.services.ai_advisory_service import (
     AIInsightCostBudgetExceededError,
     _ai_chat_daily_limit,
 )
+from app.services.ai_insight_history_service import (
+    AIInsightHistoryValidationError,
+    list_user_insights,
+)
 from app.services.ai_lgpd import AIConsentRequiredError, ensure_ai_consent_granted
 from app.services.ai_monthly_report_service import (
     create_monthly_report_run,
@@ -1307,7 +1311,8 @@ class AIInsightHistoryResource(MethodResource):
         description=(
             "Retorna a lista paginada de insights gerados por IA para o usuário "  # noqa: E501
             "autenticado, ordenada do mais recente para o mais antigo. "
-            "Acessível sem entitlement premium."
+            "Acessível sem entitlement premium. Aceita filtros opcionais por "
+            "período (period_type/period_label)."
         ),
         tags=["AI Advisory"],
         security=[{"BearerAuth": []}],
@@ -1325,6 +1330,26 @@ class AIInsightHistoryResource(MethodResource):
                 "required": False,
                 "description": "Itens por página (máx. 50). Padrão: 20.",
                 "example": 20,
+            },
+            "period_type": {
+                "in": "query",
+                "type": "string",
+                "required": False,
+                "description": (
+                    "Filtra por tipo de período: daily, weekly, monthly, recap "
+                    "ou spending_patterns. Valor desconhecido devolve 400."
+                ),
+                "example": "monthly",
+            },
+            "period_label": {
+                "in": "query",
+                "type": "string",
+                "required": False,
+                "description": (
+                    "Filtra pelo rótulo do período (ex.: '2026-07' para mensal, "
+                    "'2026-W20' para semanal, '2026-07-15' para diário)."
+                ),
+                "example": "2026-07",
             },
         },
         responses={
@@ -1366,9 +1391,6 @@ class AIInsightHistoryResource(MethodResource):
     )
     @jwt_required()
     def get(self) -> Response:
-        from app.extensions.database import db
-        from app.models.ai_insight import AIInsight
-
         token_error = _guard_revoked_token()
         if token_error is not None:
             return token_error
@@ -1376,23 +1398,23 @@ class AIInsightHistoryResource(MethodResource):
         user_id = current_user_id()
 
         try:
-            page = max(1, int(request.args.get("page", 1)))
-            per_page = min(50, max(1, int(request.args.get("per_page", 20))))
-        except (ValueError, TypeError):
-            page, per_page = 1, 20
-
-        total = db.session.query(AIInsight).filter_by(user_id=user_id).count()
-        rows = (
-            db.session.query(AIInsight)
-            .filter_by(user_id=user_id)
-            .order_by(AIInsight.created_at.desc())
-            .offset((page - 1) * per_page)
-            .limit(per_page)
-            .all()
-        )
+            history = list_user_insights(
+                user_id,
+                page=request.args.get("page"),
+                per_page=request.args.get("per_page"),
+                period_type=request.args.get("period_type"),
+                period_label=request.args.get("period_label"),
+            )
+        except AIInsightHistoryValidationError as exc:
+            return compat_error_response(
+                legacy_payload={"error": exc.message},
+                status_code=400,
+                message=exc.message,
+                error_code=exc.code,
+            )
 
         items = []
-        for r in rows:
+        for r in history.items:
             summary, insight_items, context_schema_version, context_hash = (
                 _parse_history_content(r.content)
             )
@@ -1418,7 +1440,12 @@ class AIInsightHistoryResource(MethodResource):
                 }
             )
 
-        payload = {"items": items, "page": page, "per_page": per_page, "total": total}
+        payload = {
+            "items": items,
+            "page": history.page,
+            "per_page": history.per_page,
+            "total": history.total,
+        }
         return compat_success_response(
             legacy_payload=payload,
             status_code=200,

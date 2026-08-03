@@ -879,7 +879,9 @@ GRAPHQL_OPERATION_CATALOG: tuple[GraphQLOperationDoc, ...] = (
         access="auth_required",
         summary=(
             "Retorna o histórico paginado de insights gerados por IA para o usuário "
-            "autenticado, ordenado do mais recente ao mais antigo."
+            "autenticado, ordenado do mais recente ao mais antigo. Aceita filtros "
+            "opcionais periodType/periodLabel — paridade com "
+            "GET /ai/insights/history (#1653)."
         ),
         source_module=QUERY_AI_INSIGHT_MODULE,
     ),

@@ -4,9 +4,15 @@ import json
 
 import graphene
 
-from app.extensions.database import db
 from app.graphql.auth import get_current_user_required
+from app.graphql.errors import build_public_graphql_error
 from app.models.ai_insight import AIInsight
+from app.services.ai_insight_history_service import (
+    DEFAULT_PAGE,
+    DEFAULT_PER_PAGE,
+    AIInsightHistoryValidationError,
+    list_user_insights,
+)
 from app.services.ai_spending_patterns_service import read_latest_spending_patterns
 
 
@@ -76,8 +82,10 @@ class AIInsightChangeStatusType(graphene.ObjectType):
 class AIInsightQueryMixin:
     ai_insight_history = graphene.Field(
         AIInsightHistoryResultType,
-        page=graphene.Int(default_value=1),
-        per_page=graphene.Int(default_value=20),
+        page=graphene.Int(default_value=DEFAULT_PAGE),
+        per_page=graphene.Int(default_value=DEFAULT_PER_PAGE),
+        period_type=graphene.String(),
+        period_label=graphene.String(),
     )
     ai_insight_change_status = graphene.Field(
         AIInsightChangeStatusType,
@@ -132,23 +140,25 @@ class AIInsightQueryMixin:
         _info: graphene.ResolveInfo,
         page: int,
         per_page: int,
+        period_type: str | None = None,
+        period_label: str | None = None,
     ) -> AIInsightHistoryResultType:
         user = get_current_user_required()
-        user_id = user.id
 
-        total = db.session.query(AIInsight).filter_by(user_id=user_id).count()
-        rows = (
-            db.session.query(AIInsight)
-            .filter_by(user_id=user_id)
-            .order_by(AIInsight.created_at.desc())
-            .offset((page - 1) * per_page)
-            .limit(per_page)
-            .all()
-        )
+        try:
+            history = list_user_insights(
+                user.id,
+                page=page,
+                per_page=per_page,
+                period_type=period_type,
+                period_label=period_label,
+            )
+        except AIInsightHistoryValidationError as exc:
+            raise build_public_graphql_error(exc.message, code=exc.code) from exc
 
         return AIInsightHistoryResultType(
-            items=[_to_ai_insight_type(r) for r in rows],
-            page=page,
-            per_page=per_page,
-            total=total,
+            items=[_to_ai_insight_type(r) for r in history.items],
+            page=history.page,
+            per_page=history.per_page,
+            total=history.total,
         )
