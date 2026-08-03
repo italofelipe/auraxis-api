@@ -28,8 +28,8 @@ def _auth_headers(token: str, contract: str | None = None) -> dict[str, str]:
     return headers
 
 
-def _transaction_payload(**overrides: str) -> dict[str, str]:
-    payload = {
+def _transaction_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
         "title": "Conta de água",
         "amount": "120.50",
         "type": "expense",
@@ -120,6 +120,110 @@ def test_transaction_update_paid_at_future_returns_400(client) -> None:
 
     assert response.status_code == 400
     assert response.get_json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_transaction_create_persists_paid_at(client) -> None:
+    """POST /transactions must not swallow a validated ``paid_at`` (#1659)."""
+    token = _register_and_login(client, "create-paid-at")
+    paid_at = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+
+    response = client.post(
+        "/transactions",
+        headers=_auth_headers(token, "v2"),
+        json=_transaction_payload(status="paid", paid_at=paid_at),
+    )
+
+    assert response.status_code == 201
+    created = response.get_json()["data"]["transaction"][0]
+    assert created["paid_at"] is not None
+
+    detail = client.get(
+        f"/transactions/{created['id']}",
+        headers=_auth_headers(token, "v2"),
+    )
+    assert detail.status_code == 200
+    assert detail.get_json()["data"]["transaction"]["paid_at"] is not None
+
+
+def test_transaction_create_installments_persist_paid_at(client) -> None:
+    """The installment batch must persist ``paid_at`` too (#1659)."""
+    token = _register_and_login(client, "create-paid-at-inst")
+    paid_at = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+
+    response = client.post(
+        "/transactions",
+        headers=_auth_headers(token, "v2"),
+        json=_transaction_payload(
+            amount="300.00",
+            status="paid",
+            paid_at=paid_at,
+            is_installment=True,
+            installment_count=3,
+        ),
+    )
+
+    assert response.status_code == 201
+    transactions = response.get_json()["data"]["transactions"]
+    assert len(transactions) == 3
+    assert all(item["paid_at"] is not None for item in transactions)
+
+
+def test_transaction_create_paid_status_without_paid_at_is_accepted(client) -> None:
+    """Backward compatibility: create with status=paid and no paid_at stays 201."""
+    token = _register_and_login(client, "create-paid-no-at")
+
+    response = client.post(
+        "/transactions",
+        headers=_auth_headers(token, "v2"),
+        json=_transaction_payload(status="paid"),
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["data"]["transaction"][0]["paid_at"] is None
+
+
+def test_transaction_create_paid_at_without_paid_status_returns_400(client) -> None:
+    token = _register_and_login(client, "create-paid-at-status")
+
+    response = client.post(
+        "/transactions",
+        headers=_auth_headers(token, "v2"),
+        json=_transaction_payload(
+            status="pending",
+            paid_at=datetime.now(UTC).isoformat(),
+        ),
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_transaction_create_paid_at_future_returns_400(client) -> None:
+    token = _register_and_login(client, "create-paid-at-future")
+    future_paid_at = (datetime.now(UTC) + timedelta(days=2)).isoformat()
+
+    response = client.post(
+        "/transactions",
+        headers=_auth_headers(token, "v2"),
+        json=_transaction_payload(status="paid", paid_at=future_paid_at),
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_transaction_create_paid_at_null_is_ignored(client) -> None:
+    """An explicit ``paid_at: null`` must not trip the status invariant."""
+    token = _register_and_login(client, "create-paid-at-null")
+
+    response = client.post(
+        "/transactions",
+        headers=_auth_headers(token, "v2"),
+        json={**_transaction_payload(), "paid_at": None},
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["data"]["transaction"][0]["paid_at"] is None
 
 
 def test_transaction_update_not_found_v2(client) -> None:
