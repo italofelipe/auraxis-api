@@ -25,7 +25,7 @@ from app.utils.datetime_utils import utc_now_naive
 
 logger = logging.getLogger(__name__)
 
-# How long a started checkout is given before it counts as abandoned. AbacatePay
+# How long a started checkout is given before it counts as abandoned. The gateway
 # hands the buyer a hosted page; someone who is going to pay does it in minutes,
 # not hours. Kept generous so a slow buyer is not counted as lost.
 DEFAULT_ABANDON_AFTER = timedelta(minutes=45)

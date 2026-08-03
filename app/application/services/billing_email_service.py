@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from app.controllers.billing_webhook_parsers import (
-    ABACATEPAY_CHARGEBACK_EVENTS,
-    ABACATEPAY_REFUND_EVENTS,
+    ASAAS_CHARGEBACK_EVENTS,
+    ASAAS_REFUND_EVENTS,
 )
 from app.services.email_provider import EmailMessage
 from app.services.email_templates.base import (
@@ -26,7 +26,7 @@ _PAYMENT_FAILED_EVENTS = {"PAYMENT_OVERDUE", "subscription.past_due"}
 _CANCELED_EVENTS = {"subscription.canceled", "SUBSCRIPTION_DELETED"}
 # #1598 — refund/chargeback notice; event strings owned by
 # billing_webhook_parsers (single source of truth, guarded by a parity test).
-_REFUND_EVENTS = ABACATEPAY_REFUND_EVENTS | ABACATEPAY_CHARGEBACK_EVENTS
+_REFUND_EVENTS = ASAAS_REFUND_EVENTS | ASAAS_CHARGEBACK_EVENTS
 
 _TRIAL_ENDING_TAG_TEMPLATE = "billing_trial_ending_{days}d"
 _TRIAL_EXPIRED_TAG = "billing_trial_expired"

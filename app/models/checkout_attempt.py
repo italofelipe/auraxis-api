@@ -7,7 +7,7 @@ of the attempt there is no denominator: "how many people tried to subscribe and
 did not finish" is unanswerable, and a broken payment path can stay broken
 without emitting a single signal.
 
-The gateway does not help here either — AbacatePay emits ``subscription.*``
+The gateway does not help here either — it emits ``subscription.*``
 events for trial, completion, cancellation, past due and refunds, but **nothing
 for an abandoned checkout**.  Abandonment only exists if we record the attempt.
 

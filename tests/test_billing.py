@@ -61,7 +61,7 @@ def _auth(token: str) -> dict[str, str]:
 class TestFreeBootstrap:
     """#1569 — signup no longer grants a trial.
 
-    The 7-day trial moved to the payment gateway (AbacatePay product with
+    The 7-day trial lives in the gateway checkout request (Asaas nextDueDate,
     ``trialDays: 7``), so it requires a tokenised card and arrives through the
     ``subscription.trial_started`` webhook.  Supersedes the H-PROD-01 14-day
     no-card trial, which contradicted the published Terms of Use.

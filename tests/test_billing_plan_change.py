@@ -32,7 +32,7 @@ class _FakeProvider:
         self._cancel_raises = cancel_raises
         self._checkout = checkout or {
             "checkout_url": "https://pay.test/bill_new",
-            "provider": "abacatepay",
+            "provider": "asaas",
             "provider_customer_id": "cust_new",
             "provider_subscription_id": "bill_new",
         }
@@ -72,7 +72,7 @@ def _make_active_sub(provider_sub_id: str) -> tuple[User, Subscription]:
         plan_code="premium",
         status=SubscriptionStatus.ACTIVE,
         billing_cycle=BillingCycle.MONTHLY,
-        provider="abacatepay",
+        provider="asaas",
         provider_subscription_id=provider_sub_id,
         provider_customer_id=f"cust_{suffix}",
     )
@@ -171,7 +171,7 @@ def _register_active_premium(app, client) -> str:
         sub.status = SubscriptionStatus.ACTIVE
         sub.plan_code = "premium"
         sub.billing_cycle = BillingCycle.MONTHLY
-        sub.provider = "abacatepay"
+        sub.provider = "asaas"
         sub.provider_subscription_id = "subs_rest_old"
         db.session.commit()
     return token

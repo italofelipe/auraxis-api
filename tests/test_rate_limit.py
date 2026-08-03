@@ -188,7 +188,7 @@ def test_checkout_tier_does_not_shadow_the_webhook_tier(client: Any) -> None:
 
     client.post("/subscriptions/checkout", json={})
     exhausted = client.post("/subscriptions/checkout", json={})
-    webhook = client.post("/subscriptions/webhook/abacatepay", json={})
+    webhook = client.post("/subscriptions/webhook/asaas", json={})
 
     assert exhausted.status_code == 429
     assert webhook.status_code != 429

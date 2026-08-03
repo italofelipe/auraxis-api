@@ -124,7 +124,7 @@ class RegisterResource(MethodResource):
             db.session.flush()
 
             # #1569: new accounts start on Free. The 7-day trial moved to the
-            # payment gateway (AbacatePay product `trialDays: 7`), so it now
+            # payment gateway (Asaas `nextDueDate` = today + trial_days), so it now
             # requires a tokenised card and is granted by the
             # `subscription.trial_started` webhook — not by signing up.
             # Supersedes H-PROD-01, whose 14-day no-card trial both contradicted

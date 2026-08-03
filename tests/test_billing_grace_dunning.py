@@ -37,7 +37,7 @@ def _make_active_premium_user_and_sub() -> tuple[User, Subscription]:
         plan_code="premium",
         status=SubscriptionStatus.ACTIVE,
         billing_cycle=BillingCycle.MONTHLY,
-        provider="abacatepay",
+        provider="asaas",
         provider_customer_id=f"cust_{suffix}",
     )
     db.session.add(sub)
