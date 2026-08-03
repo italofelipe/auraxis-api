@@ -4,6 +4,9 @@
   "description": "Canonical Postman/Newman E2E runner for Auraxis API",
   "private": true,
   "scripts": {
+    "contracts:check": "bash scripts/check_contracts.sh",
+    "contracts:check:openapi": "bash scripts/check_contracts.sh --openapi",
+    "contracts:check:graphql": "bash scripts/check_contracts.sh --graphql",
     "postman:build": "python3 scripts/openapi_to_postman.py",
     "postman:local": "bash scripts/run_postman_suite.sh",
     "postman:ci": "bash scripts/run_postman_suite.sh api-tests/postman/environments/local.postman_environment.json",

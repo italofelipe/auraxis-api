@@ -112,7 +112,19 @@ bash scripts/run_ci_quality_local.sh --local
 
 This runs in order: check_feature_flags → repo_hygiene → graphql_auth_config →
 alembic_single_head → security_exception_governance → pip_audit → ruff format →
-ruff check → mypy → bandit → pytest (cov ≥ 85%).
+ruff check → mypy → bandit → **contracts snapshot** → pytest (cov ≥ 85%).
+
+**Contract snapshots are locked (#1536).** `openapi.json`, `schema.graphql`,
+`graphql.introspection.json` and `graphql.operations.manifest.json` are
+versionados e conferidos contra o código a cada PR pelo job
+`Contracts (OpenAPI + GraphQL snapshot)`. Mudou controller, schema ou resolver?
+Regenere e commite o snapshot na mesma PR:
+
+```bash
+npm run contracts:check                                   # detecta o drift
+flask openapi-export --output openapi.json                # corrige o REST
+python3 scripts/export_graphql_docs.py --source runtime    # corrige o GraphQL
+```
 
 **Individual checks** (when debugging a specific gate):
 ```bash
