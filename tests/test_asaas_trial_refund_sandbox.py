@@ -20,6 +20,8 @@ from app.services.billing_adapter import (
     AsaasBillingProvider,
     BillingCheckoutCustomer,
     BillingProviderError,
+    StubBillingProvider,
+    get_default_billing_provider,
 )
 
 
@@ -174,3 +176,53 @@ class TestAsaasRevocationEvents:
         )
         assert snapshot is not None
         assert snapshot["status"] == SubscriptionStatus.ACTIVE.value
+
+
+class TestProviderFactory:
+    """Sucessor de ``test_asaas_remains_pluggable`` (#1675).
+
+    O teste original afirmava ``not isinstance(..., AbacatePayBillingProvider)``
+    e existia para impedir que a migração de 19/07 apagasse o gateway de
+    contingência — o que, no fim, foi o que permitiu voltar. Com o AbacatePay
+    removido a assertiva perde o objeto, mas o que ela protegia continua
+    valendo, e ganha uma proteção nova: provider desconhecido **não pode**
+    degradar para stub em produção.
+    """
+
+    def test_asaas_is_selected(self, monkeypatch) -> None:
+        _clear_runtime_env(monkeypatch)
+        monkeypatch.setenv("BILLING_PROVIDER", "asaas")
+        monkeypatch.setenv("BILLING_ASAAS_API_KEY", "k")
+        assert isinstance(get_default_billing_provider(), AsaasBillingProvider)
+
+    def test_stub_is_selected_explicitly(self, monkeypatch) -> None:
+        _clear_runtime_env(monkeypatch)
+        monkeypatch.setenv("BILLING_PROVIDER", "stub")
+        assert isinstance(get_default_billing_provider(), StubBillingProvider)
+
+    def test_unset_falls_back_to_stub(self, monkeypatch) -> None:
+        _clear_runtime_env(monkeypatch)
+        monkeypatch.delenv("BILLING_PROVIDER", raising=False)
+        monkeypatch.delenv("AURAXIS_BILLING_PROVIDER", raising=False)
+        assert isinstance(get_default_billing_provider(), StubBillingProvider)
+
+    @pytest.mark.parametrize("name", ["abacatepay", "stripe", "typo-asaas", "asas"])
+    def test_unknown_provider_raises_in_production(self, monkeypatch, name) -> None:
+        """Sem isto, um typo serve checkout de stub a comprador real.
+
+        É o cenário exato de deployar a remoção do gateway antigo antes de
+        trocar o .env.prod: BILLING_PROVIDER=abacatepay deixaria de resolver e
+        a URL devolvida seria ``https://stub.billing/...``, sem erro nenhum.
+        """
+        monkeypatch.setenv("APP_ENV", "production")
+        monkeypatch.delenv("FLASK_ENV", raising=False)
+        monkeypatch.setenv("BILLING_PROVIDER", name)
+
+        with pytest.raises(BillingProviderError, match="not a supported gateway"):
+            get_default_billing_provider()
+
+    def test_unknown_provider_still_stubs_outside_production(self, monkeypatch) -> None:
+        """CI e desenvolvimento continuam tolerantes — só produção é dura."""
+        _clear_runtime_env(monkeypatch)
+        monkeypatch.setenv("BILLING_PROVIDER", "whatever")
+        assert isinstance(get_default_billing_provider(), StubBillingProvider)

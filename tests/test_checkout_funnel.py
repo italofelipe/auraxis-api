@@ -55,7 +55,7 @@ def _start(user_id, **overrides):
         "plan_slug": "premium_monthly",
         "plan_code": "premium",
         "billing_cycle": "monthly",
-        "provider": "abacatepay",
+        "provider": "asaas",
         "provider_checkout_id": f"bill_{uuid.uuid4().hex[:8]}",
         "provider_customer_id": f"cust_{uuid.uuid4().hex[:8]}",
         "return_surface": "landing",
@@ -83,13 +83,15 @@ class TestRecording:
             attempt = record_checkout_failed(
                 user_id=buyer.id,
                 plan_slug="premium_annual",
-                provider="abacatepay",
-                reason="BILLING_ABACATEPAY_PRODUCT_PREMIUM_ANNUAL is required",
+                provider="asaas",
+                reason="BILLING_ASAAS_API_KEY is required",
             )
             db.session.commit()
 
             assert attempt.status == CheckoutAttemptStatus.FAILED.value
-            assert "PREMIUM_ANNUAL" in attempt.failure_reason
+            # A razão é gravada verbatim: é ela que diz, meses depois, se a
+            # venda caiu por config nossa ou por recusa do gateway.
+            assert "BILLING_ASAAS_API_KEY" in attempt.failure_reason
             assert attempt.provider_checkout_id is None
 
     def test_failure_reason_is_truncated_to_the_column_width(self, app, buyer):
@@ -98,7 +100,7 @@ class TestRecording:
             attempt = record_checkout_failed(
                 user_id=buyer.id,
                 plan_slug="premium_monthly",
-                provider="abacatepay",
+                provider="asaas",
                 reason="x" * 500,
             )
             db.session.commit()
@@ -113,7 +115,7 @@ class TestCompletion:
             attempt = _start(buyer.id, provider_customer_id="cust_match")
 
             closed = complete_attempt_for_subscription(
-                provider="abacatepay",
+                provider="asaas",
                 provider_customer_id="cust_match",
                 provider_subscription_id="subs_999",
             )
@@ -133,7 +135,7 @@ class TestCompletion:
             db.session.commit()
 
             closed = complete_attempt_for_subscription(
-                provider="abacatepay",
+                provider="asaas",
                 provider_customer_id="cust_retry",
                 provider_subscription_id="subs_retry",
             )
@@ -146,7 +148,7 @@ class TestCompletion:
         with app.app_context():
             assert (
                 complete_attempt_for_subscription(
-                    provider="abacatepay",
+                    provider="asaas",
                     provider_customer_id="cust_absent",
                     provider_subscription_id="subs_manual",
                 )
@@ -160,7 +162,7 @@ class TestCompletion:
 
             assert (
                 complete_attempt_for_subscription(
-                    provider="abacatepay",
+                    provider="asaas",
                     provider_customer_id=None,
                     provider_subscription_id="subs_blind",
                 )
@@ -173,12 +175,12 @@ class TestCompletion:
             _start(buyer.id, provider_customer_id="cust_once")
 
             first = complete_attempt_for_subscription(
-                provider="abacatepay",
+                provider="asaas",
                 provider_customer_id="cust_once",
                 provider_subscription_id="subs_once",
             )
             second = complete_attempt_for_subscription(
-                provider="abacatepay",
+                provider="asaas",
                 provider_customer_id="cust_once",
                 provider_subscription_id="subs_once",
             )
@@ -209,7 +211,7 @@ class TestFunnelSummary:
 
             _start(buyer.id, provider_customer_id="cust_done")
             complete_attempt_for_subscription(
-                provider="abacatepay",
+                provider="asaas",
                 provider_customer_id="cust_done",
                 provider_subscription_id="subs_done",
             )
@@ -217,7 +219,7 @@ class TestFunnelSummary:
             record_checkout_failed(
                 user_id=buyer.id,
                 plan_slug="premium_monthly",
-                provider="abacatepay",
+                provider="asaas",
                 reason="gateway down",
             )
             db.session.commit()

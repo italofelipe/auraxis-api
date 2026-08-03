@@ -41,7 +41,7 @@ def _make_sub(status: SubscriptionStatus, provider_id: str | None) -> Subscripti
         plan_code="premium",
         status=status,
         billing_cycle=BillingCycle.MONTHLY,
-        provider="abacatepay",
+        provider="asaas",
         provider_subscription_id=provider_id,
         provider_customer_id=f"cust_{suffix}",
     )

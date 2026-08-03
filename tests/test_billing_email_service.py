@@ -10,7 +10,7 @@ from app.application.services.billing_email_service import (
     dispatch_billing_email,
     dispatch_trial_expired_email,
 )
-from app.controllers.billing_webhook_parsers import ABACATEPAY_REVOCATION_EVENTS
+from app.controllers.billing_webhook_parsers import ASAAS_REVOCATION_EVENTS
 from app.models.subscription import BillingCycle, Subscription, SubscriptionStatus
 from app.models.user import User
 from app.services.email_provider import EmailMessage, get_email_outbox
@@ -95,7 +95,7 @@ def test_billing_email_service_sends_subscription_canceled_email(app) -> None:
         assert outbox[0]["tag"] == "billing_subscription_canceled"
 
 
-@pytest.mark.parametrize("event_type", sorted(ABACATEPAY_REVOCATION_EVENTS))
+@pytest.mark.parametrize("event_type", sorted(ASAAS_REVOCATION_EVENTS))
 def test_billing_email_service_sends_refund_email(app, event_type: str) -> None:
     """#1598: a refund/chargeback dispatches a distinct 'estorno' notice."""
     with app.app_context():
@@ -126,7 +126,7 @@ def test_billing_email_service_sends_refund_email(app, event_type: str) -> None:
 def test_refund_email_events_match_parser_revocation_events() -> None:
     """Drift guard: the email set must equal the parser's revocation set so a
     new refund event can never revoke access without also notifying the user."""
-    assert _REFUND_EVENTS == ABACATEPAY_REVOCATION_EVENTS
+    assert _REFUND_EVENTS == ASAAS_REVOCATION_EVENTS
 
 
 def test_build_trial_ending_email_returns_ready_message(app) -> None:

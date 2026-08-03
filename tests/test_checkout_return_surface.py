@@ -87,62 +87,53 @@ class TestResolveReturnUrls:
         assert resolve_checkout_return_urls("app") == ("", "")
 
 
-class TestAbacatePayUsesTheSurface:
-    def _provider(self):
-        from app.services.billing_adapter import AbacatePayBillingProvider
+class TestAsaasUsesTheSurface:
+    """#1620 — a superfície escolhida tem de chegar ao payload do gateway.
 
-        return AbacatePayBillingProvider()
+    Quem compra pela landing não tem sessão no domínio do app; mandá-lo de
+    volta para lá o deixaria numa tela de login logo depois de pagar. No Asaas
+    as URLs vão no bloco ``callback``, não em ``completionUrl``/``returnUrl``.
+    """
+
+    def _provider(self):
+        from app.services.billing_adapter import AsaasBillingProvider
+
+        return AsaasBillingProvider()
 
     def _customer(self) -> BillingCheckoutCustomer:
         return BillingCheckoutCustomer(
             user_id=str(uuid.uuid4()), name="QA", email="qa@test.com"
         )
 
+    def _run(self, monkeypatch, app, **kwargs):
+        monkeypatch.setenv("BILLING_ASAAS_API_KEY", "test-key")
+        monkeypatch.setenv("BILLING_ASAAS_BASE_URL", "https://api.asaas.com/v3")
+        with app.app_context():
+            provider = self._provider()
+            with (
+                patch.object(provider, "_ensure_customer", return_value="cust_1"),
+                patch.object(
+                    provider,
+                    "_request",
+                    return_value={"id": "chk_1", "link": "https://pay/x"},
+                ) as mock_request,
+            ):
+                provider.create_checkout_session(
+                    customer=self._customer(), plan_slug="premium_monthly", **kwargs
+                )
+            return mock_request.call_args.kwargs["json_payload"]
+
     def test_landing_surface_reaches_the_provider_payload(
         self, app, _all_envs, monkeypatch
     ) -> None:
-        monkeypatch.setenv("BILLING_ABACATEPAY_API_KEY", "test-key")
-        monkeypatch.setenv("BILLING_ABACATEPAY_PRODUCT_PREMIUM_MONTHLY", "prod_test")
-        with app.app_context():
-            provider = self._provider()
-            with (
-                patch.object(provider, "_ensure_customer", return_value="cust_1"),
-                patch.object(
-                    provider,
-                    "_request",
-                    return_value={"url": "https://abacate/pay", "id": "bill_1"},
-                ) as mock_request,
-            ):
-                provider.create_checkout_session(
-                    customer=self._customer(),
-                    plan_slug="premium_monthly",
-                    return_surface="landing",
-                )
-
-            body = mock_request.call_args.kwargs["json_payload"]
-            assert body["completionUrl"] == LANDING_SUCCESS
-            assert body["returnUrl"] == LANDING_CANCEL
+        body = self._run(monkeypatch, app, return_surface="landing")
+        assert body["callback"]["successUrl"] == LANDING_SUCCESS
+        assert body["callback"]["cancelUrl"] == LANDING_CANCEL
 
     def test_default_keeps_the_app_urls(self, app, _all_envs, monkeypatch) -> None:
-        monkeypatch.setenv("BILLING_ABACATEPAY_API_KEY", "test-key")
-        monkeypatch.setenv("BILLING_ABACATEPAY_PRODUCT_PREMIUM_MONTHLY", "prod_test")
-        with app.app_context():
-            provider = self._provider()
-            with (
-                patch.object(provider, "_ensure_customer", return_value="cust_1"),
-                patch.object(
-                    provider,
-                    "_request",
-                    return_value={"url": "https://abacate/pay", "id": "bill_1"},
-                ) as mock_request,
-            ):
-                provider.create_checkout_session(
-                    customer=self._customer(), plan_slug="premium_monthly"
-                )
-
-            body = mock_request.call_args.kwargs["json_payload"]
-            assert body["completionUrl"] == APP_SUCCESS
-            assert body["returnUrl"] == APP_CANCEL
+        body = self._run(monkeypatch, app)
+        assert body["callback"]["successUrl"] == APP_SUCCESS
+        assert body["callback"]["cancelUrl"] == APP_CANCEL
 
 
 class TestRestContract:

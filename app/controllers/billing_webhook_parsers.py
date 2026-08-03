@@ -12,9 +12,6 @@ different providers reuse the same event names with different meanings.
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
 import logging
 import os
 from collections.abc import Mapping
@@ -35,16 +32,6 @@ from app.services.billing_adapter import BillingSubscriptionSnapshot
 logger = logging.getLogger(__name__)
 
 ASAAS_PROVIDER = "asaas"
-ABACATEPAY_PROVIDER = "abacatepay"
-
-_ABACATEPAY_SIGNATURE_HEADER = "X-Webhook-Signature"
-_ABACATEPAY_SECRET_QUERY_PARAM = "webhookSecret"
-_ABACATEPAY_WEBHOOK_SECRET_ENV = "BILLING_ABACATEPAY_WEBHOOK_SECRET"
-# Name the secret ships under in the platform .env.
-_ABACATEPAY_WEBHOOK_SECRET_FALLBACK_ENV = "ABACATE_PAY_WEBHOOK_SECRET"
-_ABACATEPAY_SIGNING_KEY_ENV = "BILLING_ABACATEPAY_SIGNING_KEY"
-_ABACATEPAY_ALLOW_DEVMODE_ENV = "BILLING_ABACATEPAY_ALLOW_DEVMODE"
-
 _PRODUCTION_ENV_NAMES = {"prod", "production"}
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -55,25 +42,6 @@ def _is_production_runtime() -> bool:
         if value:
             return value in _PRODUCTION_ENV_NAMES
     return False
-
-
-def _devmode_allowed_in_production() -> bool:
-    """Escape hatch for validating a sandbox key against the production API.
-
-    Off by default and meant to be temporary: while it is on, sandbox traffic
-    can move real subscriptions.  Turn it off as soon as the paid-path check
-    is done.
-    """
-    return (
-        str(os.getenv(_ABACATEPAY_ALLOW_DEVMODE_ENV) or "").strip().lower() in _TRUTHY
-    )
-
-
-def _abacatepay_webhook_secret() -> str:
-    return (
-        os.getenv(_ABACATEPAY_WEBHOOK_SECRET_ENV, "").strip()
-        or os.getenv(_ABACATEPAY_WEBHOOK_SECRET_FALLBACK_ENV, "").strip()
-    )
 
 
 def _clean(value: object) -> str | None:
@@ -109,7 +77,7 @@ class BillingWebhookParser(Protocol):
         """Return whether the request is authentically from this provider.
 
         ``query`` carries the request query string: not every gateway puts its
-        shared secret in a header (AbacatePay sends it as ``?webhookSecret=``).
+        shared secret in a header — alguns o mandam na própria URL.
         Implementations must be fail-closed: absent configuration rejects.
         """
         ...
@@ -237,235 +205,8 @@ class AsaasWebhookParser:
         return None
 
 
-def _resolve_abacatepay_customer_id(data: dict[str, Any]) -> str | None:
-    """Find the customer id, which moves between payload variants.
-
-    The automatic-cancellation payload (max retries exceeded) ships without the
-    ``checkout`` block, and anonymous checkouts ship without ``customer``.
-    """
-    customer_object = data.get("customer")
-    if isinstance(customer_object, dict):
-        customer_id = _clean(customer_object.get("id"))
-        if customer_id:
-            return customer_id
-
-    checkout_object = data.get("checkout")
-    if isinstance(checkout_object, dict):
-        return _clean(checkout_object.get("customerId"))
-    return None
-
-
-def _resolve_abacatepay_external_reference(data: dict[str, Any]) -> str | None:
-    """Find the ``auraxis:{user_id}:{offer_slug}`` reference we sent at checkout.
-
-    It surfaces in different sub-objects depending on the event, so probe all
-    three.  Without it the snapshot carries no plan, ``plan_code`` stays Free,
-    and a paid subscription lands active with Free entitlements.
-    """
-    for key in ("checkout", "payment", "subscription"):
-        obj = data.get(key)
-        if isinstance(obj, dict):
-            reference = _clean(obj.get("externalId")) or _clean(
-                obj.get("externalReference")
-            )
-            if reference:
-                return reference
-    return None
-
-
-def _build_abacatepay_snapshot(
-    data: dict[str, Any],
-    subscription_object: dict[str, Any],
-    *,
-    status: str,
-    provider_subscription_id: str | None,
-    provider_customer_id: str | None,
-) -> BillingSubscriptionSnapshot:
-    snapshot: BillingSubscriptionSnapshot = {
-        "status": status,
-        "provider": ABACATEPAY_PROVIDER,
-        "provider_customer_id": provider_customer_id,
-        "current_period_start": _coerce_datetime(subscription_object.get("updatedAt")),
-        "current_period_end": _coerce_datetime(subscription_object.get("nextChargeAt")),
-    }
-
-    offer_metadata = _resolve_offer_from_external_reference(
-        _resolve_abacatepay_external_reference(data)
-    )
-    if offer_metadata["plan_code"]:
-        # Entitlements derive from plan_code — without this a paid sub stays on
-        # Free features despite an active status.
-        snapshot["plan_code"] = offer_metadata["plan_code"]
-    if offer_metadata["offer_code"]:
-        snapshot["offer_code"] = offer_metadata["offer_code"]
-    if offer_metadata["billing_cycle"]:
-        snapshot["billing_cycle"] = offer_metadata["billing_cycle"]
-
-    trial_ends_at = _coerce_datetime(subscription_object.get("trialEndsAt"))
-    if trial_ends_at is not None:
-        # Drives trial_expiry_cli and the D-N ending reminders.
-        snapshot["trial_ends_at"] = trial_ends_at
-
-    if provider_subscription_id:
-        # Promotes the stored bill_… placeholder to the real subs_… id.
-        snapshot["provider_id"] = provider_subscription_id
-    return snapshot
-
-
-# #1598 — refund/chargeback events. AbacatePay's exact event strings for these
-# are not yet documented (pending support confirmation tracked in platform#891);
-# we map the plausible variants. Every one revokes access, so over-inclusion is
-# safe: an unexpected-but-refund-shaped event simply degrades the subscription.
-ABACATEPAY_REFUND_EVENTS = frozenset(
-    {"subscription.refunded", "checkout.refunded", "payment.refunded"}
-)
-ABACATEPAY_CHARGEBACK_EVENTS = frozenset(
-    {"subscription.chargeback", "payment.chargeback", "chargeback.created"}
-)
-ABACATEPAY_REVOCATION_EVENTS = ABACATEPAY_REFUND_EVENTS | ABACATEPAY_CHARGEBACK_EVENTS
-
-
-class AbacatePayWebhookParser:
-    """AbacatePay webhooks (API v2 envelope).
-
-    Authenticity rests on two independent layers, both required when
-    configured:
-
-    1. ``?webhookSecret=`` query param — the value we registered with the
-       gateway.  This is the *real* barrier.
-    2. HMAC-SHA256 (base64) over the raw body in ``X-Webhook-Signature``.
-       AbacatePay signs with a key published in its own documentation and
-       shared across all merchants, so this proves the payload shape was not
-       mangled — it does NOT prove origin.  Defence in depth only.
-
-    Because layer 2 is not a real secret, layer 1 is mandatory: a missing or
-    mismatched ``webhookSecret`` rejects regardless of the signature.
-    """
-
-    _EVENTS = {
-        "subscription.trial_started": SubscriptionStatus.TRIALING.value,
-        "subscription.completed": SubscriptionStatus.ACTIVE.value,
-        "subscription.renewed": SubscriptionStatus.ACTIVE.value,
-        "subscription.cancelled": SubscriptionStatus.CANCELED.value,
-        "subscription.payment_failed": SubscriptionStatus.PAST_DUE.value,
-        # #1598: refund/chargeback degrade to CANCELED, so the existing
-        # _DEGRADED_STATUSES machinery revokes premium entitlements with no
-        # further wiring. Without this a refund in the gateway dashboard leaves
-        # premium active — a revenue leak.
-        **dict.fromkeys(
-            ABACATEPAY_REVOCATION_EVENTS, SubscriptionStatus.CANCELED.value
-        ),
-    }
-
-    @property
-    def provider(self) -> str:
-        return ABACATEPAY_PROVIDER
-
-    def verify(
-        self,
-        raw_body: bytes,
-        headers: Mapping[str, str],
-        query: Mapping[str, str] | None = None,
-    ) -> bool:
-        expected_secret = _abacatepay_webhook_secret()
-        if not expected_secret:
-            return False
-
-        received_secret = str((query or {}).get(_ABACATEPAY_SECRET_QUERY_PARAM) or "")
-        if not hmac.compare_digest(expected_secret, received_secret.strip()):
-            return False
-
-        signing_key = os.getenv(_ABACATEPAY_SIGNING_KEY_ENV, "").strip()
-        if not signing_key:
-            # Signature checking is opt-in: the gateway's key is public, so
-            # requiring it would add friction without adding authenticity.
-            return True
-
-        signature = headers.get(_ABACATEPAY_SIGNATURE_HEADER, "").strip()
-        if not signature:
-            return False
-        digest = hmac.new(signing_key.encode(), raw_body, hashlib.sha256).digest()
-        return hmac.compare_digest(base64.b64encode(digest).decode(), signature)
-
-    def supports_event(self, event_type: str) -> bool:
-        return event_type in self._EVENTS
-
-    def _devmode_blocks(self, payload: dict[str, Any]) -> bool:
-        """Whether a sandbox payload must be dropped in this runtime."""
-        if not (payload.get("devMode") is True and _is_production_runtime()):
-            return False
-        if not _devmode_allowed_in_production():
-            # #1634: this used to return silently, and the caller then recorded
-            # the drop as "unresolvable_subscription". Production spent ten days
-            # selling into the sandbox without a single honest signal — the one
-            # log line lived in the branch below, which is the branch that does
-            # NOT drop anything.
-            logger.error(
-                "event=billing_webhook_sandbox_in_production provider=%s "
-                "reason=devmode_payload_dropped — production is configured with "
-                "sandbox credentials, so no payment can complete",
-                self.provider,
-            )
-            return True
-        logger.warning(
-            "Accepting AbacatePay devMode webhook in production because "
-            "%s is enabled — turn it off once validation is done",
-            _ABACATEPAY_ALLOW_DEVMODE_ENV,
-        )
-        return False
-
-    def skip_reason(self, payload: dict[str, Any]) -> str | None:
-        """Why ``parse`` returned nothing, when the reason is known.
-
-        ``parse`` collapses every refusal into ``None``, which left the audit row
-        blaming an unresolvable subscription for what was really a sandbox
-        payload. Naming the cause is the difference between a trail that explains
-        an outage and one that hides it.
-
-        :param payload: Raw webhook body.
-        :returns: Stable reason slug, or ``None`` when no specific cause applies.
-        """
-        if payload.get("devMode") is True and _is_production_runtime():
-            if not _devmode_allowed_in_production():
-                return "sandbox_payload_in_production"
-        return None
-
-    def parse(self, payload: dict[str, Any]) -> BillingSubscriptionSnapshot | None:
-        event_type = str(payload.get("event") or "").strip()
-        status = self._EVENTS.get(event_type)
-        if status is None or self._devmode_blocks(payload):
-            return None
-
-        data = payload.get("data")
-        if not isinstance(data, dict):
-            return None
-        subscription_object = data.get("subscription")
-        if not isinstance(subscription_object, dict):
-            # #1598: refund/chargeback payloads may omit the subscription block
-            # (they reference the checkout/customer instead). Those events still
-            # need to revoke, so resolve them via the customer id below. Every
-            # other event keeps requiring an explicit subscription object.
-            if event_type not in ABACATEPAY_REVOCATION_EVENTS:
-                return None
-            subscription_object = {}
-
-        provider_subscription_id = _clean(subscription_object.get("id"))
-        provider_customer_id = _resolve_abacatepay_customer_id(data)
-        if not provider_subscription_id and not provider_customer_id:
-            return None
-
-        return _build_abacatepay_snapshot(
-            data,
-            subscription_object,
-            status=status,
-            provider_subscription_id=provider_subscription_id,
-            provider_customer_id=provider_customer_id,
-        )
-
-
 _PARSERS: dict[str, BillingWebhookParser] = {
     ASAAS_PROVIDER: AsaasWebhookParser(),
-    ABACATEPAY_PROVIDER: AbacatePayWebhookParser(),
 }
 
 _DEFAULT_PROVIDER = ASAAS_PROVIDER
