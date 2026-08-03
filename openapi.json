@@ -2121,7 +2121,7 @@
     },
     "/ai/insights/history": {
       "get": {
-        "description": "Retorna a lista paginada de insights gerados por IA para o usuário autenticado, ordenada do mais recente para o mais antigo. Acessível sem entitlement premium.",
+        "description": "Retorna a lista paginada de insights gerados por IA para o usuário autenticado, ordenada do mais recente para o mais antigo. Acessível sem entitlement premium. Aceita filtros opcionais por período (period_type/period_label).",
         "parameters": [
           {
             "description": "Número da página (base 1). Padrão: 1.",
@@ -2138,6 +2138,22 @@
             "name": "per_page",
             "required": false,
             "type": "integer"
+          },
+          {
+            "description": "Filtra pelo rótulo do período (ex.: '2026-07' para mensal, '2026-W20' para semanal, '2026-07-15' para diário).",
+            "example": "2026-07",
+            "in": "query",
+            "name": "period_label",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "description": "Filtra por tipo de período: daily, weekly, monthly, recap ou spending_patterns. Valor desconhecido devolve 400.",
+            "example": "monthly",
+            "in": "query",
+            "name": "period_type",
+            "required": false,
+            "type": "string"
           }
         ],
         "responses": {
