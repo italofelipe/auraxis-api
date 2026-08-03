@@ -740,7 +740,7 @@
     "name": "aiInsightHistory",
     "operation_type": "query",
     "source_module": "app.graphql.queries.ai_insight",
-    "summary": "Retorna o histórico paginado de insights gerados por IA para o usuário autenticado, ordenado do mais recente ao mais antigo."
+    "summary": "Retorna o histórico paginado de insights gerados por IA para o usuário autenticado, ordenado do mais recente ao mais antigo. Aceita filtros opcionais periodType/periodLabel — paridade com GET /ai/insights/history (#1653)."
   },
   {
     "access": "auth_required",

@@ -13,7 +13,7 @@ type Query {
   creditCards: CreditCardListType
   creditCardBill(cardId: UUID!, month: String!): CreditCardBillType
   creditCardUtilization(cardId: UUID!): CreditCardUtilizationType
-  aiInsightHistory(page: Int = 1, perPage: Int = 20): AIInsightHistoryResultType
+  aiInsightHistory(page: Int = 1, perPage: Int = 20, periodType: String, periodLabel: String): AIInsightHistoryResultType
   aiInsightChangeStatus(periodType: String!, anchorDate: String): AIInsightChangeStatusType
   spendingPatternsLatest: SpendingPatternsLatestType
   accounts: AccountListType
