@@ -110,14 +110,11 @@ class TestAsaasUsesTheSurface:
         monkeypatch.setenv("BILLING_ASAAS_BASE_URL", "https://api.asaas.com/v3")
         with app.app_context():
             provider = self._provider()
-            with (
-                patch.object(provider, "_ensure_customer", return_value="cust_1"),
-                patch.object(
-                    provider,
-                    "_request",
-                    return_value={"id": "chk_1", "link": "https://pay/x"},
-                ) as mock_request,
-            ):
+            with patch.object(
+                provider,
+                "_request",
+                return_value={"id": "chk_1", "link": "https://pay/x"},
+            ) as mock_request:
                 provider.create_checkout_session(
                     customer=self._customer(), plan_slug="premium_monthly", **kwargs
                 )

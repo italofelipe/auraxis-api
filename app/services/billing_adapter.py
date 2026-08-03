@@ -316,22 +316,6 @@ class AsaasBillingProvider:
         except RequestException as exc:
             raise BillingProviderError("Asaas request failed") from exc
 
-    def _ensure_customer(self, customer: BillingCheckoutCustomer) -> str:
-        payload = self._request(
-            "POST",
-            "/customers",
-            json_payload={
-                "name": customer.name,
-                "email": customer.email,
-                "externalReference": customer.user_id,
-                "notificationDisabled": False,
-            },
-        )
-        customer_id = str(payload.get("id") or "").strip()
-        if not customer_id:
-            raise BillingProviderError("Asaas customer response did not include an id")
-        return customer_id
-
     def _checkout_callback_payload(
         self, return_surface: str | None = None
     ) -> dict[str, str]:
@@ -349,7 +333,7 @@ class AsaasBillingProvider:
     def _checkout_payload(
         self,
         offer: BillingPlanOffer,
-        customer_id: str,
+        customer_id: str | None,
         user_id: str,
         return_surface: str | None = None,
     ) -> dict[str, object]:
@@ -362,11 +346,17 @@ class AsaasBillingProvider:
             )
 
         return {
-            "billingTypes": ["CREDIT_CARD", "PIX"],
+            # Só CREDIT_CARD. A API rejeita PIX junto de RECURRENT com
+            # "O método de pagamento CREDIT_CARD é o único método de pagamento
+            # permitido para operações RECURRENT" — PIX exige DETACHED, ou
+            # seja, cobrança avulsa. Isso vale para o Asaas e valia para o
+            # gateway anterior: **PIX recorrente não existe em nenhum dos
+            # dois**, e a economia de PIX que aparece nas projeções de
+            # assinatura nunca foi alcançável (ver ADR J9).
+            "billingTypes": ["CREDIT_CARD"],
             "chargeTypes": ["RECURRENT"],
             "externalReference": f"auraxis:{user_id}:{offer.slug}",
             "callback": callback,
-            "customer": customer_id,
             "items": [
                 {
                     "name": offer.display_name,
@@ -391,6 +381,7 @@ class AsaasBillingProvider:
                     date.today() + timedelta(days=max(offer.trial_days, 0))
                 ).isoformat(),
             },
+            **({"customer": customer_id} if customer_id else {}),
         }
 
     def get_subscription(self, provider_id: str) -> BillingSubscriptionSnapshot:
@@ -432,12 +423,20 @@ class AsaasBillingProvider:
         offer = resolve_checkout_plan_offer(plan_slug)
         if offer is None:
             raise BillingProviderError(f"Unsupported plan slug: {plan_slug}")
-        customer_id = self._ensure_customer(customer)
+        # O cliente NÃO é pré-criado de propósito. Um customer com só nome e
+        # e-mail — tudo o que temos — faz o checkout ser rejeitado: a API exige
+        # phone, address, addressNumber, postalCode, province e city para o
+        # customer referenciado, e o `User` não tem nenhum desses campos.
+        #
+        # Omitindo `customer`, a própria página hospedada coleta CPF, telefone
+        # e endereço do comprador. Verificado contra a API de produção: 200 com
+        # status=ACTIVE. De quebra, para de criar cliente órfão no gateway para
+        # quem abandona o checkout.
         payload = self._request(
             "POST",
             "/checkouts",
             json_payload=self._checkout_payload(
-                offer, customer_id, customer.user_id, return_surface
+                offer, None, customer.user_id, return_surface
             ),
         )
         checkout_id = str(payload.get("id") or "").strip()
@@ -449,7 +448,9 @@ class AsaasBillingProvider:
                 or self._checkout_page_url(checkout_id)
             ),
             "provider": _ASAAS_PROVIDER,
-            "provider_customer_id": customer_id,
+            # O id do cliente só existe depois que o comprador preenche os
+            # dados na página hospedada; chega pelo webhook.
+            "provider_customer_id": None,
             "provider_subscription_id": checkout_id,
         }
 
