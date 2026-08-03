@@ -6,6 +6,7 @@ orchestration (validate → call helper → persist → respond).
 Contents:
 
 - ``assert_owned_references`` — ownership enforcement for tag/account/card refs.
+- ``normalize_paid_at_for_create`` — paid_at × status invariant for creates.
 - ``normalize_paid_at_for_update`` — paid_at × status invariant for updates.
 - ``build_installment_transactions`` — build the N-row installment batch.
 - ``build_transaction_kwargs`` — map a normalised payload → ``Transaction`` ctor args.
@@ -14,7 +15,7 @@ Contents:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -69,6 +70,14 @@ def assert_owned_references(
         raise _validation_error(message) from exc
 
 
+def _parse_paid_at(raw_value: Any) -> datetime:
+    """Coerce a ``paid_at`` value to ``datetime``, rejecting future timestamps."""
+    parsed_paid_at = coerce_datetime(raw_value, field_name="paid_at")
+    if parsed_paid_at > utc_now_compatible_with(parsed_paid_at):
+        raise _validation_error("'paid_at' não pode ser uma data futura.")
+    return parsed_paid_at
+
+
 def normalize_paid_at_for_update(normalized: dict[str, Any]) -> None:
     """Validate and coerce the ``paid_at`` field in-place for an update payload.
 
@@ -91,10 +100,40 @@ def normalize_paid_at_for_update(normalized: dict[str, Any]) -> None:
     if "paid_at" not in normalized or paid_at_value is None:
         return
 
-    parsed_paid_at = coerce_datetime(paid_at_value, field_name="paid_at")
-    if parsed_paid_at > utc_now_compatible_with(parsed_paid_at):
-        raise _validation_error("'paid_at' não pode ser uma data futura.")
-    normalized["paid_at"] = parsed_paid_at
+    normalized["paid_at"] = _parse_paid_at(paid_at_value)
+
+
+def normalize_paid_at_for_create(
+    normalized: dict[str, Any],
+    *,
+    tx_status: TransactionStatus,
+) -> None:
+    """Validate and coerce ``paid_at`` in-place for a create payload.
+
+    ``TransactionSchema`` already accepts ``paid_at`` on load, but the value used
+    to be dropped before reaching the ``Transaction`` constructor (#1659), so a
+    transaction created as PAID landed without a payment timestamp.
+
+    Same invariant as the update path for the value that *is* sent: ``paid_at``
+    only makes sense with ``status=paid`` and can never be in the future.
+    Unlike the update path, ``paid_at`` is **not** required when creating with
+    ``status=paid`` — requiring it would break existing clients that create a
+    settled transaction without one.
+    """
+    if "paid_at" not in normalized:
+        return
+
+    paid_at_value = normalized.get("paid_at")
+    if paid_at_value is None:
+        normalized.pop("paid_at")
+        return
+
+    if tx_status is not TransactionStatus.PAID:
+        raise _validation_error(
+            "'paid_at' só pode ser definido se o status for 'PAID'."
+        )
+
+    normalized["paid_at"] = _parse_paid_at(paid_at_value)
 
 
 def build_transaction_kwargs(
@@ -137,6 +176,7 @@ def build_transaction_kwargs(
         "auto_settle": bool(normalized.get("auto_settle", False)),
         "status": tx_status,
         "currency": normalize_currency(normalized.get("currency")),
+        "paid_at": normalized.get("paid_at"),
     }
 
 
@@ -181,6 +221,7 @@ def build_installment_transactions(
             auto_settle=bool(normalized.get("auto_settle", False)),
             status=tx_status,
             currency=currency,
+            paid_at=normalized.get("paid_at"),
             installment_group_id=group_id,
         )
         for idx in range(count)
@@ -247,6 +288,7 @@ __all__ = [
     "assert_owned_references",
     "build_installment_transactions",
     "build_transaction_kwargs",
+    "normalize_paid_at_for_create",
     "normalize_paid_at_for_update",
     "normalize_update_type_and_status",
 ]

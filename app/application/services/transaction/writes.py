@@ -16,6 +16,7 @@ from app.application.services.transaction.mutations import (
     assert_owned_references,
     build_installment_transactions,
     build_transaction_kwargs,
+    normalize_paid_at_for_create,
     normalize_paid_at_for_update,
     normalize_update_type_and_status,
 )
@@ -51,6 +52,7 @@ def execute_create_transaction(
     tx_type = normalize_transaction_type(normalized.get("type"))
     tx_status = normalize_transaction_status(normalized.get("status"))
     amount = normalize_decimal_amount(normalized.get("amount"))
+    normalize_paid_at_for_create(normalized, tx_status=tx_status)
     due_date = coerce_date(
         normalized.get("due_date"), field_name="due_date", required=True
     )
