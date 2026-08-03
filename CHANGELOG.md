@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.79.0](https://github.com/italofelipe/auraxis-api/compare/v1.78.1...v1.79.0) (2026-08-03)
+
+
+### Features
+
+* **ai:** filtrar histórico de insights por período e acabar com a query duplicada ([#1661](https://github.com/italofelipe/auraxis-api/issues/1661)) ([bdbbd50](https://github.com/italofelipe/auraxis-api/commit/bdbbd50f1e6aecb65a9493de1b08193f6b3e2bcf)), closes [#1653](https://github.com/italofelipe/auraxis-api/issues/1653)
+
+
+### Bug Fixes
+
+* **transactions:** parar de descartar paid_at no POST /transactions ([#1660](https://github.com/italofelipe/auraxis-api/issues/1660)) ([7a32d14](https://github.com/italofelipe/auraxis-api/commit/7a32d142955f9a881e10816ec8a96ed9dc041f23)), closes [#1647](https://github.com/italofelipe/auraxis-api/issues/1647)
+
 ## [1.78.1](https://github.com/italofelipe/auraxis-api/compare/v1.78.0...v1.78.1) (2026-08-02)
 
 
