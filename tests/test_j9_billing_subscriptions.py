@@ -111,21 +111,17 @@ class TestAsaasBillingProvider:
             "BILLING_CHECKOUT_SUCCESS_URL", "https://auraxis.com/success"
         )
         monkeypatch.setenv("BILLING_CHECKOUT_CANCEL_URL", "https://auraxis.com/cancel")
-        responses = iter(
-            [
-                {"id": "cus_123"},
-                {"id": "chk_123", "link": "https://asaas.com/c/chk_123"},
-            ]
-        )
 
         def _fake_request(
             method: str, path: str, *, json_payload: object | None = None
         ):
-            payload = next(responses)
+            # Um request só: o cliente NÃO é pré-criado (#1677). Um customer
+            # com só nome e e-mail faz a API rejeitar o checkout por falta de
+            # endereço, e a página hospedada coleta esses dados sozinha.
             assert method == "POST"
-            if path == "/customers":
-                assert json_payload is not None
-            return payload
+            assert path == "/checkouts"
+            assert "customer" not in (json_payload or {})
+            return {"id": "chk_123", "link": "https://asaas.com/c/chk_123"}
 
         monkeypatch.setattr(provider, "_request", _fake_request)
 
@@ -139,7 +135,8 @@ class TestAsaasBillingProvider:
         )
 
         assert result["provider"] == "asaas"
-        assert result["provider_customer_id"] == "cus_123"
+        # Só existe depois que o comprador preenche a página; chega no webhook.
+        assert result["provider_customer_id"] is None
         assert result["checkout_url"] == "https://asaas.com/c/chk_123"
 
     def test_create_checkout_session_requires_callback_urls(self, monkeypatch) -> None:
@@ -147,8 +144,6 @@ class TestAsaasBillingProvider:
         monkeypatch.setenv("BILLING_ASAAS_API_KEY", "asaas_test_key")
         monkeypatch.delenv("BILLING_CHECKOUT_SUCCESS_URL", raising=False)
         monkeypatch.delenv("BILLING_CHECKOUT_CANCEL_URL", raising=False)
-
-        monkeypatch.setattr(provider, "_ensure_customer", lambda _customer: "cus_123")
 
         try:
             provider.create_checkout_session(

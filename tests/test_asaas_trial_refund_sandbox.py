@@ -226,3 +226,56 @@ class TestProviderFactory:
         _clear_runtime_env(monkeypatch)
         monkeypatch.setenv("BILLING_PROVIDER", "whatever")
         assert isinstance(get_default_billing_provider(), StubBillingProvider)
+
+
+class TestAsaasCheckoutContract:
+    """Trava o payload contra o que a API de produção aceita (#1677).
+
+    Estes dois erros passaram por 32 testes verdes porque todos mockam
+    ``_request``: o contrato nunca era exercitado. Foram medidos contra a
+    API real em 2026-08-03, com a conta de produção recém-aprovada.
+    """
+
+    def _payload(self, monkeypatch, slug: str = "premium_monthly") -> dict:
+        _clear_runtime_env(monkeypatch)
+        provider = AsaasBillingProvider()
+        monkeypatch.setenv("BILLING_ASAAS_API_KEY", "k")
+        monkeypatch.setenv("BILLING_CHECKOUT_SUCCESS_URL", "https://a.com/ok")
+        monkeypatch.setenv("BILLING_CHECKOUT_CANCEL_URL", "https://a.com/no")
+
+        captured: dict = {}
+
+        def _fake_request(method: str, path: str, *, json_payload=None):
+            captured.update(json_payload or {})
+            return {"id": "chk_1", "link": "https://pay/x"}
+
+        monkeypatch.setattr(provider, "_request", _fake_request)
+        provider.create_checkout_session(
+            BillingCheckoutCustomer(user_id="u1", name="U", email="u@e.com"), slug
+        )
+        return captured
+
+    def test_recurrent_checkout_is_card_only(self, monkeypatch) -> None:
+        """PIX + RECURRENT é rejeitado pela API.
+
+        "O método de pagamento CREDIT_CARD é o único método de pagamento
+        permitido para operações RECURRENT" — PIX exige DETACHED. Mandar os
+        dois, como o código fazia, derruba TODO checkout de assinatura.
+        """
+        payload = self._payload(monkeypatch)
+        assert payload["billingTypes"] == ["CREDIT_CARD"]
+        assert payload["chargeTypes"] == ["RECURRENT"]
+
+    def test_customer_is_not_pre_created(self, monkeypatch) -> None:
+        """Referenciar um customer incompleto derruba o checkout.
+
+        A API exige phone, address, addressNumber, postalCode, province e city
+        no customer referenciado — campos que o `User` não tem. Sem `customer`
+        no payload, a página hospedada coleta tudo do comprador.
+        """
+        assert "customer" not in self._payload(monkeypatch)
+
+    def test_external_reference_carries_the_correlation(self, monkeypatch) -> None:
+        """Sem `customer`, é o externalReference que liga o pagamento ao user."""
+        payload = self._payload(monkeypatch)
+        assert payload["externalReference"] == "auraxis:u1:premium_monthly"
