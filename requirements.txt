@@ -54,4 +54,4 @@ boto3==1.43.61
 pywebpush==2.3.0
 py-vapid==1.9.4
 http-ece==1.2.1
-cryptography==48.0.1
+cryptography==50.0.0
