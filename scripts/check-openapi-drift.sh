@@ -31,9 +31,12 @@ if [[ ! -f "$COMMITTED_SPEC" ]]; then
   exit 1
 fi
 
-# Resolve Python — prefer venv, fallback to system
-PYTHON_BIN="${ROOT_DIR}/.venv/bin/python3"
-if [[ ! -x "$PYTHON_BIN" ]]; then
+# Resolve Python — prefer venv, fallback to system. The venv is also probed by
+# actually running it: when the repo is mounted into a Linux container (the
+# default mode of run_ci_quality_local.sh) the committed macOS .venv binary
+# exists but cannot execute.
+PYTHON_BIN="${CONTRACTS_PYTHON_BIN:-${ROOT_DIR}/.venv/bin/python3}"
+if [[ ! -x "$PYTHON_BIN" ]] || ! "$PYTHON_BIN" -c "" > /dev/null 2>&1; then
   PYTHON_BIN="$(command -v python3 || command -v python)"
 fi
 

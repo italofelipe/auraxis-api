@@ -36,6 +36,7 @@ if [[ "$MODE" == "docker" ]]; then
       python -m ruff check app tests config run.py run_without_db.py && \
       python -m mypy --no-incremental app && \
       python -m bandit -r app -lll -iii && \
+      bash scripts/check_contracts.sh && \
       pytest -m 'not schemathesis' --cov=app --cov-fail-under=85 --cov-report=term-missing"
   echo "[quality-local] All quality checks passed (Docker / Python 3.13)."
   exit 0
@@ -55,5 +56,6 @@ python3 scripts/security_exception_governance.py check
 "${PYTHON_BIN}" -m ruff check app tests config run.py run_without_db.py
 "${PYTHON_BIN}" -m mypy --no-incremental app
 "${PYTHON_BIN}" -m bandit -r app -lll -iii
+CONTRACTS_PYTHON_BIN="${PYTHON_BIN}" bash scripts/check_contracts.sh
 "${PYTHON_BIN}" -m pytest -m "not schemathesis" --cov=app --cov-fail-under=85 --cov-report=term-missing
 echo "[quality-local] All quality checks passed (local environment)."

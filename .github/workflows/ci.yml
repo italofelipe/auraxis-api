@@ -70,6 +70,42 @@ jobs:
       - name: Bandit (SAST - high severity gate)
         run: python -m bandit -r app -lll -iii
 
+  # Contract snapshot lock (#1536). Regenerates openapi.json and the GraphQL
+  # artefacts from source and fails when the committed snapshot is stale.
+  # Deliberately has NO path filter: the dangerous case is a controller/schema
+  # change merged *without* regenerating the snapshot, which openapi-diff.yml
+  # (triggers only on openapi.json) and postman-sync.yml (push to master only)
+  # both miss. Protects the go-live freeze against silent contract drift.
+  contracts:
+    name: Contracts (OpenAPI + GraphQL snapshot)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check contract snapshots
+        env:
+          FLASK_TESTING: "true"
+          SECURITY_ENFORCE_STRONG_SECRETS: "false"
+          DOCS_EXPOSURE_POLICY: public
+          DATABASE_URL: "sqlite:///tmp/contracts-check.sqlite3"
+          SECRET_KEY: "drift-check-key-with-64-chars-minimum-for-jwt-signing-000001"
+          JWT_SECRET_KEY: "drift-check-jwt-key-with-64-chars-minimum-for-signing-002"
+        run: bash scripts/check_contracts.sh
+
   secret-scan:
     name: Secret Scan (Gitleaks)
     runs-on: ubuntu-latest
