@@ -161,6 +161,20 @@ def _build_snapshot(
     return snapshot
 
 
+# Eventos de estorno e chargeback do Asaas. Diferente do outro gateway, estes
+# são documentados e estáveis — não há chute aqui.
+# `PAYMENT_REFUND_IN_PROGRESS` entra junto de propósito: o estorno já foi
+# aceito e o dinheiro está voltando, então manter o acesso até a confirmação
+# seria dar Premium de graça durante a janela de liquidação.
+ASAAS_REFUND_EVENTS = frozenset(
+    {"PAYMENT_REFUNDED", "PAYMENT_REFUND_IN_PROGRESS", "PAYMENT_PARTIALLY_REFUNDED"}
+)
+ASAAS_CHARGEBACK_EVENTS = frozenset(
+    {"PAYMENT_CHARGEBACK_REQUESTED", "PAYMENT_CHARGEBACK_DISPUTE"}
+)
+ASAAS_REVOCATION_EVENTS = ASAAS_REFUND_EVENTS | ASAAS_CHARGEBACK_EVENTS
+
+
 class AsaasWebhookParser:
     """Asaas webhooks, plus the gateway-neutral legacy ``subscription.*`` events.
 
@@ -177,6 +191,11 @@ class AsaasWebhookParser:
         "PAYMENT_CONFIRMED": SubscriptionStatus.ACTIVE.value,
         "PAYMENT_OVERDUE": SubscriptionStatus.PAST_DUE.value,
         "SUBSCRIPTION_DELETED": SubscriptionStatus.CANCELED.value,
+        # #1598 fechou o vazamento de receita por estorno, mas só no parser do
+        # outro gateway — este ficou de fora, então um refund feito no painel
+        # do Asaas deixava o Premium ativo. CANCELED reaproveita a maquinaria
+        # de _DEGRADED_STATUSES, que revoga os entitlements sem fiação nova.
+        **dict.fromkeys(ASAAS_REVOCATION_EVENTS, SubscriptionStatus.CANCELED.value),
     }
     _LEGACY_EVENTS = {
         "subscription.activated": SubscriptionStatus.ACTIVE.value,

@@ -7,9 +7,10 @@ hosted checkout flow when explicitly enabled via environment variables.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Protocol, TypedDict, cast, runtime_checkable
 
 import requests
@@ -20,9 +21,28 @@ from app.config.billing_plans import BillingPlanOffer, resolve_checkout_plan_off
 from app.models.subscription import BillingCycle
 from app.services.retry_wrapper import with_retry
 
+logger = logging.getLogger(__name__)
+
 _ASAAS_PROVIDER = "asaas"
 _ABACATEPAY_PROVIDER = "abacatepay"
 _STUB_PROVIDER = "stub"
+_PRODUCTION_ENV_NAMES = {"prod", "production"}
+
+
+def _is_production_runtime() -> bool:
+    """Espelha ``billing_webhook_parsers._is_production_runtime``.
+
+    Duplicado de propósito: o parser vive em ``app/controllers`` e importá-lo
+    daqui inverteria a direção da dependência (services → controllers). São
+    cinco linhas; a alternativa era um módulo compartilhado só para isto.
+    """
+    for var in ("FLASK_ENV", "APP_ENV", "AURAXIS_ENV"):
+        value = str(os.getenv(var) or "").strip().lower()
+        if value:
+            return value in _PRODUCTION_ENV_NAMES
+    return False
+
+
 _DEFAULT_ASAAS_BASE_URL = "https://api-sandbox.asaas.com/v3"
 _DEFAULT_ABACATEPAY_BASE_URL = "https://api.abacatepay.com/v2"
 # Checkouts are bill_…; the subscription only gets a subs_… id once it is paid.
@@ -276,11 +296,44 @@ class AsaasBillingProvider:
             }
         )
 
+    @property
+    def _is_sandbox(self) -> bool:
+        return "sandbox" in self._base_url.lower()
+
+    def _checkout_page_url(self, checkout_id: str) -> str:
+        """Página hospedada correspondente à base configurada.
+
+        Antes isto era ``https://www.asaas.com/c/{id}`` fixo, que manda o
+        comprador para **produção mesmo rodando em sandbox** — um teste que
+        parece passar e leva a um checkout que não existe naquele ambiente.
+        """
+        host = "sandbox.asaas.com" if self._is_sandbox else "www.asaas.com"
+        return f"https://{host}/c/{checkout_id}"
+
     def _ensure_enabled(self) -> None:
         if not self._api_key:
             raise BillingProviderError(
                 "BILLING_ASAAS_API_KEY (or AURAXIS_ASAAS_API_KEY) is required "
                 "when BILLING_PROVIDER=asaas"
+            )
+        # Guard anti-sandbox. `_DEFAULT_ASAAS_BASE_URL` é o sandbox, então
+        # esquecer `BILLING_ASAAS_BASE_URL` em produção faz a API vender para
+        # o ambiente de teste **em silêncio**: o checkout abre, o comprador
+        # "paga", e nada acontece do lado real. Foi assim que se perderam dez
+        # dias no gateway anterior (docs/wiki/PAY-AbacatePay-Setup.md), com o
+        # agravante de que lá havia chave prefixada e guard de devMode no
+        # webhook — aqui não há nenhum dos dois. Falhar alto é a única defesa.
+        if self._is_sandbox and _is_production_runtime():
+            logger.error(
+                "event=billing_sandbox_base_url_in_production provider=%s "
+                "reason=sandbox_base_url_blocked — BILLING_ASAAS_BASE_URL is "
+                "missing or points at sandbox while the app runs in production",
+                _ASAAS_PROVIDER,
+            )
+            raise BillingProviderError(
+                "BILLING_ASAAS_BASE_URL points at the Asaas sandbox while "
+                "APP_ENV is production — refusing to sell against sandbox. "
+                "Set it to https://api.asaas.com/v3"
             )
 
     def _request(
@@ -366,9 +419,21 @@ class AsaasBillingProvider:
                     "value": offer.price_cents / 100,
                 }
             ],
+            # O trial vive AQUI, no request — não num produto cadastrado no
+            # painel, como era no gateway anterior. `nextDueDate` é a data da
+            # primeira cobrança: adiá-la em `trial_days` é o que dá o período
+            # gratuito, com o cartão já tokenizado no checkout.
+            #
+            # Sem isto o trial não existe em lugar nenhum: o cadastro deixou de
+            # concedê-lo no #1569 (register_resource.py:126-131, que o moveu
+            # para o produto do gateway), então `trial_days=7` do catálogo
+            # (billing_plans.py) seria serializado para o cliente e ignorado na
+            # cobrança — o usuário veria "7 dias grátis" e seria debitado na hora.
             "subscription": {
                 "cycle": cycle,
-                "nextDueDate": date.today().isoformat(),
+                "nextDueDate": (
+                    date.today() + timedelta(days=max(offer.trial_days, 0))
+                ).isoformat(),
             },
         }
 
@@ -425,7 +490,7 @@ class AsaasBillingProvider:
         return {
             "checkout_url": (
                 str(payload.get("link") or "").strip()
-                or f"https://www.asaas.com/c/{checkout_id}"
+                or self._checkout_page_url(checkout_id)
             ),
             "provider": _ASAAS_PROVIDER,
             "provider_customer_id": customer_id,
