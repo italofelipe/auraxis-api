@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.79.1](https://github.com/italofelipe/auraxis-api/compare/v1.79.0...v1.79.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **billing:** devolver ao Asaas o trial, a revogação por estorno e o guard de sandbox ([#1674](https://github.com/italofelipe/auraxis-api/issues/1674)) ([56833ac](https://github.com/italofelipe/auraxis-api/commit/56833acf627fbd7671a71c59f7370ac1e98a5e22)), closes [#1673](https://github.com/italofelipe/auraxis-api/issues/1673)
+
 ## [1.79.0](https://github.com/italofelipe/auraxis-api/compare/v1.78.1...v1.79.0) (2026-08-03)
 
 
